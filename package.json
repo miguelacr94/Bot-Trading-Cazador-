@@ -1,0 +1,30 @@
+{
+  "name": "binance-spot-bot",
+  "version": "1.0.0",
+  "description": "Algorithmic Spot Trading Bot for Binance",
+  "main": "dist/main.js",
+  "type": "module",
+  "scripts": {
+    "balance": "tsx src/cli.ts balance",
+    "price": "tsx src/cli.ts price",
+    "orders": "tsx src/cli.ts orders",
+    "buy": "tsx src/cli.ts buy",
+    "sell": "tsx src/cli.ts sell",
+    "bot": "tsx src/cazador-completo.ts",
+    "start": "tsx src/cazador-completo.ts",
+    "build": "tsc",
+    "telegram:setup": "tsx src/setup-telegram.ts",
+    "scan": "tsx src/scanner.ts",
+    "report": "tsx src/report.ts",
+    "cazador": "tsx src/cazador-completo.ts"
+  },
+  "dependencies": {
+    "@binance/connector": "^3.3.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
