@@ -1,0 +1,18 @@
+# Dependencias
+node_modules/
+
+# Archivos de entorno y credenciales (¡CRÍTICO: nunca subir a git!)
+.env
+.env.*
+!.env.example
+
+# Estados internos del bot y logs
+.bot-state.json
+.cazador-state.json
+.scanner-bot-state.json
+*.log
+
+# Compilación y caché
+dist/
+*.tsbuildinfo
+.DS_Store
