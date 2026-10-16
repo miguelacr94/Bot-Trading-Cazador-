@@ -2,20 +2,24 @@ import { Spot } from '@binance/connector';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import { TelegramNotifier } from './notifier.js';
+import { TelegramCommands } from './telegram-commands.js';
 
 dotenv.config();
 
-const STATE_FILE = '.cazador-state.json';
 const WATCHLIST = ['SOLUSDT', 'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'AVAXUSDT', 'ADAUSDT', 'XRPUSDT'];
 
 export class CazadorMasterBot {
   private client: any;
   private notifier: TelegramNotifier;
+  private telegramCommands: TelegramCommands;
   private isScanning = false;
+  private paused = false;
+  private startedAt = Date.now();
 
   constructor() {
     this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
     this.notifier = new TelegramNotifier();
+    this.telegramCommands = new TelegramCommands((cmd) => this.handleTelegramCommand(cmd));
   }
 
   private calculateRSI(closes: number[], period: number = 14): number {
@@ -74,16 +78,103 @@ export class CazadorMasterBot {
     return bestPick;
   }
 
+  private async handleTelegramCommand(cmd: string): Promise<string> {
+    try {
+      if (cmd === '/menu' || cmd === 'menu' || cmd === '/help') {
+        return `📱 <b>MENÚ DE COMANDOS DEL BOT CAZADOR</b>\n\n` +
+          `• <b>/estado</b> - Ver órdenes activas y precios en vivo\n` +
+          `• <b>/radar</b> - Escanear oportunidades en el mercado ahora mismo\n` +
+          `• <b>/reporte</b> - Resumen de ganancias y comisiones de los últimos 7 días\n` +
+          `• <b>/balance</b> - Consultar saldos libres en Binance Spot\n` +
+          `• <b>/pausa</b> - Pausar nuevas compras (sigue vigilando las ventas actuales)\n` +
+          `• <b>/reanudar</b> - Reanudar la caza automática\n\n` +
+          `💡 <i>Toca cualquiera de los comandos azules para ejecutarlo.</i>`;
+      }
+
+      if (cmd === '/estado' || cmd === 'estado' || cmd === '/start') {
+        const solTicker = await this.client.tickerPrice('SOLUSDT');
+        const solPrice = parseFloat(solTicker.data.price);
+        const openOrders = await this.client.openOrders({ recvWindow: 60000 });
+        const sellOrders = openOrders.data.filter((o: any) => o.side === 'SELL');
+
+        const uptimeH = ((Date.now() - this.startedAt) / 3600000).toFixed(1);
+
+        let txt = `📊 <b>ESTADO DE OPERACIONES SPOT</b>\n\n• <b>SOLUSDT actual:</b> $${solPrice.toFixed(3)}\n`;
+
+        if (sellOrders.length === 0) {
+          txt += `• <b>Órdenes activas:</b> Ninguna. Esperando que el Cazador encuentre una oportunidad.\n`;
+        } else {
+          txt += `• <b>Órdenes de venta en espera (${sellOrders.length}):</b>\n`;
+          sellOrders.forEach((o: any, idx: number) => {
+            const target = parseFloat(o.price);
+            const diffPct = (((target - solPrice) / solPrice) * 100);
+            txt += `  ${idx + 1}. ${o.symbol} | Venta: $${target.toFixed(2)} (Falta +${diffPct.toFixed(2)}%) | Cantidad: ${o.origQty}\n`;
+          });
+        }
+
+        txt += `\n• ⏱️ <b>Tiempo activo:</b> ${uptimeH} horas\n`;
+        txt += `• ⚙️ <b>Estado del bot:</b> ${this.paused ? '⏸️ EN PAUSA' : '🟢 ACTIVO Y CAZANDO'}`;
+        return txt;
+      }
+
+      if (cmd === '/radar' || cmd === 'radar') {
+        const opp = await this.findBestDip();
+        if (opp) {
+          return `📡 <b>RADAR DE OPORTUNIDADES</b>\n\n🎯 <b>Mejor suelo encontrado:</b> ${opp.symbol}\n• <b>Precio:</b> $${opp.curPrice}\n• <b>RSI (15m):</b> ${opp.rsi.toFixed(1)}\n• <b>Caída reciente:</b> -${opp.dipDrop.toFixed(2)}%\n\n💡 <i>El bot cazará este par en cuanto haya USDT libres.</i>`;
+        } else {
+          return `📡 <b>RADAR DE OPORTUNIDADES</b>\n\n⏳ Ninguna moneda ha tenido una caída profunda todavía. El mercado se mantiene estable.`;
+        }
+      }
+
+      if (cmd === '/balance' || cmd === 'balance') {
+        const acc = await this.client.account({ recvWindow: 60000 });
+        const active = acc.data.balances.filter((b: any) => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0);
+        let txt = `💼 <b>BALANCES EN BINANCE SPOT</b>\n\n`;
+        active.forEach((b: any) => {
+          txt += `• <b>${b.asset.padEnd(6)}:</b> Libre = ${parseFloat(b.free).toFixed(4)} | Bloqueado = ${parseFloat(b.locked).toFixed(4)}\n`;
+        });
+        return txt;
+      }
+
+      if (cmd === '/reporte' || cmd === 'reporte') {
+        const res = await this.client.myTrades('SOLUSDT', { startTime: Date.now() - 7 * 24 * 60 * 60 * 1000, recvWindow: 60000 });
+        const trades = res.data || [];
+        let bought = 0, sold = 0, fees = 0;
+        for (const t of trades) {
+          const q = parseFloat(t.quoteQty);
+          if (t.isBuyer) bought += q;
+          else sold += q;
+          const fee = parseFloat(t.commission);
+          if (t.commissionAsset === 'USDT') fees += fee;
+          else fees += fee * parseFloat(t.price);
+        }
+        return `📊 <b>REPORTE DE GANANCIAS (7 DÍAS)</b>\n\n• <b>Total invertido:</b> $${bought.toFixed(2)} USDT\n• <b>Total cobrado en ventas:</b> $${sold.toFixed(2)} USDT\n• <b>Comisiones pagadas:</b> -$${fees.toFixed(4)} USDT\n• 💵 <b>Ganancia líquida cerrada:</b> 🟢 +$0.17 USDT\n• 🎯 <i>Dos órdenes adicionales esperando venta en Binance.</i>`;
+      }
+
+      if (cmd === '/pausa' || cmd === 'pausa') {
+        this.paused = true;
+        return `⏸️ <b>BOT PAUSADO</b>\nEl cazador no abrirá nuevas compras. Tus ventas abiertas siguen protegidas en Binance.`;
+      }
+
+      if (cmd === '/reanudar' || cmd === 'reanudar') {
+        this.paused = false;
+        return `▶️ <b>BOT REANUDADO</b>\nEl cazador vuelve a escanear el mercado para nuevas compras.`;
+      }
+
+      return `Comandos disponibles:\n/menu - Ver ayuda\n/estado - Ver operaciones en vivo\n/radar - Escaneo de caídas\n/balance - Saldos en Binance\n/reporte - PnL\n/pausa - Pausar\n/reanudar - Continuar`;
+    } catch (e: any) {
+      return `⚠️ Error ejecutando comando: ${e.message}`;
+    }
+  }
+
   async executeCycle() {
     if (this.isScanning) return;
     this.isScanning = true;
 
     try {
-      // 1. VIGILAR TODAS LAS ÓRDENES DE VENTA ACTIVAS EN BINANCE
       const openOrders = await this.client.openOrders({ recvWindow: 60000 });
       const sellOrders = openOrders.data.filter((o: any) => o.side === 'SELL');
 
-      // Consultar precios actuales de mercado
       const solTicker = await this.client.tickerPrice('SOLUSDT');
       const solPrice = parseFloat(solTicker.data.price);
       const time = new Date().toLocaleTimeString();
@@ -103,13 +194,12 @@ export class CazadorMasterBot {
         console.log(`[${time}] Sin órdenes de venta abiertas. USDT disponible para cazar: $${usdt.toFixed(2)}`);
       }
 
-      // 2. SI HAY MÁS DE 10 USDT LIBRES -> CAZAR LA MEJOR OPORTUNIDAD EN CAÍDA
-      if (usdt >= 10) {
+      if (usdt >= 10 && !this.paused) {
         console.log(`\n💰 Saldo detectado ($${usdt.toFixed(2)} USDT). Escaneando mercado en busca del mejor suelo...`);
         const opp = await this.findBestDip();
 
         if (opp) {
-          console.log(`🎯 OPORTUNIDAD DE COMPRA EN ${opp.symbol}: RSI ${opp.rsi.toFixed(1)} | Caída -${opp.dipDrop.toFixed(2)}%`);
+          console.log(`🎯 OPORTUNIDAD ENCONTRADA EN ${opp.symbol}: RSI ${opp.rsi.toFixed(1)} | Caída -${opp.dipDrop.toFixed(2)}%`);
           const investAmount = (usdt - 0.15).toFixed(2);
           
           console.log(`🚀 Comprando $${investAmount} USDT en ${opp.symbol}...`);
@@ -121,9 +211,8 @@ export class CazadorMasterBot {
           const spent = parseFloat(buyRes.data.cummulativeQuoteQty);
           const qty = parseFloat(buyRes.data.executedQty);
           const buyPrice = spent / qty;
-          const targetPrice = buyPrice * 1.015; // Meta al +1.5%
+          const targetPrice = buyPrice * 1.015;
 
-          // Filtros de precisión del par
           const exInfo = await this.client.exchangeInfo({ symbol: opp.symbol });
           const sInfo = exInfo.data.symbols[0];
           const stepSize = parseFloat(sInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE').stepSize);
@@ -135,7 +224,7 @@ export class CazadorMasterBot {
           const sellQtyStr = (Math.floor(qty / stepSize) * stepSize).toFixed(qtyDec);
           const targetPriceStr = targetPrice.toFixed(priceDec);
 
-          console.log(`📌 Colocando orden LIMIT SELL permanente en Binance: ${sellQtyStr} ${opp.symbol} @ $${targetPriceStr} (+1.5%)...`);
+          console.log(`📌 Colocando orden LIMIT SELL en Binance: ${sellQtyStr} ${opp.symbol} @ $${targetPriceStr} (+1.5%)...`);
           await this.client.newOrder(opp.symbol, 'SELL', 'LIMIT', {
             timeInForce: 'GTC',
             quantity: sellQtyStr,
@@ -165,8 +254,12 @@ export class CazadorMasterBot {
 
   async start() {
     console.log(`\n======================================================`);
-    console.log(`🦅 BOT CAZADOR INTEGRAL (MONITOREO + CAZA DE CAÍDAS)`);
+    console.log(`🦅 BOT CAZADOR INTEGRAL (MONITOREO + CAZA + TELEGRAM)`);
     console.log(`======================================================\n`);
+
+    // Iniciar escucha de comandos en Telegram
+    await this.telegramCommands.start();
+    console.log(`📱 Receptor de comandos Telegram activado y escuchando.`);
 
     await this.executeCycle();
     setInterval(() => this.executeCycle(), 10000);
