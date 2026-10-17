@@ -23,7 +23,7 @@ export class MultiEngineMasterBot {
             name: 'Motor 2: Cazador de Rebotes',
             active: true,
             targetProfitPercent: 1.8, // Ganancia aumentada por rebote en suelo
-            description: 'Compra exclusivamente en caídas confirmadas (RSI < 35 + Mecha verde) y vende al +1.8%'
+            description: 'Compra exclusivamente en caídas confirmadas (RSI por debajo de 35 + Mecha verde) y vende al +1.8%'
         },
         motor3_scalp_rapido: {
             name: 'Motor 3: Scalping Dinámico',
@@ -125,7 +125,7 @@ export class MultiEngineMasterBot {
                     `2️⃣ <b>${this.engines.motor2_cazador_rebotes.name}</b>\n` +
                     `• Estado: 🟢 Activo\n` +
                     `• Meta: <b>+1.8% de ganancia limpia por rebote</b>\n` +
-                    `• Criterio: RSI < 38 + Vela de absorción verde\n\n` +
+                    `• Criterio: RSI por debajo de 38 + Vela verde de absorción\n\n` +
                     `3️⃣ <b>${this.engines.motor3_scalp_rapido.name}</b>\n` +
                     `• Estado: 🟢 Activo (+0.8%)\n\n` +
                     `🛡️ <i>Todos los motores operan en paralelo con saldos independientes.</i>`;
