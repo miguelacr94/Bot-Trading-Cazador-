@@ -11,12 +11,13 @@
     "buy": "tsx src/cli.ts buy",
     "sell": "tsx src/cli.ts sell",
     "bot": "tsx src/cazador-completo.ts",
-    "start": "tsx src/cazador-completo.ts",
+    "start": "tsx src/multi-engine-bot.ts",
     "build": "tsc",
     "telegram:setup": "tsx src/setup-telegram.ts",
     "scan": "tsx src/scanner.ts",
     "report": "tsx src/report.ts",
-    "cazador": "tsx src/cazador-completo.ts"
+    "cazador": "tsx src/cazador-completo.ts",
+    "motores": "tsx src/multi-engine-bot.ts"
   },
   "dependencies": {
     "@binance/connector": "^3.3.0",
