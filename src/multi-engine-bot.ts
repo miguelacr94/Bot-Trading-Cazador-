@@ -118,7 +118,13 @@ export class SmartAutonomousBot {
     const qtyDec = Math.max(0, Math.round(-Math.log10(stepSize)));
     const priceDec = Math.max(0, Math.round(-Math.log10(tickSize)));
 
-    const sellQtyStr = (Math.floor(qty / stepSize) * stepSize).toFixed(qtyDec);
+    // Consultar el saldo real libre tras el cobro de comisiones de Binance
+    const asset = symbol.replace("USDT", "");
+    const accAfter = await this.client.account({ recvWindow: 60000 });
+    const actualFree = parseFloat(accAfter.data.balances.find((b: any) => b.asset === asset)?.free || "0");
+    const sellQty = actualFree > 0 ? actualFree : qty;
+
+    const sellQtyStr = (Math.floor(sellQty / stepSize) * stepSize).toFixed(qtyDec);
     const targetPriceStr = targetPrice.toFixed(priceDec);
 
     console.log(`📌 Colocando LIMIT SELL en Binance: ${sellQtyStr} ${symbol} @ $${targetPriceStr} (+${this.profitTargetPct}%)...`);
