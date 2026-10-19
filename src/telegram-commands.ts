@@ -20,14 +20,17 @@ export class TelegramCommands {
     try {
       // Registrar menú de comandos en Telegram
       const commands = [
-        { command: "menu", description: "📋 Menú principal de opciones" },
-        { command: "motores", description: "⚙️ Ver estado de los 3 motores de trading" },
+        { command: "menu", description: "📋 Lista completa de comandos" },
         { command: "estado", description: "📊 Órdenes activas y precios en Binance" },
         { command: "radar", description: "📡 Escanear rebotes al +1.8%" },
-        { command: "balance", description: "💼 Consultar saldos en Spot" },
-        { command: "reporte", description: "📈 Ver reporte de ganancias acumuladas" },
-        { command: "pausa", description: "⏸️ Pausar compras automáticas" },
-        { command: "reanudar", description: "▶️ Reanudar compras automáticas" }
+        { command: "balance", description: "💼 Consultar saldos en Binance Spot" },
+        { command: "reporte", description: "📈 Ver historial de ganancias y PnL" },
+        { command: "motores", description: "⚙️ Ver estrategias y motores activos" },
+        { command: "comprar", description: "🛒 Comprar cripto (ej: /comprar eth)" },
+        { command: "vender", description: "🚨 Venta inmediata por mercado" },
+        { command: "modo", description: "🤖 Alternar modo auto o manual" },
+        { command: "pausa", description: "⏸️ Pausar el bot" },
+        { command: "reanudar", description: "▶️ Reanudar el bot" }
       ];
       await fetch(this.api("setMyCommands"), {
         method: "POST",
