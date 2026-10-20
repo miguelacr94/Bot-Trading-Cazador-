@@ -5,7 +5,7 @@ import * as path from "path";
 import { TelegramNotifier } from "./notifier.js";
 import { TelegramCommands } from "./telegram-commands.js";
 dotenv.config();
-const WATCHLIST = ["ETHUSDT", "SOLUSDT", "BTCUSDT", "AVAXUSDT", "ADAUSDT", "XRPUSDT", "BNBUSDT"];
+const WATCHLIST = ["SOLUSDT", "ETHUSDT", "BTCUSDT", "XRPUSDT", "BNBUSDT"];
 // PARÁMETROS DEL TRAILING TAKE PROFIT INTELIGENTE
 const TRAILING_ACTIVATION_PCT = 0.8; // Despierta el seguro al +0.8%
 const TRAILING_CALLBACK_PCT = 0.25; // Vende si retrocede 0.25% desde el pico
@@ -154,35 +154,41 @@ export class TrailingMasterBot {
      * Compra una moneda e inicia el rastreo con Trailing Take Profit
      */
     async executeSmartBuy(symbol, usdtAmount, source) {
-        const investStr = (usdtAmount - 0.15).toFixed(2);
-        console.log(`🚀 [${source}] Ejecutando compra de $${investStr} USDT en ${symbol} con Trailing Stop...`);
-        const buyRes = await this.client.newOrder(symbol, "BUY", "MARKET", {
-            quoteOrderQty: investStr,
-            recvWindow: 60000
-        });
-        const spent = parseFloat(buyRes.data.cummulativeQuoteQty);
-        const qty = parseFloat(buyRes.data.executedQty);
-        const buyPrice = spent / qty;
-        // Registrar posición para Trailing Take Profit
-        this.activeTrailingPositions.set(symbol, {
-            symbol,
-            buyPrice,
-            qty,
-            investedUsdt: spent,
-            highestPrice: buyPrice,
-            activated: false,
-            buyTime: Date.now()
-        });
-        this.saveTrailingPositions();
-        const target08 = (buyPrice * 1.008).toFixed(4);
-        const alertMsg = `🦅 <b>¡NUEVA COMPRA INTELIGENTE CON TRAILING!</b> 🚀\n\n` +
-            `• <b>Moneda:</b> ${symbol}\n` +
-            `• <b>Inversión:</b> $${spent.toFixed(2)} USDT\n` +
-            `• <b>Precio de entrada:</b> $${buyPrice.toFixed(4)}\n` +
-            `• 🎯 <b>Gatillo Trailing:</b> $${target08} (+0.8%)\n\n` +
-            `🛡️ <i>En cuanto suba al +0.8%, el bot asegura la ganancia y persigue el pico para exprimir el máximo beneficio.</i>`;
-        await this.notifier.send(alertMsg);
-        console.log(alertMsg.replace(/<\/?b>/g, "").replace(/<\/?i>/g, ""));
+        try {
+            const investStr = (usdtAmount - 0.15).toFixed(2);
+            console.log(`🚀 [${source}] Ejecutando compra de ${investStr} USDT en ${symbol} con Trailing Stop...`);
+            const buyRes = await this.client.newOrder(symbol, "BUY", "MARKET", {
+                quoteOrderQty: investStr,
+                recvWindow: 60000
+            });
+            const spent = parseFloat(buyRes.data.cummulativeQuoteQty);
+            const qty = parseFloat(buyRes.data.executedQty);
+            const buyPrice = spent / qty;
+            // Registrar posición para Trailing Take Profit
+            this.activeTrailingPositions.set(symbol, {
+                symbol,
+                buyPrice,
+                qty,
+                investedUsdt: spent,
+                highestPrice: buyPrice,
+                activated: false,
+                buyTime: Date.now()
+            });
+            this.saveTrailingPositions();
+            const target08 = (buyPrice * 1.008).toFixed(4);
+            const alertMsg = `🦅 <b>¡NUEVA COMPRA INTELIGENTE CON TRAILING!</b> 🚀\n\n` +
+                `• <b>Moneda:</b> ${symbol}\n` +
+                `• <b>Inversión:</b> ${spent.toFixed(2)} USDT\n` +
+                `• <b>Precio de entrada:</b> ${buyPrice.toFixed(4)}\n` +
+                `• 🎯 <b>Gatillo Trailing:</b> ${target08} (+0.8%)\n\n` +
+                `🛡️ <i>En cuanto suba al +0.8%, el bot asegura la ganancia y persigue el pico para exprimir el máximo beneficio.</i>`;
+            await this.notifier.send(alertMsg);
+            console.log(alertMsg.replace(/<\/?b>/g, "").replace(/<\/?i>/g, ""));
+        }
+        catch (e) {
+            console.error(`❌ Error ejecutando compra en ${symbol}:`, e.message);
+            await this.notifier.send(`⚠️ <i>No se pudo comprar ${symbol}: ${e.message}</i>`);
+        }
     }
     async findSmartOpportunity(activeSymbols) {
         let bestPick = null;
@@ -203,8 +209,15 @@ export class TrailingMasterBot {
                 const maxRecent = Math.max(...highs.slice(-20));
                 const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
                 const isGreen = curPrice >= curOpen;
-                if (rsi <= 40 && isGreen) {
-                    const score = (42 - rsi) * 2.5 + dropPct * 3.0;
+                // Detección ágil y precisa de rebote tras caída:
+                // 1. Caída real (>= 1.5%) con RSI moderado (<= 58) y vela verde de giro
+                // 2. O enfriamiento con RSI bajo (<= 48) y rebote verde
+                // 3. O sobreventa clásica (RSI <= 40) y rebote verde
+                const isDipOpportunity = (dropPct >= 1.5 && rsi <= 58 && isGreen) ||
+                    (rsi <= 48 && dropPct >= 0.8 && isGreen) ||
+                    (rsi <= 40 && isGreen);
+                if (isDipOpportunity) {
+                    const score = (60 - rsi) * 2.0 + dropPct * 4.0;
                     if (score > maxScore) {
                         maxScore = score;
                         bestPick = { symbol: sym, rsi, dropPct, curPrice };
@@ -427,12 +440,16 @@ export class TrailingMasterBot {
             const time = new Date().toLocaleTimeString();
             console.log(`[${time}] Monitoreo... USDT libre: $${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size}`);
             // 2. Si hay saldo libre, el bot autónomo busca la mejor oportunidad para entrar con Trailing
-            if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 3) {
+            if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 2) {
                 console.log(`🔍 Escaneando oportunidades de suelo para entrar con Trailing Take Profit...`);
                 const opp = await this.findSmartOpportunity(activeSymbols);
                 if (opp) {
-                    console.log(`🎯 Oportunidad detectada en ${opp.symbol} (RSI: ${opp.rsi.toFixed(1)}). Comprando con Trailing Stop...`);
-                    await this.executeSmartBuy(opp.symbol, usdt, "Piloto Autónomo Trailing");
+                    // Si tenemos más de $30 USDT libres y ninguna posición activa, dividimos en 2 slots (~$22 cada uno)
+                    const amountToUse = (usdt >= 30 && this.activeTrailingPositions.size === 0)
+                        ? Math.floor((usdt / 2) * 100) / 100
+                        : usdt;
+                    console.log(`🎯 Oportunidad detectada en ${opp.symbol} (RSI: ${opp.rsi.toFixed(1)} | Caída: ${opp.dropPct.toFixed(2)}%). Comprando ${amountToUse} USDT con Trailing Stop...`);
+                    await this.executeSmartBuy(opp.symbol, amountToUse, "Piloto Autónomo Trailing");
                 }
             }
         }
