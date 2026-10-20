@@ -1,5 +1,7 @@
 import { Spot } from "@binance/connector";
 import * as dotenv from "dotenv";
+import * as fs from "fs";
+import * as path from "path";
 import { TelegramNotifier } from "./notifier.js";
 import { TelegramCommands } from "./telegram-commands.js";
 
@@ -35,7 +37,30 @@ export class TrailingMasterBot {
     this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
     this.notifier = new TelegramNotifier();
     this.telegramCommands = new TelegramCommands((cmd) => this.handleTelegramCommand(cmd));
+    this.loadTrailingPositions();
   }
+  private saveTrailingPositions() {
+    try {
+      const data = Array.from(this.activeTrailingPositions.entries());
+      fs.writeFileSync(path.resolve(process.cwd(), ".trailing-positions.json"), JSON.stringify(data, null, 2));
+    } catch(e: any) {
+      console.error("Error guardando trailing positions:", e.message);
+    }
+  }
+
+  private loadTrailingPositions() {
+    try {
+      const file = path.resolve(process.cwd(), ".trailing-positions.json");
+      if (fs.existsSync(file)) {
+        const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+        this.activeTrailingPositions = new Map(data);
+        console.log(`📂 Cargadas ${this.activeTrailingPositions.size} posiciones de Trailing desde disco.`);
+      }
+    } catch(e: any) {
+      console.error("Error cargando trailing positions:", e.message);
+    }
+  }
+
 
   private calculateRSI(closes: number[], period: number = 14): number {
     if (closes.length <= period) return 50;
@@ -81,13 +106,15 @@ export class TrailingMasterBot {
             `• 🛡️ Ganancia mínima asegurada (+0.8%).\n` +
             `• 🚀 <i>El bot ahora persigue el pico más alto. Mientras siga subiendo, ¡seguirá sumando!</i>`;
           await this.notifier.send(msg);
-          console.log(`🎯 Trailing activado en ${symbol} a $${curPrice} (+${gainPct.toFixed(2)}%)`);
+          console.log(`🎯 Trailing activado en ${symbol} a ${curPrice} (+${gainPct.toFixed(2)}%)`);
+          this.saveTrailingPositions();
         }
 
         // 2. Si el precio marca un nuevo pico, actualizamos el techo
         if (pos.activated && curPrice > pos.highestPrice) {
           pos.highestPrice = curPrice;
-          console.log(`📈 Nuevo pico en ${symbol}: $${curPrice} (+${gainPct.toFixed(2)}%)`);
+          console.log(`📈 Nuevo pico en ${symbol}: ${curPrice} (+${gainPct.toFixed(2)}%)`);
+          this.saveTrailingPositions();
         }
 
         // 3. Evaluar Salida por Retroceso (Callback) desde el pico más alto
@@ -100,6 +127,7 @@ export class TrailingMasterBot {
             console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a $${curPrice} (Pico: $${pos.highestPrice})`);
             await this.executeTrailingSell(pos, curPrice, gainPct, hitHardCap);
             this.activeTrailingPositions.delete(symbol);
+            this.saveTrailingPositions();
           }
         }
       } catch (e: any) {
@@ -169,6 +197,7 @@ export class TrailingMasterBot {
       activated: false,
       buyTime: Date.now()
     });
+    this.saveTrailingPositions();
 
     const target08 = (buyPrice * 1.008).toFixed(4);
     const alertMsg = `🦅 <b>¡NUEVA COMPRA INTELIGENTE CON TRAILING!</b> 🚀\n\n` +
@@ -451,7 +480,7 @@ export class TrailingMasterBot {
       console.log(`[${time}] Monitoreo... USDT libre: $${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size}`);
 
       // 2. Si hay saldo libre, el bot autónomo busca la mejor oportunidad para entrar con Trailing
-      if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size === 0) {
+      if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 3) {
         console.log(`🔍 Escaneando oportunidades de suelo para entrar con Trailing Take Profit...`);
         const opp = await this.findSmartOpportunity(activeSymbols);
 
