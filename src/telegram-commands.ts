@@ -21,18 +21,19 @@ export class TelegramCommands {
       // Registrar menú de comandos en Telegram
       const commands = [
         { command: "menu", description: "📋 Lista completa de comandos" },
-        { command: "informe", description: "📑 Diagnóstico detallado en tiempo real" },
-        { command: "trailing", description: "🏹 Monitoreo de picos y gatillos Trailing" },
+        { command: "informe", description: "📑 Diagnóstico completo en tiempo real" },
+        { command: "trailing", description: "🏹 Posiciones activas rastreando el pico" },
+        { command: "cazando", description: "🔻 Trailing Buy: monedas cazando el piso" },
+        { command: "reporte", description: "📈 Ganancias reales acumuladas (Binance)" },
         { command: "estado", description: "📊 Órdenes activas y precios en Binance" },
-        { command: "radar", description: "📡 Escanear rebotes al +1.8%" },
+        { command: "radar", description: "📡 Escáner de suelos y RSI en tiempo real" },
         { command: "balance", description: "💼 Consultar saldos en Binance Spot" },
-        { command: "reporte", description: "📈 Ver historial de ganancias y PnL" },
-        { command: "motores", description: "⚙️ Ver estrategias y motores activos" },
-        { command: "comprar", description: "🛒 Comprar cripto (ej: /comprar eth)" },
-        { command: "vender", description: "🚨 Venta inmediata por mercado" },
-        { command: "modo", description: "🤖 Alternar modo auto o manual" },
-        { command: "pausa", description: "⏸️ Pausar el bot" },
-        { command: "reanudar", description: "▶️ Reanudar el bot" }
+        { command: "motores", description: "⚙️ Estrategias y parámetros activos" },
+        { command: "comprar", description: "🛒 Comprar cripto (ej: /comprar eth 20)" },
+        { command: "vender", description: "🚨 Venta inmediata por mercado (ej: /vender sol)" },
+        { command: "modo", description: "🤖 Ver o cambiar modo (/modo auto | manual)" },
+        { command: "pausa", description: "⏸️ Pausar compras automáticas" },
+        { command: "reanudar", description: "▶️ Reanudar compras automáticas" }
       ];
       await fetch(this.api("setMyCommands"), {
         method: "POST",

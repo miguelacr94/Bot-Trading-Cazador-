@@ -4,12 +4,18 @@ import * as fs from "fs";
 import * as path from "path";
 import { TelegramNotifier } from "./notifier.js";
 import { TelegramCommands } from "./telegram-commands.js";
+import { computeRealizedPnl } from "./pnl.js";
 dotenv.config();
+// Tasa de referencia COP por USDT (P2P Colombia aprox.)
+const COP_PER_USDT = 4200;
 const WATCHLIST = ["SOLUSDT", "ETHUSDT", "BTCUSDT", "XRPUSDT", "BNBUSDT"];
 // PARÁMETROS DEL TRAILING TAKE PROFIT INTELIGENTE
 const TRAILING_ACTIVATION_PCT = 0.8; // Despierta el seguro al +0.8%
 const TRAILING_CALLBACK_PCT = 0.25; // Vende si retrocede 0.25% desde el pico
 const TRAILING_HARD_CAP_PCT = 3.5; // Venta automática si toca +3.5%
+// PARÁMETROS DEL TRAILING BUY (espejo del trailing de venta, para cazar el piso)
+const TRAILING_BUY_BOUNCE_PCT = 0.25; // Compra cuando rebota +0.25% desde el piso más bajo
+const TRAILING_BUY_MAX_AGE_MS = 3 * 60 * 60 * 1000; // Vigilancia máxima: 3 horas
 export class TrailingMasterBot {
     client;
     notifier;
@@ -18,11 +24,33 @@ export class TrailingMasterBot {
     autoPilot = true;
     minUsdtToTrade = 10;
     activeTrailingPositions = new Map();
+    buyWatches = new Map();
     constructor() {
         this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
         this.notifier = new TelegramNotifier();
         this.telegramCommands = new TelegramCommands((cmd) => this.handleTelegramCommand(cmd));
         this.loadTrailingPositions();
+        this.loadBuyWatches();
+    }
+    saveBuyWatches() {
+        try {
+            fs.writeFileSync(path.resolve(process.cwd(), ".trailing-buys.json"), JSON.stringify(Array.from(this.buyWatches.entries()), null, 2));
+        }
+        catch (e) {
+            console.error("Error guardando trailing buys:", e.message);
+        }
+    }
+    loadBuyWatches() {
+        try {
+            const file = path.resolve(process.cwd(), ".trailing-buys.json");
+            if (fs.existsSync(file)) {
+                this.buyWatches = new Map(JSON.parse(fs.readFileSync(file, "utf-8")));
+                console.log(`📂 Cargadas ${this.buyWatches.size} vigilancias de Trailing Buy desde disco.`);
+            }
+        }
+        catch (e) {
+            console.error("Error cargando trailing buys:", e.message);
+        }
     }
     saveTrailingPositions() {
         try {
@@ -122,9 +150,12 @@ export class TrailingMasterBot {
                     const hitCallback = dropFromPeak >= TRAILING_CALLBACK_PCT && gainPct >= 0.6;
                     if (hitCallback || hitHardCap) {
                         console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a $${curPrice} (Pico: $${pos.highestPrice})`);
-                        await this.executeTrailingSell(pos, curPrice, gainPct, hitHardCap);
-                        this.activeTrailingPositions.delete(symbol);
-                        this.saveTrailingPositions();
+                        const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap);
+                        // Solo se elimina la posición si Binance confirmó la venta
+                        if (sold) {
+                            this.activeTrailingPositions.delete(symbol);
+                            this.saveTrailingPositions();
+                        }
                     }
                 }
             }
@@ -133,34 +164,91 @@ export class TrailingMasterBot {
             }
         }
     }
-    async executeTrailingSell(pos, exitPrice, gainPct, hitHardCap) {
+    /**
+     * Si Binance barrió el saldo a Simple Earn (Auto-Subscribe), lo rescata a Spot.
+     */
+    async redeemFromEarnIfNeeded(asset, needed) {
+        try {
+            const res = await this.client.getFlexibleProductPosition({ asset, recvWindow: 60000 });
+            const row = res.data?.rows?.[0];
+            if (!row || parseFloat(row.totalAmount) <= 0)
+                return;
+            console.log(`🏦 Rescatando ${asset} desde Simple Earn (${row.totalAmount}) para poder vender...`);
+            await this.client.redeemFlexibleProduct(row.productId, { redeemAll: true, destAccount: "SPOT", recvWindow: 60000 });
+            await new Promise((r) => setTimeout(r, 3000));
+            await this.notifier.send(`🏦 <i>Rescaté ${row.totalAmount} ${asset} de Simple Earn a Spot (Binance lo había movido con Auto-Subscribe).</i>`);
+        }
+        catch (e) {
+            console.error(`Error rescatando ${asset} de Earn:`, e.response?.data?.msg || e.message);
+        }
+    }
+    async getFreeBalance(asset) {
+        const acc = await this.client.account({ recvWindow: 60000 });
+        return parseFloat(acc.data.balances.find((b) => b.asset === asset)?.free || "0");
+    }
+    /** Suma comisiones de los fills de una orden convertidas a USDT */
+    feesToUsdt(fills, baseAsset) {
+        let fee = 0;
+        for (const f of fills || []) {
+            const c = parseFloat(f.commission);
+            if (f.commissionAsset === "USDT")
+                fee += c;
+            else if (f.commissionAsset === baseAsset)
+                fee += c * parseFloat(f.price);
+        }
+        return fee;
+    }
+    async executeTrailingSell(pos, exitPrice, hitHardCap) {
         try {
             const asset = pos.symbol.replace("USDT", "");
-            const acc = await this.client.account({ recvWindow: 60000 });
-            const freeBal = parseFloat(acc.data.balances.find((b) => b.asset === asset)?.free || "0");
+            let freeBal = await this.getFreeBalance(asset);
+            // Si falta saldo (barrido a Earn), rescatarlo antes de vender
+            if (freeBal < pos.qty * 0.98) {
+                await this.redeemFromEarnIfNeeded(asset, pos.qty);
+                freeBal = await this.getFreeBalance(asset);
+            }
+            // Vender solo la cantidad de esta posición (no tocar otros saldos)
+            const sellBase = Math.min(freeBal, pos.qty);
             const exInfo = await this.client.exchangeInfo({ symbol: pos.symbol });
             const sInfo = exInfo.data.symbols[0];
             const stepSize = parseFloat(sInfo.filters.find((f) => f.filterType === "LOT_SIZE").stepSize);
             const qtyDec = Math.max(0, Math.round(-Math.log10(stepSize)));
-            const sellQtyStr = (Math.floor(freeBal / stepSize) * stepSize).toFixed(qtyDec);
+            const sellQty = Math.floor(sellBase / stepSize) * stepSize;
+            const sellQtyStr = sellQty.toFixed(qtyDec);
+            if (sellQty <= 0) {
+                console.error(`❌ Sin saldo libre de ${asset} para vender la posición.`);
+                return false;
+            }
             const sellRes = await this.client.newOrder(pos.symbol, "SELL", "MARKET", {
                 quantity: sellQtyStr,
+                newOrderRespType: "FULL",
                 recvWindow: 60000
             });
-            const totalSoldUsdt = parseFloat(sellRes.data.cummulativeQuoteQty);
-            const profitUsdt = totalSoldUsdt - pos.investedUsdt;
+            const grossUsdt = parseFloat(sellRes.data.cummulativeQuoteQty);
+            const sellFee = this.feesToUsdt(sellRes.data.fills, asset);
+            const avgSell = grossUsdt / parseFloat(sellRes.data.executedQty);
+            const costBasis = pos.investedUsdt * (sellQty / pos.qty);
+            const profitUsdt = grossUsdt - sellFee - costBasis;
+            const netPct = (profitUsdt / costBasis) * 100;
+            const sign = profitUsdt >= 0 ? "+" : "";
             const alertMsg = `🏆 <b>¡GANANCIA COBRADA CON TRAILING TAKE PROFIT!</b> 🎉\n\n` +
                 `• <b>Moneda:</b> ${pos.symbol}\n` +
                 `• <b>Precio de compra:</b> $${pos.buyPrice.toFixed(4)}\n` +
                 `• <b>Pico alcanzado:</b> $${pos.highestPrice.toFixed(4)}\n` +
-                `• <b>Precio de venta:</b> $${exitPrice.toFixed(4)}\n` +
-                `• 💵 <b>Ganancia líquida:</b> 🟢 <b>+${profitUsdt >= 0 ? profitUsdt.toFixed(3) : "0.00"} USDT</b> (<b>+${gainPct.toFixed(2)}% NETO</b>)\n\n` +
-                `🛡️ <i>${hitHardCap ? "Meta máxima de +3.5% alcanzada." : "Venta óptima capturada en la cima del rebote."}</i>`;
+                `• <b>Precio de venta:</b> $${avgSell.toFixed(4)}\n` +
+                `• <b>Comisiones:</b> ${sellFee.toFixed(4)} USDT\n` +
+                `• 💵 <b>Ganancia líquida:</b> ${profitUsdt >= 0 ? "🟢" : "🔴"} <b>${sign}${profitUsdt.toFixed(3)} USDT</b> (<b>${sign}${netPct.toFixed(2)}% NETO</b>) ≈ ${sign}$${Math.round(profitUsdt * COP_PER_USDT).toLocaleString("es-CO")} COP\n\n` +
+                `🛡️ <i>${hitHardCap ? "Meta máxima de +3.5% alcanzada." : "Venta óptima capturada en la cima del rebote."}</i>\n` +
+                `📊 <i>Escribe /reporte para ver el acumulado real.</i>`;
             await this.notifier.send(alertMsg);
             console.log(alertMsg.replace(/<\/?b>/g, "").replace(/<\/?i>/g, ""));
+            return true;
         }
         catch (e) {
-            console.error("Error ejecutando venta trailing:", e.message);
+            const msg = e.response?.data?.msg || e.message;
+            console.error("Error ejecutando venta trailing:", msg);
+            await this.notifier.send(`⚠️ <i>No se pudo vender ${pos.symbol}: ${msg}. La posición sigue protegida y se reintentará.</i>`);
+            return false;
         }
     }
     /**
@@ -172,11 +260,20 @@ export class TrailingMasterBot {
             console.log(`🚀 [${source}] Ejecutando compra de ${investStr} USDT en ${symbol} con Trailing Stop...`);
             const buyRes = await this.client.newOrder(symbol, "BUY", "MARKET", {
                 quoteOrderQty: investStr,
+                newOrderRespType: "FULL",
                 recvWindow: 60000
             });
+            const asset = symbol.replace("USDT", "");
             const spent = parseFloat(buyRes.data.cummulativeQuoteQty);
-            const qty = parseFloat(buyRes.data.executedQty);
-            const buyPrice = spent / qty;
+            const grossQty = parseFloat(buyRes.data.executedQty);
+            // Si la comisión se cobró en la moneda comprada, la cantidad real es menor
+            let feeInBase = 0;
+            for (const f of buyRes.data.fills || []) {
+                if (f.commissionAsset === asset)
+                    feeInBase += parseFloat(f.commission);
+            }
+            const qty = grossQty - feeInBase;
+            const buyPrice = spent / grossQty;
             // Registrar posición para Trailing Take Profit
             this.activeTrailingPositions.set(symbol, {
                 symbol,
@@ -191,55 +288,105 @@ export class TrailingMasterBot {
             const target08 = (buyPrice * 1.008).toFixed(4);
             const alertMsg = `🦅 <b>¡NUEVA COMPRA INTELIGENTE CON TRAILING!</b> 🚀\n\n` +
                 `• <b>Moneda:</b> ${symbol}\n` +
+                `• <b>Origen:</b> ${source}\n` +
                 `• <b>Inversión:</b> ${spent.toFixed(2)} USDT\n` +
                 `• <b>Precio de entrada:</b> ${buyPrice.toFixed(4)}\n` +
                 `• 🎯 <b>Gatillo Trailing:</b> ${target08} (+0.8%)\n\n` +
                 `🛡️ <i>En cuanto suba al +0.8%, el bot asegura la ganancia y persigue el pico para exprimir el máximo beneficio.</i>`;
             await this.notifier.send(alertMsg);
             console.log(alertMsg.replace(/<\/?b>/g, "").replace(/<\/?i>/g, ""));
+            return true;
         }
         catch (e) {
-            console.error(`❌ Error ejecutando compra en ${symbol}:`, e.message);
-            await this.notifier.send(`⚠️ <i>No se pudo comprar ${symbol}: ${e.message}</i>`);
+            const msg = e.response?.data?.msg || e.message;
+            console.error(`❌ Error ejecutando compra en ${symbol}:`, msg);
+            await this.notifier.send(`⚠️ <i>No se pudo comprar ${symbol}: ${msg}</i>`);
+            return false;
         }
     }
-    async findSmartOpportunity(activeSymbols) {
-        let bestPick = null;
-        let maxScore = 0;
+    /**
+     * TRAILING BUY - Paso 1: detectar caídas y "armar" la vigilancia del piso.
+     * Ya no compra en la primera vela verde: registra el precio y rastrea el piso más bajo.
+     */
+    async scanForDips(activeSymbols) {
         for (const sym of WATCHLIST) {
             try {
-                if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym)) {
-                    continue; // No acumular en la misma moneda
+                if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
+                    continue; // No acumular en la misma moneda ni duplicar vigilancias
                 }
                 const klinesRes = await this.client.klines(sym, "15m", { limit: 35 });
                 const data = klinesRes.data;
                 const closes = data.map((k) => parseFloat(k[4]));
                 const highs = data.map((k) => parseFloat(k[2]));
-                const opens = data.map((k) => parseFloat(k[1]));
                 const rsi = this.calculateRSI(closes, 14);
                 const curPrice = closes[closes.length - 1];
-                const curOpen = opens[opens.length - 1];
                 const maxRecent = Math.max(...highs.slice(-20));
                 const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
-                const isGreen = curPrice >= curOpen;
-                // Detección ágil y precisa de rebote tras caída:
-                // 1. Caída real (>= 1.5%) con RSI moderado (<= 58) y vela verde de giro
-                // 2. O enfriamiento con RSI bajo (<= 48) y rebote verde
-                // 3. O sobreventa clásica (RSI <= 40) y rebote verde
-                const isDipOpportunity = (dropPct >= 1.5 && rsi <= 58 && isGreen) ||
-                    (rsi <= 48 && dropPct >= 0.8 && isGreen) ||
-                    (rsi <= 40 && isGreen);
-                if (isDipOpportunity) {
-                    const score = (60 - rsi) * 2.0 + dropPct * 4.0;
-                    if (score > maxScore) {
-                        maxScore = score;
-                        bestPick = { symbol: sym, rsi, dropPct, curPrice };
-                    }
+                // Mismas condiciones de caída que antes, pero SIN exigir vela verde:
+                // el rebote ahora lo confirma el Trailing Buy (+0.25% desde el piso exacto).
+                const isDip = (dropPct >= 1.5 && rsi <= 58) ||
+                    (rsi <= 48 && dropPct >= 0.8) ||
+                    (rsi <= 40);
+                if (isDip) {
+                    this.buyWatches.set(sym, { symbol: sym, armedPrice: curPrice, lowestPrice: curPrice, armedTime: Date.now(), rsi, dropPct });
+                    this.saveBuyWatches();
+                    const trigger = curPrice * (1 + TRAILING_BUY_BOUNCE_PCT / 100);
+                    console.log(`🎯 Trailing Buy ARMADO en ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Caída ${dropPct.toFixed(2)}%)`);
+                    await this.notifier.send(`🎯 <b>[TRAILING BUY ARMADO: ${sym}]</b>\n\n` +
+                        `• Caída detectada: <b>-${dropPct.toFixed(2)}%</b> (RSI ${rsi.toFixed(1)})\n` +
+                        `• Precio actual: ${curPrice}\n` +
+                        `• 🔻 El bot ahora persigue el <b>piso más bajo</b> tick a tick.\n` +
+                        `• ✅ Comprará cuando rebote <b>+${TRAILING_BUY_BOUNCE_PCT}%</b> desde el piso (hoy: ${trigger.toFixed(4)}).`);
                 }
             }
             catch (e) { }
         }
-        return bestPick;
+    }
+    /**
+     * TRAILING BUY - Paso 2: seguir el piso y comprar en el rebote confirmado.
+     * Devuelve true si ejecutó una compra.
+     */
+    async checkBuyWatches(usdt) {
+        for (const [sym, w] of this.buyWatches.entries()) {
+            try {
+                if (this.activeTrailingPositions.has(sym)) {
+                    this.buyWatches.delete(sym);
+                    this.saveBuyWatches();
+                    continue;
+                }
+                if (Date.now() - w.armedTime > TRAILING_BUY_MAX_AGE_MS) {
+                    console.log(`⌛ Trailing Buy en ${sym} expiró sin rebote. Se desarma.`);
+                    this.buyWatches.delete(sym);
+                    this.saveBuyWatches();
+                    continue;
+                }
+                const cur = parseFloat((await this.client.tickerPrice(sym)).data.price);
+                if (cur < w.lowestPrice) {
+                    w.lowestPrice = cur;
+                    this.saveBuyWatches();
+                    console.log(`🔻 Nuevo piso en ${sym}: ${cur} (${(((cur - w.armedPrice) / w.armedPrice) * 100).toFixed(2)}% desde que se armó)`);
+                    continue;
+                }
+                const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
+                if (bounce >= TRAILING_BUY_BOUNCE_PCT && usdt >= this.minUsdtToTrade) {
+                    const amountToUse = (usdt >= 30 && this.activeTrailingPositions.size === 0)
+                        ? Math.floor((usdt / 2) * 100) / 100
+                        : usdt;
+                    const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
+                    console.log(`✅ Rebote confirmado en ${sym}: piso ${w.lowestPrice} → ${cur} (+${bounce.toFixed(2)}%). Comprando ${amountToUse} USDT...`);
+                    const ok = await this.executeSmartBuy(sym, amountToUse, `Trailing Buy (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato que al armar)`);
+                    if (ok) {
+                        this.buyWatches.delete(sym);
+                        this.saveBuyWatches();
+                        return true;
+                    }
+                }
+            }
+            catch (e) {
+                console.error(`Error en Trailing Buy ${sym}:`, e.message);
+            }
+        }
+        return false;
     }
     async handleTelegramCommand(rawCmd) {
         try {
@@ -249,18 +396,22 @@ export class TrailingMasterBot {
             const arg2 = parts[2];
             if (cmd === "/menu" || cmd === "menu" || cmd === "/start") {
                 return `📱 <b>CENTRO DE COMANDOS CON TRAILING STOP</b>\n\n` +
+                    `• /informe - Diagnóstico completo en tiempo real\n` +
+                    `• /trailing - Posiciones activas rastreando el pico\n` +
+                    `• /cazando - Trailing Buy: monedas cazando el piso\n` +
+                    `• /reporte - Ganancias reales acumuladas (desde Binance)\n` +
                     `• /estado - Órdenes vivas y progreso hacia la meta\n` +
-                    `• /trailing - Ver posiciones activas rastreando el pico\n` +
                     `• /radar - Escáner de suelos en tiempo real\n` +
                     `• /balance - Saldos libres y bloqueados en Binance\n` +
-                    `• /reporte - Historial de ganancias acumuladas\n` +
-                    `• /motores - Estrategias activas y trailing\n` +
-                    `• /comprar eth - Comprar moneda con trailing stop\n` +
+                    `• /motores - Estrategias y parámetros activos\n` +
+                    `• /comprar eth [monto] - Comprar moneda con trailing stop\n` +
                     `• /vender sol - Vender moneda al mercado (emergencia)\n` +
-                    `• /modo auto - Activar piloto autónomo\n` +
-                    `• /modo manual - Activar solo compras manuales\n` +
+                    `• /modo auto | /modo manual - Piloto autónomo o manual\n` +
                     `• /pausa y /reanudar\n\n` +
                     `💡 <i>Toca cualquiera de los enlaces azules para ejecutar.</i>`;
+            }
+            if (cmd === "/cazando" || cmd === "cazando") {
+                return await this.buildBuyWatchReport();
             }
             if (cmd === "/informe" || cmd === "informe" || cmd === "/trailing" || cmd === "trailing") {
                 const acc = await this.client.account({ recvWindow: 60000 });
@@ -269,7 +420,7 @@ export class TrailingMasterBot {
                 rep += `• 💼 <b>USDT Líquido:</b> ${usdt.toFixed(2)} USDT\n`;
                 rep += `• 🤖 <b>Modo Centinela:</b> ${this.autoPilot ? "🟢 Autónomo Cazador (+0.8% Trailing)" : "🟡 Manual Asistido"}\n\n`;
                 if (this.activeTrailingPositions.size === 0) {
-                    rep += `📡 <b>ESTADO ACTUAL:</b> 100% Líquido en mano.\n` +
+                    rep += `📡 <b>ESTADO ACTUAL:</b> Sin posiciones abiertas (Trailing).\n` +
                         `🔍 El bot está escaneando el radar en busca de la próxima caída para disparar la compra con descuento.\n\n`;
                 }
                 else {
@@ -302,8 +453,20 @@ export class TrailingMasterBot {
                         }
                     }
                 }
-                rep += `💰 <b>GANANCIA TOTAL ACUMULADA:</b> 🟢 <b>+1.22 USDT netos</b> (5 ciclos cerrados, 0 pérdidas).\n\n` +
-                    `💡 <i>Escribe /radar para ver el mercado o /menu para más opciones.</i>`;
+                if (this.buyWatches.size > 0) {
+                    rep += `🔻 <b>TRAILING BUY:</b> ${this.buyWatches.size} moneda(s) cazando el piso (ver /cazando)\n\n`;
+                }
+                try {
+                    const s = await computeRealizedPnl(this.client);
+                    const sign = s.totalPnl >= 0 ? "+" : "";
+                    rep += `💰 <b>GANANCIA TOTAL ACUMULADA (real Binance):</b> ${s.totalPnl >= 0 ? "🟢" : "🔴"} <b>${sign}${s.totalPnl.toFixed(3)} USDT netos</b> ` +
+                        `≈ ${sign}$${Math.round(s.totalPnl * COP_PER_USDT).toLocaleString("es-CO")} COP\n` +
+                        `(${s.cycles.length} ciclos cerrados: ${s.wins} ganados, ${s.losses} perdidos)\n\n`;
+                }
+                catch (e) {
+                    rep += `💰 <i>No se pudo calcular el acumulado: ${e.message}</i>\n\n`;
+                }
+                rep += `💡 <i>Escribe /reporte para el detalle por ciclo o /menu para más opciones.</i>`;
                 return rep;
             }
             if (cmd === "/estado" || cmd === "estado") {
@@ -332,6 +495,7 @@ export class TrailingMasterBot {
                 const usdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
                 txt += `\n• 💼 <b>USDT libre:</b> $${usdt.toFixed(2)} USDT\n`;
                 txt += `• 🏹 <b>Trailing Activo:</b> ${this.activeTrailingPositions.size} posiciones rastreando el pico\n`;
+                txt += `• 🔻 <b>Trailing Buy:</b> ${this.buyWatches.size} moneda(s) cazando el piso\n`;
                 txt += `• 🤖 <b>Modo:</b> ${this.autoPilot ? "🟢 Autónomo con Trailing (+0.8% a +3.5%)" : "🟡 Manual Asistido"}`;
                 return txt;
             }
@@ -355,6 +519,9 @@ export class TrailingMasterBot {
                         else if (this.activeTrailingPositions.has(sym)) {
                             status = " 🏹 [Trailing activo]";
                         }
+                        else if (this.buyWatches.has(sym)) {
+                            status = ` 🔻 [Cazando piso: ${this.buyWatches.get(sym).lowestPrice}]`;
+                        }
                         else if (rsi <= 35) {
                             status = " 🎯 [Suelo / Rebote VIP]";
                         }
@@ -371,17 +538,25 @@ export class TrailingMasterBot {
                 const acc = await this.client.account({ recvWindow: 60000 });
                 const usdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
                 report += `\n💼 <b>USDT libre:</b> $${usdt.toFixed(2)} USDT\n`;
-                report += `🏹 <b>Estrategia:</b> Trailing Stop (Asegura en +0.8% y persigue la subida)\n`;
+                report += `🏹 <b>Estrategia:</b> Trailing Buy (+${TRAILING_BUY_BOUNCE_PCT}% desde el piso) + Trailing Take Profit (+0.8% y persigue la subida)\n`;
                 return report;
             }
             if (cmd === "/motores" || cmd === "motores") {
                 return `⚙️ <b>CONFIGURACIÓN DE MOTORES Y TRAILING</b>\n\n` +
+                    `🔻 <b>Motor Trailing Buy (ACTIVO):</b>\n` +
+                    `• <b>Detección:</b> Caída ≥ 1.5% con RSI ≤ 58 (o RSI ≤ 48 con caída ≥ 0.8%, o RSI ≤ 40).\n` +
+                    `• <b>Persecución del piso:</b> Registra el precio más bajo tick a tick (cada 7s).\n` +
+                    `• <b>Compra:</b> Cuando rebota +${TRAILING_BUY_BOUNCE_PCT}% desde el piso.\n` +
+                    `• <b>Expiración:</b> ${TRAILING_BUY_MAX_AGE_MS / 3600000}h sin rebote.\n\n` +
                     `🏹 <b>Motor Trailing Take Profit (ACTIVO):</b>\n` +
-                    `• <b>Gatillo de activación:</b> +0.8% (Asegura ganancia rápida).\n` +
+                    `• <b>Gatillo de activación:</b> +${TRAILING_ACTIVATION_PCT}% (Asegura ganancia rápida).\n` +
                     `• <b>Persecución de pico:</b> Sube el piso de venta detrás del precio sin límite.\n` +
-                    `• <b>Cierre óptimo:</b> Vende de inmediato si retrocede 0.25% desde su pico.\n` +
-                    `• <b>Techo máximo:</b> +3.5% (Toma de ganancias automática).\n\n` +
-                    `🛡️ <b>Diversificación:</b> No compra monedas donde ya tengamos órdenes vivas.\n` +
+                    `• <b>Cierre óptimo:</b> Vende si retrocede ${TRAILING_CALLBACK_PCT}% desde su pico.\n` +
+                    `• <b>Techo máximo:</b> +${TRAILING_HARD_CAP_PCT}% (Toma de ganancias automática).\n` +
+                    `• <b>Nunca vende en pérdida.</b>\n\n` +
+                    `💰 <b>Capital:</b> 2 ranuras en paralelo (divide el USDT si hay ≥ $30).\n` +
+                    `🛡️ <b>Diversificación:</b> No compra monedas donde ya tengamos posiciones u órdenes vivas.\n` +
+                    `📋 <b>Watchlist:</b> ${WATCHLIST.join(", ")}\n` +
                     `🤖 <b>Piloto Autónomo:</b> ${this.autoPilot ? "🟢 ACTIVADO" : "🟡 MODO MANUAL"}`;
             }
             if (cmd === "/balance" || cmd === "balance") {
@@ -394,12 +569,27 @@ export class TrailingMasterBot {
                 return txt;
             }
             if (cmd === "/reporte" || cmd === "reporte") {
-                return `📊 <b>REPORTE DE GANANCIAS NETAS (PnL)</b>\n\n` +
-                    `• <b>Ciclo 1:</b> Comprado a $104.85 ➔ Vendido a $106.42 (+<b>$0.167 USDT</b>)\n` +
-                    `• <b>Ciclo 2 (Hoy):</b> Comprado a $103.72 ➔ Vendido a $105.28 (+<b>$0.245 USDT</b>)\n\n` +
-                    `💵 <b>Ganancia Líquida Cerrada:</b> 🟢 <b>+$0.412 USDT netos</b>\n` +
-                    `⏳ <b>Órdenes Pendientes:</b> 1 ETH en $2438.88 y 2 SOL en $106.55 y $107.23.\n` +
-                    `🏹 <b>Próximas compras:</b> Utilizarán Trailing Stop (+0.8% asegurado + persecución).\n`;
+                const s = await computeRealizedPnl(this.client);
+                let txt = `📊 <b>REPORTE DE GANANCIAS REALES (PnL)</b>\n<i>Calculado desde el historial de Binance, comisiones incluidas.</i>\n\n`;
+                if (s.cycles.length === 0) {
+                    txt += "• Aún no hay ciclos cerrados.\n";
+                }
+                s.cycles.forEach((c, i) => {
+                    const d = new Date(c.time).toLocaleString("es-CO", { timeZone: "America/Bogota", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+                    const sign = c.pnlUsdt >= 0 ? "+" : "";
+                    txt += `${c.pnlUsdt >= 0 ? "🟢" : "🔴"} <b>${i + 1}. ${c.symbol.replace("USDT", "")}</b> (${d}) ${c.avgBuy.toFixed(4)} ➔ ${c.avgSell.toFixed(4)} | <b>${sign}${c.pnlUsdt.toFixed(3)} USDT</b> (${sign}${c.pnlPct.toFixed(2)}%)\n`;
+                });
+                const sign = s.totalPnl >= 0 ? "+" : "";
+                txt += `\n📈 <b>Por moneda:</b>\n`;
+                for (const [sym, v] of Object.entries(s.bySymbol)) {
+                    txt += `• ${sym.replace("USDT", "")}: ${v.pnl >= 0 ? "+" : ""}${v.pnl.toFixed(3)} USDT (${v.cycles} ciclos)\n`;
+                }
+                txt += `\n💵 <b>Ganancia Líquida Cerrada:</b> ${s.totalPnl >= 0 ? "🟢" : "🔴"} <b>${sign}${s.totalPnl.toFixed(3)} USDT</b> ≈ <b>${sign}$${Math.round(s.totalPnl * COP_PER_USDT).toLocaleString("es-CO")} COP</b>\n` +
+                    `🏆 <b>Efectividad:</b> ${s.wins}/${s.cycles.length} ciclos ganados\n` +
+                    `💸 <b>Comisiones pagadas en ventas:</b> ${s.totalFees.toFixed(3)} USDT\n` +
+                    `🏹 <b>Posiciones abiertas:</b> ${this.activeTrailingPositions.size} | 🔻 <b>Cazando piso:</b> ${this.buyWatches.size}\n` +
+                    `<i>COP aprox. a ${COP_PER_USDT.toLocaleString("es-CO")} por USDT (P2P).</i>`;
+                return txt;
             }
             if (cmd === "/comprar" || cmd === "comprar") {
                 if (!arg1) {
@@ -415,7 +605,11 @@ export class TrailingMasterBot {
                 if (arg2 && !isNaN(parseFloat(arg2))) {
                     amountToUse = Math.min(parseFloat(arg2), freeUsdt);
                 }
-                await this.executeSmartBuy(symbol, amountToUse, "Manual por Chat");
+                const ok = await this.executeSmartBuy(symbol, amountToUse, "Manual por Chat");
+                if (!ok)
+                    return `❌ No se pudo comprar ${symbol}. Revisa el mensaje de error anterior.`;
+                this.buyWatches.delete(symbol);
+                this.saveBuyWatches();
                 return `🚀 Compra en ${symbol} ejecutada por $${amountToUse.toFixed(2)} USDT. Trailing Take Profit activado persiguiendo el pico.`;
             }
             if (cmd === "/vender" || cmd === "vender") {
@@ -429,6 +623,9 @@ export class TrailingMasterBot {
                     await this.client.cancelOrder(symbol, { orderId: o.orderId, recvWindow: 60000 });
                 }
                 this.activeTrailingPositions.delete(symbol);
+                this.saveTrailingPositions();
+                this.buyWatches.delete(symbol);
+                this.saveBuyWatches();
                 const acc = await this.client.account({ recvWindow: 60000 });
                 const bal = parseFloat(acc.data.balances.find((b) => b.asset === asset)?.free || "0");
                 if (bal <= 0)
@@ -480,18 +677,12 @@ export class TrailingMasterBot {
             const acc = await this.client.account({ recvWindow: 60000 });
             const usdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
             const time = new Date().toLocaleTimeString();
-            console.log(`[${time}] Monitoreo... USDT libre: $${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size}`);
-            // 2. Si hay saldo libre, el bot autónomo busca la mejor oportunidad para entrar con Trailing
+            console.log(`[${time}] Monitoreo... USDT libre: $${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
+            // 2. Si hay saldo libre y ranuras: Trailing Buy (detectar caída -> seguir piso -> comprar en rebote)
             if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 2) {
-                console.log(`🔍 Escaneando oportunidades de suelo para entrar con Trailing Take Profit...`);
-                const opp = await this.findSmartOpportunity(activeSymbols);
-                if (opp) {
-                    // Si tenemos más de $30 USDT libres y ninguna posición activa, dividimos en 2 slots (~$22 cada uno)
-                    const amountToUse = (usdt >= 30 && this.activeTrailingPositions.size === 0)
-                        ? Math.floor((usdt / 2) * 100) / 100
-                        : usdt;
-                    console.log(`🎯 Oportunidad detectada en ${opp.symbol} (RSI: ${opp.rsi.toFixed(1)} | Caída: ${opp.dropPct.toFixed(2)}%). Comprando ${amountToUse} USDT con Trailing Stop...`);
-                    await this.executeSmartBuy(opp.symbol, amountToUse, "Piloto Autónomo Trailing");
+                await this.scanForDips(activeSymbols);
+                if (this.buyWatches.size > 0) {
+                    await this.checkBuyWatches(usdt);
                 }
             }
         }
@@ -502,10 +693,34 @@ export class TrailingMasterBot {
             this.isProcessing = false;
         }
     }
+    async buildBuyWatchReport() {
+        let txt = `🔻 <b>TRAILING BUY - CAZANDO EL PISO</b>\n\n`;
+        if (this.buyWatches.size === 0) {
+            txt += `• Ninguna moneda en vigilancia ahora mismo.\n` +
+                `• En cuanto una caiga ≥ 1.5% (o RSI bajo), el bot la arma y empieza a seguir su piso.\n`;
+            return txt;
+        }
+        for (const [sym, w] of this.buyWatches.entries()) {
+            let cur = w.lowestPrice;
+            try {
+                cur = parseFloat((await this.client.tickerPrice(sym)).data.price);
+            }
+            catch { }
+            const trigger = w.lowestPrice * (1 + TRAILING_BUY_BOUNCE_PCT / 100);
+            const fromArmed = ((w.lowestPrice - w.armedPrice) / w.armedPrice) * 100;
+            const mins = Math.round((Date.now() - w.armedTime) / 60000);
+            txt += `🪙 <b>${sym}</b> (armado hace ${mins} min)\n` +
+                `• Precio al armar: ${w.armedPrice} (caída -${w.dropPct.toFixed(2)}%, RSI ${w.rsi.toFixed(1)})\n` +
+                `• 🔻 Piso más bajo: <b>${w.lowestPrice}</b> (${fromArmed.toFixed(2)}%)\n` +
+                `• Precio actual: ${cur}\n` +
+                `• ✅ Compra si toca: <b>${trigger.toFixed(4)}</b> (+${TRAILING_BUY_BOUNCE_PCT}% desde el piso)\n\n`;
+        }
+        return txt;
+    }
     async start() {
         console.log(`\n======================================================`);
         console.log(`🏛️ BOT DE TRADING CON TRAILING TAKE PROFIT INTELIGENTE`);
-        console.log(`🎯 Gatillo: +0.8% | Persecución de Pico | Salida en Máximos`);
+        console.log(`🎯 Trailing Buy: +${TRAILING_BUY_BOUNCE_PCT}% desde el piso | Trailing TP: +${TRAILING_ACTIVATION_PCT}% / callback ${TRAILING_CALLBACK_PCT}%`);
         console.log(`======================================================\n`);
         await this.telegramCommands.start();
         console.log(`📱 Telegram listo para recibir órdenes por chat.`);
@@ -513,5 +728,8 @@ export class TrailingMasterBot {
         setInterval(() => this.runCycle(), 7000);
     }
 }
-const bot = new TrailingMasterBot();
-bot.start();
+// BOT_NO_AUTOSTART=1 permite importar la clase para pruebas sin arrancar el bot
+if (process.env.BOT_NO_AUTOSTART !== "1") {
+    const bot = new TrailingMasterBot();
+    bot.start();
+}

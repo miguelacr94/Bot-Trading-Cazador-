@@ -16,3 +16,5 @@ node_modules/
 *.tsbuildinfo
 .DS_Store
 .trailing-positions.json
+
+.trailing-buys.json
