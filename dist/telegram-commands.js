@@ -20,6 +20,8 @@ export class TelegramCommands {
             // Registrar menú de comandos en Telegram
             const commands = [
                 { command: "menu", description: "📋 Lista completa de comandos" },
+                { command: "informe", description: "📑 Diagnóstico detallado en tiempo real" },
+                { command: "trailing", description: "🏹 Monitoreo de picos y gatillos Trailing" },
                 { command: "estado", description: "📊 Órdenes activas y precios en Binance" },
                 { command: "radar", description: "📡 Escanear rebotes al +1.8%" },
                 { command: "balance", description: "💼 Consultar saldos en Binance Spot" },
