@@ -5,7 +5,7 @@
  * - Emparejamiento LIFO: cada venta se cruza con las compras más recientes,
  *   que es como opera el bot (compra -> trailing -> venta).
  */
-export const PNL_SYMBOLS = ["SOLUSDT", "ETHUSDT", "XRPUSDT", "BNBUSDT", "BTCUSDT"];
+export const PNL_SYMBOLS = ["SOLUSDT", "AVAXUSDT", "PEPEUSDT", "ETHUSDT", "XRPUSDT", "BNBUSDT", "BTCUSDT"];
 // Inicio del bot: ignorar trades anteriores
 export const PNL_SINCE = new Date("2026-10-14T00:00:00-05:00").getTime();
 export async function computeRealizedPnl(client, since = PNL_SINCE) {

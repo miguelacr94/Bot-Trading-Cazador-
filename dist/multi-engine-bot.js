@@ -8,7 +8,7 @@ import { computeRealizedPnl } from "./pnl.js";
 dotenv.config();
 // Tasa de referencia COP por USDT (P2P Colombia aprox.)
 const COP_PER_USDT = 4200;
-const WATCHLIST = ["SOLUSDT", "ETHUSDT", "BTCUSDT", "XRPUSDT", "BNBUSDT"];
+const WATCHLIST = ["SOLUSDT", "AVAXUSDT", "PEPEUSDT", "ETHUSDT", "XRPUSDT", "BTCUSDT", "BNBUSDT"];
 // PARÁMETROS DEL TRAILING TAKE PROFIT INTELIGENTE
 const TRAILING_ACTIVATION_PCT = 0.8; // Despierta el seguro al +0.8%
 const TRAILING_CALLBACK_PCT = 0.25; // Vende si retrocede 0.25% desde el pico
