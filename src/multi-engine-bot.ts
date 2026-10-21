@@ -414,9 +414,16 @@ export class TrailingMasterBot {
 
         const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
         if (bounce >= TRAILING_BUY_BOUNCE_PCT && usdt >= this.minUsdtToTrade) {
-          const amountToUse = (usdt >= 30 && this.activeTrailingPositions.size === 0)
-            ? Math.floor((usdt / 2) * 100) / 100
-            : usdt;
+          // Tamaño de compra para capital ampliado (~$150 USDT):
+          // Prioriza compras fuertes de ~$100 USDT para maximizar ganancias (+$1.20 a +$2.00 por venta)
+          let amountToUse = usdt;
+          if (usdt >= 120) {
+            amountToUse = 100;
+          } else if (usdt >= 90) {
+            amountToUse = Math.min(usdt, 100);
+          } else if (usdt >= 50 && this.activeTrailingPositions.size === 0) {
+            amountToUse = Math.floor((usdt / 2) * 100) / 100;
+          }
           const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
           console.log(`✅ Rebote confirmado en ${sym}: piso ${w.lowestPrice} → ${cur} (+${bounce.toFixed(2)}%). Comprando ${amountToUse} USDT...`);
           const ok = await this.executeSmartBuy(sym, amountToUse, `Trailing Buy (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato que al armar)`);
@@ -748,7 +755,7 @@ export class TrailingMasterBot {
       console.log(`[${time}] Monitoreo... USDT libre: $${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
 
       // 2. Si hay saldo libre y ranuras: Trailing Buy (detectar caída -> seguir piso -> comprar en rebote)
-      if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 2) {
+      if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 3) {
         await this.scanForDips(activeSymbols);
         if (this.buyWatches.size > 0) {
           await this.checkBuyWatches(usdt);
