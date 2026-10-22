@@ -36,6 +36,18 @@
     setClass($("status-pill"), "status-pill" + (ok && fresh ? "" : " offline"));
   }
 
+  // ---------- error de autenticación con Binance ----------
+  function renderAuthBanner(err) {
+    const el = $("auth-banner");
+    if (!el) return;
+    if (err) {
+      setText($("auth-banner-msg"), err);
+      setStyle(el, "display", "block");
+    } else {
+      setStyle(el, "display", "none");
+    }
+  }
+
   // ---------- KPIs ----------
   function renderKpis(d) {
     const pf = d.portfolio;
@@ -258,6 +270,7 @@
       clearTimeout(t);
       if (!res.ok) throw new Error(res.status);
       const d = await res.json();
+      renderAuthBanner(d.authError);
       renderKpis(d);
       renderPositions(d.positions);
       renderRadar(d.radar);

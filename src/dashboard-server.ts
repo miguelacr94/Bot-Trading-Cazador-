@@ -30,6 +30,7 @@ export class DashboardServer {
   private usdtEarn: number | null = null;
   private pnl: PnlSummary | null = null;
   private lastPriceOk = 0;
+  private authError: string | null = null;
   private busy: Record<string, boolean> = {};
 
   constructor(port = PORT) {
@@ -87,14 +88,29 @@ export class DashboardServer {
     }
   }
 
+  private describeError(e: any): string {
+    const d = e?.response?.data;
+    return d?.msg ? `${d.msg} (código ${d.code})` : (e?.message || "Error desconocido");
+  }
+
   private async refreshAccount() {
-    const acc = await this.client.account({ recvWindow: 60000 });
+    let acc: any;
+    try {
+      acc = await this.client.account({ recvWindow: 60000 });
+      this.authError = null;
+    } catch (e: any) {
+      this.authError = this.describeError(e);
+      return;
+    }
     const b = acc.data.balances || [];
     this.usdtFree = parseFloat(b.find((x: any) => x.asset === "USDT")?.free || "0");
     this.usdtEarn = parseFloat(b.find((x: any) => x.asset === "LDUSDT")?.free || "0");
   }
 
   private async refreshPnl() {
+    // computeRealizedPnl ignora errores por símbolo; si la cuenta no autentica, no tiene sentido llamarlo
+    await this.refreshAccount();
+    if (this.authError) return;
     const s = await computeRealizedPnl(this.client);
     this.pnl = s;
   }
@@ -187,6 +203,7 @@ export class DashboardServer {
       updatedAt: new Date().toISOString(),
       pricesFresh: Date.now() - this.lastPriceOk < 15000,
       accountAvailable: this.usdtFree !== null,
+      authError: this.authError,
       portfolio: {
         totalEstimatedUsdt: total,
         totalEstimatedCop: total * COP_PER_USDT,
@@ -219,7 +236,8 @@ export class DashboardServer {
     every("prices", 2000, () => this.refreshPrices());
     every("account", 15000, () => this.refreshAccount());
     every("radar", 60000, () => this.refreshRadar());
-    every("pnl", 120000, () => this.refreshPnl());
+    every("pnl", 30000, () => this.pnl && !this.authError ? Promise.resolve() : this.refreshPnl());
+    every("pnlFull", 120000, () => this.refreshPnl());
   }
 
   start() {

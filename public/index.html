@@ -516,6 +516,10 @@
     .kpi-unit { font-size: 14px; color: var(--text-muted); }
     #positions-empty { grid-column: 1 / -1; padding: 40px; text-align: center; background: var(--bg-card); border-radius: 18px; border: 1px dashed var(--border-subtle); color: var(--text-muted); display: none; }
 
+    #auth-banner { display: none; margin-bottom: 24px; padding: 14px 18px; border-radius: 14px; background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.35); color: #FDA4AF; font-size: 13px; }
+    #auth-banner b { color: #FECDD3; }
+    #auth-banner code { font-family: var(--font-mono); background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; }
+
     footer {
       text-align: center;
       padding-top: 20px;
@@ -545,6 +549,12 @@
         <div class="live-clock" id="live-clock">--:--:--</div>
       </div>
     </header>
+
+    <div id="auth-banner">
+      🔒 <b>Binance rechazó la conexión privada:</b> <code id="auth-banner-msg"></code><br>
+      Saldo, ganancias e historial no se pueden leer desde esta máquina. Los precios sí se actualizan.
+      Normalmente es porque la IP de este equipo no está en la lista blanca de tu API Key.
+    </div>
 
     <!-- KPI Summary Grid -->
     <div class="kpi-grid">
