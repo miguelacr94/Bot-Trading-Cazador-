@@ -46,6 +46,7 @@
       min-height: 100vh;
       padding: 24px 32px;
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
 
     .container {
@@ -155,7 +156,7 @@
       border: 1px solid var(--border-subtle);
       border-radius: 16px;
       padding: 20px;
-      transition: all 0.25s ease;
+      transition: background 0.3s ease, transform 0.3s ease, border-color 0.3s ease;
       position: relative;
       overflow: hidden;
     }
@@ -210,6 +211,7 @@
       font-weight: 700;
       color: var(--text-main);
       margin-bottom: 4px;
+      transition: color 0.3s ease;
     }
 
     .kpi-sub {
@@ -257,7 +259,7 @@
       border-radius: 18px;
       padding: 24px;
       position: relative;
-      transition: all 0.3s ease;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
     }
 
     .position-card:hover {
@@ -310,6 +312,7 @@
       border-radius: 9999px;
       text-transform: uppercase;
       letter-spacing: 0.03em;
+      transition: all 0.3s ease;
     }
 
     .pill-active {
@@ -348,6 +351,7 @@
       font-family: var(--font-mono);
       font-size: 14px;
       font-weight: 600;
+      transition: color 0.4s ease;
     }
 
     /* Progress bar to target */
@@ -374,7 +378,7 @@
     .progress-fill {
       height: 100%;
       border-radius: 9999px;
-      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1), background 0.5s ease;
       background: linear-gradient(90deg, #06B6D4 0%, #10B981 100%);
       box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
     }
@@ -402,6 +406,7 @@
       font-family: var(--font-mono);
       font-size: 16px;
       font-weight: 700;
+      transition: color 0.4s ease;
     }
 
     .pos-profit { color: var(--accent-green); }
@@ -455,6 +460,7 @@
       border-radius: 6px;
       font-weight: 600;
       font-size: 11px;
+      transition: all 0.3s ease;
     }
 
     .rsi-dip { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
@@ -504,7 +510,6 @@
       font-weight: 700;
     }
 
-    /* Footer */
     footer {
       text-align: center;
       padding-top: 20px;
@@ -512,12 +517,6 @@
       font-size: 12px;
       border-top: 1px solid var(--border-subtle);
     }
-
-    /* Flash ticker animation */
-    .flash-green { animation: flashG 0.8s; }
-    .flash-red { animation: flashR 0.8s; }
-    @keyframes flashG { 0% { background: rgba(16, 185, 129, 0.25); } 100% { background: transparent; } }
-    @keyframes flashR { 0% { background: rgba(244, 63, 94, 0.25); } 100% { background: transparent; } }
   </style>
 </head>
 <body>
@@ -587,7 +586,7 @@
     </div>
 
     <div class="positions-grid" id="positions-container">
-      <!-- Se inyectan dinámicamente -->
+      <!-- Se inyectan y actualizan fluidamente in-place -->
     </div>
 
     <!-- Split: Radar de Caídas y Gráfica PnL -->
@@ -614,7 +613,7 @@
               </tr>
             </thead>
             <tbody id="radar-tbody">
-              <!-- Se inyecta dinámicamente -->
+              <!-- Se inyecta fluidamente -->
             </tbody>
           </table>
         </div>
@@ -654,7 +653,7 @@
             </tr>
           </thead>
           <tbody id="history-tbody">
-            <!-- Se inyecta dinámicamente -->
+            <!-- Se inyecta fluidamente -->
           </tbody>
         </table>
       </div>
@@ -662,7 +661,7 @@
 
     <!-- Footer -->
     <footer>
-      <p>🦅 Bot Cazador Spot Autónomo • Datos directos desde Binance API Oficial • Actualización automática cada 3 segundos</p>
+      <p>🦅 Bot Cazador Spot Autónomo • Datos directos desde Binance API Oficial • Actualización fluida continua</p>
     </footer>
 
   </div>
@@ -670,6 +669,9 @@
   <script>
     const COP_PER_USDT = 4200;
     let pnlChart = null;
+    let currentPositionsSymbols = [];
+    let currentRadarSymbols = [];
+    let currentHistoryCount = -1;
 
     function fmt(val, dec = 4) {
       if (val === undefined || val === null) return "0";
@@ -681,9 +683,24 @@
       return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: dec });
     }
 
+    // Actualiza texto de un elemento solo si cambió (Evita layout shifts y parpadeo)
+    function setSafeText(id, text) {
+      const el = document.getElementById(id);
+      if (el && el.innerText !== text) {
+        el.innerText = text;
+      }
+    }
+
+    function setSafeHtml(id, html) {
+      const el = document.getElementById(id);
+      if (el && el.innerHTML !== html) {
+        el.innerHTML = html;
+      }
+    }
+
     function updateClock() {
       const now = new Date();
-      document.getElementById("live-clock").innerText = now.toLocaleTimeString('es-CO');
+      setSafeText("live-clock", now.toLocaleTimeString('es-CO'));
     }
     setInterval(updateClock, 1000);
     updateClock();
@@ -693,63 +710,44 @@
         const res = await fetch("/api/status");
         if (!res.ok) throw new Error("API status offline");
         const data = await res.json();
-        renderDashboard(data);
+        renderDashboardSmooth(data);
       } catch (e) {
-        // Fallback: Si no hay backend local, consultar directo Binance para precios
         fetchFallbackBinance();
       }
     }
 
-    function renderDashboard(data) {
-      // 1. KPIs
-      document.getElementById("kpi-total-usdt").innerHTML = `$${fmt(data.portfolio.totalEstimatedUsdt, 2)} <span style="font-size:14px;color:var(--text-muted)">USDT</span>`;
-      document.getElementById("kpi-total-cop").innerText = `≈ $${Math.round(data.portfolio.totalEstimatedCop).toLocaleString('es-CO')} COP`;
+    function renderDashboardSmooth(data) {
+      // 1. KPIs Top
+      setSafeHtml("kpi-total-usdt", `$${fmt(data.portfolio.totalEstimatedUsdt, 2)} <span style="font-size:14px;color:var(--text-muted)">USDT</span>`);
+      setSafeText("kpi-total-cop", `≈ $${Math.round(data.portfolio.totalEstimatedCop).toLocaleString('es-CO')} COP`);
 
       const totalUsdtFree = data.portfolio.usdtFree + data.portfolio.usdtEarn;
-      document.getElementById("kpi-free-usdt").innerHTML = `$${fmt(totalUsdtFree, 2)} <span style="font-size:14px;color:var(--text-muted)">USDT</span>`;
-      document.getElementById("kpi-slots").innerText = `Slots en uso: ${data.portfolio.openPositionsCount} / ${data.portfolio.maxSlots}`;
+      setSafeHtml("kpi-free-usdt", `$${fmt(totalUsdtFree, 2)} <span style="font-size:14px;color:var(--text-muted)">USDT</span>`);
+      setSafeText("kpi-slots", `Slots en uso: ${data.portfolio.openPositionsCount} / ${data.portfolio.maxSlots}`);
 
       const pnlSign = data.performance.totalPnlUsdt >= 0 ? "+" : "";
-      document.getElementById("kpi-realized-pnl").innerText = `${pnlSign}${fmt(data.performance.totalPnlUsdt, 3)} USDT`;
-      document.getElementById("kpi-realized-cop").innerText = `≈ ${pnlSign}$${Math.round(data.performance.totalPnlCop).toLocaleString('es-CO')} COP acumulados`;
+      setSafeText("kpi-realized-pnl", `${pnlSign}${fmt(data.performance.totalPnlUsdt, 3)} USDT`);
+      setSafeText("kpi-realized-cop", `≈ ${pnlSign}$${Math.round(data.performance.totalPnlCop).toLocaleString('es-CO')} COP acumulados`);
+      setSafeHtml("kpi-cycles-count", `${data.performance.wins} <span style="font-size:14px;color:var(--text-muted)">de ${data.performance.cyclesCount} ganados</span>`);
 
-      document.getElementById("kpi-cycles-count").innerHTML = `${data.performance.wins} <span style="font-size:14px;color:var(--text-muted)">de ${data.performance.cyclesCount} ganados</span>`;
-
-      // 2. Posiciones Activas
-      document.getElementById("active-positions-count").innerText = `${data.positions.length} activa(s)`;
+      // 2. Posiciones Activas (Smooth in-place updates)
+      setSafeText("active-positions-count", `${data.positions.length} activa(s)`);
       const posContainer = document.getElementById("positions-container");
 
-      if (data.positions.length === 0) {
-        posContainer.innerHTML = `
-          <div style="grid-column: 1 / -1; padding: 40px; text-align: center; background: var(--bg-card); border-radius: 18px; border: 1px dashed var(--border-subtle); color: var(--text-muted);">
-            🎯 <b>Sin posiciones abiertas en este instante.</b><br>
-            <span style="font-size: 13px;">El bot tiene saldo libre en USDT y está escaneando el radar para disparar compras con descuento en caídas confirmadas.</span>
-          </div>
-        `;
-      } else {
-        posContainer.innerHTML = data.positions.map(p => {
-          const isGain = p.gainPct >= 0;
-          const pnlSign = isGain ? "+" : "";
-          const targetDist = p.target08 > p.curPrice ? (((p.target08 - p.curPrice) / p.curPrice) * 100) : 0;
-          
-          let statusBadge = "";
-          let progressFillClass = "progress-fill";
-          if (p.activated) {
-            statusBadge = `<span class="trailing-status-pill pill-active">🚀 TRAILING ACTIVO</span>`;
-            progressFillClass += " trailing-mode";
-          } else {
-            statusBadge = `<span class="trailing-status-pill pill-waiting">⏳ AVANZANDO AL +0.8%</span>`;
-          }
-
-          let progressLabel = "";
-          if (p.activated) {
-            progressLabel = `🎯 <b>Pico: $${fmt(p.highestPrice)} (+${fmt(p.peakGainPct, 2)}%)</b> | Salida garantizada: $${fmt(p.stopPrice)}`;
-          } else {
-            progressLabel = `Meta: $${fmt(p.target08)} (falta: +${fmt(targetDist, 2)}%)`;
-          }
-
-          return `
-            <div class="position-card">
+      const newSymbols = data.positions.map(p => p.symbol).sort().join(",");
+      if (newSymbols !== currentPositionsSymbols.sort().join(",")) {
+        // Reconstruir estructura solo si se añadió o cerró una posición
+        currentPositionsSymbols = data.positions.map(p => p.symbol);
+        if (data.positions.length === 0) {
+          posContainer.innerHTML = `
+            <div style="grid-column: 1 / -1; padding: 40px; text-align: center; background: var(--bg-card); border-radius: 18px; border: 1px dashed var(--border-subtle); color: var(--text-muted);">
+              🎯 <b>Sin posiciones abiertas en este instante.</b><br>
+              <span style="font-size: 13px;">El bot tiene saldo libre en USDT y está escaneando el radar para disparar compras con descuento en caídas confirmadas.</span>
+            </div>
+          `;
+        } else {
+          posContainer.innerHTML = data.positions.map(p => `
+            <div class="position-card" id="card-${p.symbol}">
               <div class="pos-head">
                 <div class="coin-badge">
                   <div class="coin-avatar">${p.base.substring(0, 3)}</div>
@@ -758,7 +756,7 @@
                     <div class="coin-qty">${fmt(p.qty, 2)} ${p.base} • Invertidos: $${fmt(p.investedUsdt, 2)} USDT</div>
                   </div>
                 </div>
-                ${statusBadge}
+                <div id="badge-${p.symbol}"></div>
               </div>
 
               <div class="price-row">
@@ -768,7 +766,7 @@
                 </div>
                 <div class="price-col">
                   <span>Precio Actual</span>
-                  <strong style="color: ${isGain ? 'var(--accent-green)' : 'var(--accent-rose)'}">$${fmt(p.curPrice)}</strong>
+                  <strong id="price-${p.symbol}">--</strong>
                 </div>
                 <div class="price-col">
                   <span>Gatillo (+0.8%)</span>
@@ -779,10 +777,10 @@
               <div class="progress-wrapper">
                 <div class="progress-info">
                   <span style="color:var(--text-muted)">Progreso de Meta</span>
-                  <span style="font-family:var(--font-mono);">${progressLabel}</span>
+                  <span style="font-family:var(--font-mono);" id="prog-info-${p.symbol}">--</span>
                 </div>
                 <div class="progress-track">
-                  <div class="${progressFillClass}" style="width: ${Math.min(100, Math.max(8, p.progressPct))}%;"></div>
+                  <div class="progress-fill" id="prog-fill-${p.symbol}" style="width: 8%;"></div>
                 </div>
               </div>
 
@@ -790,64 +788,130 @@
                 <div>
                   <span class="pnl-label">Ganancia Flotante:</span>
                 </div>
-                <div class="pnl-value ${isGain ? 'pos-profit' : 'pos-loss'}">
-                  ${pnlSign}${fmt(p.pnlUsdt, 2)} USDT (${pnlSign}${fmt(p.gainPct, 2)}%)
-                  <span style="font-size:12px;opacity:0.8;display:block;text-align:right">≈ ${pnlSign}$${Math.round(p.pnlCop).toLocaleString('es-CO')} COP</span>
-                </div>
+                <div class="pnl-value" id="pnl-${p.symbol}">--</div>
               </div>
             </div>
-          `;
-        }).join("");
+          `).join("");
+        }
       }
 
-      // 3. Radar de Caídas
-      const radarTbody = document.getElementById("radar-tbody");
-      radarTbody.innerHTML = data.radar.map(r => {
-        let rsiClass = "rsi-neutral";
-        if (r.rsi <= 45) rsiClass = "rsi-dip";
+      // Actualizar valores in-place suavemente sin redibujar DOM
+      data.positions.forEach(p => {
+        const isGain = p.gainPct >= 0;
+        const pnlSign = isGain ? "+" : "";
+        const targetDist = p.target08 > p.curPrice ? (((p.target08 - p.curPrice) / p.curPrice) * 100) : 0;
 
-        let statusText = `<span style="color:var(--text-dim)">📡 Escaneando</span>`;
-        if (r.isHunting) {
-          statusText = `<span style="color:var(--accent-green);font-weight:700">🎯 Cazando Piso ($${fmt(r.lowestPrice)})</span>`;
-        } else if (r.dropPct >= 1.5) {
-          statusText = `<span style="color:var(--accent-blue)">🔻 Caída detectada (-${fmt(r.dropPct, 1)}%)</span>`;
+        // Badge
+        const badgeEl = document.getElementById(`badge-${p.symbol}`);
+        if (badgeEl) {
+          if (p.activated) {
+            badgeEl.innerHTML = `<span class="trailing-status-pill pill-active">🚀 TRAILING ACTIVO</span>`;
+          } else {
+            badgeEl.innerHTML = `<span class="trailing-status-pill pill-waiting">⏳ AVANZANDO AL +0.8%</span>`;
+          }
         }
 
-        return `
-          <tr>
+        // Precio
+        const priceEl = document.getElementById(`price-${p.symbol}`);
+        if (priceEl) {
+          priceEl.innerText = `$${fmt(p.curPrice)}`;
+          priceEl.style.color = isGain ? 'var(--accent-green)' : 'var(--accent-rose)';
+        }
+
+        // Barra de progreso y texto
+        const progFill = document.getElementById(`prog-fill-${p.symbol}`);
+        const progInfo = document.getElementById(`prog-info-${p.symbol}`);
+        if (progFill && progInfo) {
+          const widthPct = Math.min(100, Math.max(8, p.progressPct));
+          progFill.style.width = `${widthPct}%`;
+          if (p.activated) {
+            progFill.classList.add("trailing-mode");
+            progInfo.innerHTML = `🎯 <b>Pico: $${fmt(p.highestPrice)} (+${fmt(p.peakGainPct, 2)}%)</b> | Salida garantizada: $${fmt(p.stopPrice)}`;
+          } else {
+            progFill.classList.remove("trailing-mode");
+            progInfo.innerText = `Meta: $${fmt(p.target08)} (falta: +${fmt(targetDist, 2)}%)`;
+          }
+        }
+
+        // PnL
+        const pnlEl = document.getElementById(`pnl-${p.symbol}`);
+        if (pnlEl) {
+          pnlEl.className = `pnl-value ${isGain ? 'pos-profit' : 'pos-loss'}`;
+          pnlEl.innerHTML = `${pnlSign}${fmt(p.pnlUsdt, 2)} USDT (${pnlSign}${fmt(p.gainPct, 2)}%)
+            <span style="font-size:12px;opacity:0.8;display:block;text-align:right">≈ ${pnlSign}$${Math.round(p.pnlCop).toLocaleString('es-CO')} COP</span>`;
+        }
+      });
+
+      // 3. Radar (In-place updates)
+      const radarTbody = document.getElementById("radar-tbody");
+      const radarSyms = data.radar.map(r => r.symbol).sort().join(",");
+      if (radarSyms !== currentRadarSymbols.sort().join(",")) {
+        currentRadarSymbols = data.radar.map(r => r.symbol);
+        radarTbody.innerHTML = data.radar.map(r => `
+          <tr id="radar-row-${r.symbol}">
             <td><strong>${r.symbol}</strong></td>
-            <td>$${fmt(r.curPrice)}</td>
-            <td style="color:${r.dropPct >= 1.5 ? 'var(--accent-rose)' : 'var(--text-muted)'}">-${fmt(r.dropPct, 2)}%</td>
-            <td><span class="rsi-pill ${rsiClass}">RSI ${fmt(r.rsi, 1)}</span></td>
-            <td>${statusText}</td>
+            <td id="radar-price-${r.symbol}">$${fmt(r.curPrice)}</td>
+            <td id="radar-drop-${r.symbol}">-${fmt(r.dropPct, 2)}%</td>
+            <td id="radar-rsi-${r.symbol}"><span class="rsi-pill rsi-neutral">RSI ${fmt(r.rsi, 1)}</span></td>
+            <td id="radar-status-${r.symbol}">📡 Escaneando</td>
           </tr>
-        `;
-      }).join("");
+        `).join("");
+      } else {
+        data.radar.forEach(r => {
+          setSafeText(`radar-price-${r.symbol}`, `$${fmt(r.curPrice)}`);
+          
+          const dropEl = document.getElementById(`radar-drop-${r.symbol}`);
+          if (dropEl) {
+            dropEl.innerText = `-${fmt(r.dropPct, 2)}%`;
+            dropEl.style.color = r.dropPct >= 1.5 ? 'var(--accent-rose)' : 'var(--text-muted)';
+          }
 
-      // 4. Actualizar Gráfica de PnL Acumulado
-      renderPnlChart(data.recentCycles);
+          const rsiEl = document.getElementById(`radar-rsi-${r.symbol}`);
+          if (rsiEl) {
+            const rsiClass = rsiEl.rsi <= 45 ? "rsi-dip" : "rsi-neutral";
+            rsiEl.innerHTML = `<span class="rsi-pill ${rsiClass}">RSI ${fmt(r.rsi, 1)}</span>`;
+          }
 
-      // 5. Historial de Ciclos
-      const histTbody = document.getElementById("history-tbody");
-      histTbody.innerHTML = data.recentCycles.map((c, i) => {
-        const dateStr = new Date(c.time).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const sign = c.pnlUsdt >= 0 ? "+" : "";
-        return `
-          <tr>
-            <td style="color:var(--text-dim)">${i + 1}</td>
-            <td><strong>${c.symbol}</strong></td>
-            <td style="color:var(--text-dim)">${dateStr}</td>
-            <td>$${fmt(c.avgBuy)}</td>
-            <td>$${fmt(c.avgSell)}</td>
-            <td class="pos-profit"><strong>${sign}${fmt(c.pnlUsdt, 3)} USDT</strong></td>
-            <td class="pos-profit">${sign}${fmt(c.pnlPct, 2)}%</td>
-            <td><span class="win-tag">GANADO</span></td>
-          </tr>
-        `;
-      }).join("");
+          const stEl = document.getElementById(`radar-status-${r.symbol}`);
+          if (stEl) {
+            if (r.isHunting) {
+              stEl.innerHTML = `<span style="color:var(--accent-green);font-weight:700">🎯 Cazando Piso ($${fmt(r.lowestPrice)})</span>`;
+            } else if (r.dropPct >= 1.5) {
+              stEl.innerHTML = `<span style="color:var(--accent-blue)">🔻 Caída (-${fmt(r.dropPct, 1)}%)</span>`;
+            } else {
+              stEl.innerHTML = `<span style="color:var(--text-dim)">📡 Escaneando</span>`;
+            }
+          }
+        });
+      }
+
+      // 4. Historial (Actualizar solo si hay nuevos ciclos)
+      if (currentHistoryCount !== data.recentCycles.length) {
+        currentHistoryCount = data.recentCycles.length;
+        const histTbody = document.getElementById("history-tbody");
+        histTbody.innerHTML = data.recentCycles.map((c, i) => {
+          const dateStr = new Date(c.time).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          const sign = c.pnlUsdt >= 0 ? "+" : "";
+          return `
+            <tr>
+              <td style="color:var(--text-dim)">${i + 1}</td>
+              <td><strong>${c.symbol}</strong></td>
+              <td style="color:var(--text-dim)">${dateStr}</td>
+              <td>$${fmt(c.avgBuy)}</td>
+              <td>$${fmt(c.avgSell)}</td>
+              <td class="pos-profit"><strong>${sign}${fmt(c.pnlUsdt, 3)} USDT</strong></td>
+              <td class="pos-profit">${sign}${fmt(c.pnlPct, 2)}%</td>
+              <td><span class="win-tag">GANADO</span></td>
+            </tr>
+          `;
+        }).join("");
+
+        // Gráfica silenciosa
+        renderPnlChartSmooth(data.recentCycles);
+      }
     }
 
-    function renderPnlChart(cycles) {
+    function renderPnlChartSmooth(cycles) {
       if (!cycles || cycles.length === 0) return;
       
       const sorted = [...cycles].reverse();
@@ -863,7 +927,7 @@
       if (pnlChart) {
         pnlChart.data.labels = labels;
         pnlChart.data.datasets[0].data = dataPoints;
-        pnlChart.update();
+        pnlChart.update('none'); // Update sin animación para que no parpadee
         return;
       }
 
@@ -887,6 +951,7 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: { duration: 400 },
           plugins: {
             legend: { display: false },
             tooltip: {
@@ -916,7 +981,7 @@
       });
     }
 
-    // Modo Standalone si no hay backend activo
+    // Modo Standalone (Fallback fluido)
     async function fetchFallbackBinance() {
       try {
         const res = await fetch("https://api.binance.com/api/v3/ticker/price?symbols=%5B%22ETHUSDT%22,%22SOLUSDT%22,%22PEPEUSDT%22,%22BTCUSDT%22,%22AVAXUSDT%22%5D");
@@ -924,7 +989,6 @@
         const map = {};
         tickers.forEach(t => map[t.symbol] = parseFloat(t.price));
         
-        // Simular vista con posiciones conocidas
         const fallbackData = {
           portfolio: {
             totalEstimatedUsdt: 198.50,
@@ -1007,11 +1071,11 @@
             { symbol: "XRPUSDT", time: Date.now() - 108000000, avgBuy: 0.521, avgSell: 0.530, pnlUsdt: 0.345, pnlPct: 1.73 }
           ]
         };
-        renderDashboard(fallbackData);
+        renderDashboardSmooth(fallbackData);
       } catch (err) {}
     }
 
-    // Polling cada 3 segundos
+    // Polling cada 3 segundos sin parpadeo
     setInterval(fetchStatus, 3000);
     fetchStatus();
   </script>
