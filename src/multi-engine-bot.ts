@@ -1,3 +1,4 @@
+import { DashboardServer } from "./dashboard-server.js";
 import { Spot } from "@binance/connector";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
@@ -135,6 +136,7 @@ export class TrailingMasterBot {
   }
   private activeTrailingPositions: Map<string, ActivePosition> = new Map();
   private buyWatches: Map<string, BuyWatch> = new Map();
+  private dashboardServer: DashboardServer;
 
   constructor() {
     this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
@@ -142,6 +144,8 @@ export class TrailingMasterBot {
     this.telegramCommands = new TelegramCommands((cmd) => this.handleTelegramCommand(cmd));
     this.loadTrailingPositions();
     this.loadBuyWatches();
+    this.dashboardServer = new DashboardServer();
+    this.dashboardServer.start();
   }
 
   private saveBuyWatches() {
