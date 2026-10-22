@@ -11,12 +11,22 @@ dotenv.config();
 // Tasa de referencia COP por USDT (P2P Colombia aprox.)
 const COP_PER_USDT = 4200;
 
-const WATCHLIST = ["SOLUSDT", "AVAXUSDT", "PEPEUSDT", "ETHUSDT", "XRPUSDT", "BTCUSDT", "BNBUSDT"];
+// WATCHLIST oficial: proyectos de alta liquidez y solidez (PEPE retirado de nuevas compras)
+const WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT"];
+
+// Formateador dinámico de precios para soportar micro-ticks y monedas estándar (ETH/SOL/BTC)
+function fmtPrice(p: number): string {
+  if (p === 0) return "0";
+  if (p < 0.0001) return p.toFixed(8);
+  if (p < 0.01) return p.toFixed(6);
+  if (p < 1) return p.toFixed(4);
+  return p.toFixed(2);
+}
 
 // PARÁMETROS DEL TRAILING TAKE PROFIT INTELIGENTE
 const TRAILING_ACTIVATION_PCT = 0.8; // Despierta el seguro al +0.8%
-const TRAILING_CALLBACK_PCT = 0.25;  // Vende si retrocede 0.25% desde el pico
-const TRAILING_HARD_CAP_PCT = 3.5;   // Venta automática si toca +3.5%
+const TRAILING_CALLBACK_PCT = 0.30;  // Base callback
+const TRAILING_HARD_CAP_PCT = 15.0;  // Techo ultra amplio (+15%) para perseguir el alza hasta la cima sin corte artificial
 
 // PARÁMETROS DEL TRAILING BUY (espejo del trailing de venta, para cazar el piso)
 const TRAILING_BUY_BOUNCE_PCT = 0.25;      // Compra cuando rebota +0.25% desde el piso más bajo
@@ -48,6 +58,81 @@ export class TrailingMasterBot {
   private isProcessing = false;
   private autoPilot = true;
   private minUsdtToTrade = 10;
+  private cycleCount = 0;
+
+  /**
+   * Margen de retroceso (Callback) adaptado a la volatilidad de cada par.
+   */
+  public getCallbackPct(symbol: string): number {
+    if (symbol.includes("PEPE")) return 0.55; // Mayor margen para posición viva de PEPE
+    if (symbol.includes("AVAX")) return 0.45; // Alta volatilidad
+    return 0.30; // Monedas mayores estándar (ETH, SOL, BTC, etc.)
+  }
+
+  /**
+   * Reconstruye y adopta posiciones existentes en Binance Spot que no estén registradas en memoria/disco.
+   */
+  async syncOrphanPositions() {
+    try {
+      const acc = await this.client.account({ recvWindow: 60000 });
+      const checkList = [...WATCHLIST, "PEPEUSDT"];
+      for (const sym of checkList) {
+        if (this.activeTrailingPositions.has(sym)) continue;
+        const asset = sym.replace("USDT", "");
+        const balObj = acc.data.balances.find((b: any) => b.asset === asset);
+        if (!balObj) continue;
+        const free = parseFloat(balObj.free || "0");
+        const locked = parseFloat(balObj.locked || "0");
+        const total = free + locked;
+        if (total <= 0) continue;
+
+        let curPrice = 0;
+        try {
+          const ticker = await this.client.tickerPrice(sym);
+          curPrice = parseFloat(ticker.data.price);
+        } catch {
+          continue;
+        }
+
+        const usdtValue = total * curPrice;
+        if (usdtValue >= 10) {
+          console.log(`🔍 [AUTO-SYNC] Moneda detectada en Binance sin tracking: ${sym} (${total} ${asset} ≈ ${usdtValue.toFixed(2)} USDT)`);
+          let buyPrice = curPrice;
+          let buyTime = Date.now();
+          try {
+            const tradesRes = await this.client.myTrades(sym, { limit: 10, recvWindow: 60000 });
+            const buyTrades = (tradesRes.data || []).filter((t: any) => t.isBuyer);
+            if (buyTrades.length > 0) {
+              const lastBuy = buyTrades[buyTrades.length - 1];
+              buyPrice = parseFloat(lastBuy.price);
+              buyTime = lastBuy.time || Date.now();
+            }
+          } catch (err: any) {
+            console.error(`No se pudieron obtener trades previos de ${sym}: ${err.message}`);
+          }
+
+          const spent = total * buyPrice;
+          const highestPrice = Math.max(buyPrice, curPrice);
+          const gainPct = ((curPrice - buyPrice) / buyPrice) * 100;
+          const activated = gainPct >= TRAILING_ACTIVATION_PCT;
+
+          this.activeTrailingPositions.set(sym, {
+            symbol: sym,
+            buyPrice,
+            qty: total,
+            investedUsdt: spent,
+            highestPrice,
+            activated,
+            buyTime
+          });
+          this.saveTrailingPositions();
+          console.log(`✅ ${sym} adoptada con éxito para Trailing Take Profit.`);
+        }
+      }
+    } catch (e: any) {
+      console.error("Error sincronizando posiciones huérfanas desde Binance:", e.message);
+    }
+  }
   private activeTrailingPositions: Map<string, ActivePosition> = new Map();
   private buyWatches: Map<string, BuyWatch> = new Map();
 
@@ -159,7 +244,8 @@ export class TrailingMasterBot {
           // Si el pico subió al menos un 0.12%, avisar a Telegram
           const jumpPct = ((curPrice - oldPeak) / oldPeak) * 100;
           if (jumpPct >= 0.12) {
-            const stopPrice = curPrice * (1 - TRAILING_CALLBACK_PCT / 100);
+            const callback = this.getCallbackPct(symbol);
+            const stopPrice = curPrice * (1 - callback / 100);
             const minLockedGain = ((stopPrice - pos.buyPrice) / pos.buyPrice) * 100;
             const peakAlert = `📈 <b>¡NUEVO PICO ALCANZADO: ${symbol}!</b> 🚀\n\n` +
               `• <b>Nuevo techo:</b> ${curPrice.toFixed(4)} (<b>+${gainPct.toFixed(2)}%</b>)\n` +
@@ -174,7 +260,8 @@ export class TrailingMasterBot {
         if (pos.activated) {
           const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
           const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
-          const hitCallback = dropFromPeak >= TRAILING_CALLBACK_PCT && gainPct >= 0.6;
+          const callback = this.getCallbackPct(symbol);
+          const hitCallback = dropFromPeak >= callback && gainPct >= 0.55;
 
           if (hitCallback || hitHardCap) {
             console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a $${curPrice} (Pico: $${pos.highestPrice})`);
@@ -267,9 +354,9 @@ export class TrailingMasterBot {
 
       const alertMsg = `🏆 <b>¡GANANCIA COBRADA CON TRAILING TAKE PROFIT!</b> 🎉\n\n` +
         `• <b>Moneda:</b> ${pos.symbol}\n` +
-        `• <b>Precio de compra:</b> $${pos.buyPrice.toFixed(4)}\n` +
-        `• <b>Pico alcanzado:</b> $${pos.highestPrice.toFixed(4)}\n` +
-        `• <b>Precio de venta:</b> $${avgSell.toFixed(4)}\n` +
+        `• <b>Precio de compra:</b> ${fmtPrice(pos.buyPrice)}\n` +
+        `• <b>Pico alcanzado:</b> ${fmtPrice(pos.highestPrice)}\n` +
+        `• <b>Precio de venta:</b> ${fmtPrice(avgSell)}\n` +
         `• <b>Comisiones:</b> ${sellFee.toFixed(4)} USDT\n` +
         `• 💵 <b>Ganancia líquida:</b> ${profitUsdt >= 0 ? "🟢" : "🔴"} <b>${sign}${profitUsdt.toFixed(3)} USDT</b> (<b>${sign}${netPct.toFixed(2)}% NETO</b>) ≈ ${sign}$${Math.round(profitUsdt * COP_PER_USDT).toLocaleString("es-CO")} COP\n\n` +
         `🛡️ <i>${hitHardCap ? "Meta máxima de +3.5% alcanzada." : "Venta óptima capturada en la cima del rebote."}</i>\n` +
@@ -323,12 +410,12 @@ export class TrailingMasterBot {
       });
       this.saveTrailingPositions();
 
-      const target08 = (buyPrice * 1.008).toFixed(4);
+      const target08 = fmtPrice(buyPrice * 1.008);
       const alertMsg = `🦅 <b>¡NUEVA COMPRA INTELIGENTE CON TRAILING!</b> 🚀\n\n` +
         `• <b>Moneda:</b> ${symbol}\n` +
         `• <b>Origen:</b> ${source}\n` +
         `• <b>Inversión:</b> ${spent.toFixed(2)} USDT\n` +
-        `• <b>Precio de entrada:</b> ${buyPrice.toFixed(4)}\n` +
+        `• <b>Precio de entrada:</b> ${fmtPrice(buyPrice)}\n` +
         `• 🎯 <b>Gatillo Trailing:</b> ${target08} (+0.8%)\n\n` +
         `🛡️ <i>En cuanto suba al +0.8%, el bot asegura la ganancia y persigue el pico para exprimir el máximo beneficio.</i>`;
 
@@ -490,22 +577,22 @@ export class TrailingMasterBot {
 
             const curGain = (((cur - p.buyPrice) / p.buyPrice) * 100);
             const peakGain = (((p.highestPrice - p.buyPrice) / p.buyPrice) * 100);
-            const stopPrice = p.highestPrice * (1 - TRAILING_CALLBACK_PCT / 100);
+            const stopPrice = p.highestPrice * (1 - this.getCallbackPct(sym) / 100);
             const distToStop = Math.abs(cur - stopPrice);
             const target08 = p.buyPrice * 1.008;
 
             rep += `🪙 <b>${sym}</b> (${p.qty} ${sym.replace("USDT","")})\n` +
                    `• Inversión: ${p.investedUsdt.toFixed(2)} USDT\n` +
-                   `• Entrada: ${p.buyPrice.toFixed(4)}\n` +
-                   `• Precio Actual: ${cur.toFixed(4)} (${curGain >= 0 ? "🟢 +" : "🔴 "}${curGain.toFixed(2)}%)\n` +
-                   `• Pico Más Alto: ${p.highestPrice.toFixed(4)} (+${peakGain.toFixed(2)}%)\n`;
+                   `• Entrada: ${fmtPrice(p.buyPrice)}\n` +
+                   `• Precio Actual: ${fmtPrice(cur)} (${curGain >= 0 ? "🟢 +" : "🔴 "}${curGain.toFixed(2)}%)\n` +
+                   `• Pico Más Alto: ${fmtPrice(p.highestPrice)} (+${peakGain.toFixed(2)}%)\n`;
 
             if (p.activated) {
-              rep += `• 🛡️ <b>Gatillo de Salida:</b> ${stopPrice.toFixed(4)} (a solo ${distToStop.toFixed(2)} de distancia)\n` +
+              rep += `• 🛡️ <b>Gatillo de Salida:</b> ${fmtPrice(stopPrice)} (a solo ${distToStop.toFixed(2)} de distancia)\n` +
                      `• Estado: 🟢 <b>SEGURO ACTIVADO (Cazando la cima)</b>\n\n`;
             } else {
               const falta08 = (((target08 - cur) / cur) * 100);
-              rep += `• 🎯 <b>Meta para Activar Seguro:</b> ${target08.toFixed(4)} (falta: +${falta08.toFixed(2)}%)\n` +
+              rep += `• 🎯 <b>Meta para Activar Seguro:</b> ${fmtPrice(target08)} (falta: +${falta08.toFixed(2)}%)\n` +
                      `• Estado: ⏳ <b>Avanzando hacia el +0.8%</b>\n\n`;
             }
           }
@@ -741,6 +828,12 @@ export class TrailingMasterBot {
     this.isProcessing = true;
 
     try {
+      // Auto-sincronizar periódicamente posiciones de Binance
+      this.cycleCount = (this.cycleCount || 0) + 1;
+      if (this.cycleCount % 6 === 1) {
+        await this.syncOrphanPositions();
+      }
+
       // 1. Monitorear y rastrear posiciones abiertas en Trailing Stop
       await this.checkTrailingPositions();
 
@@ -755,7 +848,7 @@ export class TrailingMasterBot {
       console.log(`[${time}] Monitoreo... USDT libre: $${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
 
       // 2. Si hay saldo libre y ranuras: Trailing Buy (detectar caída -> seguir piso -> comprar en rebote)
-      if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 3) {
+      if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 5) {
         await this.scanForDips(activeSymbols);
         if (this.buyWatches.size > 0) {
           await this.checkBuyWatches(usdt);
@@ -800,6 +893,7 @@ export class TrailingMasterBot {
     await this.telegramCommands.start();
     console.log(`📱 Telegram listo para recibir órdenes por chat.`);
 
+    await this.syncOrphanPositions();
     await this.runCycle();
     setInterval(() => this.runCycle(), 7000);
   }
