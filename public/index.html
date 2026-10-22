@@ -510,6 +510,12 @@
       font-weight: 700;
     }
 
+    .status-pill.offline { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); color: var(--accent-amber); }
+    .status-pill.offline .pulse-dot { background-color: var(--accent-amber); box-shadow: 0 0 10px var(--accent-amber); }
+    .pnl-cop { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+    .kpi-unit { font-size: 14px; color: var(--text-muted); }
+    #positions-empty { grid-column: 1 / -1; padding: 40px; text-align: center; background: var(--bg-card); border-radius: 18px; border: 1px dashed var(--border-subtle); color: var(--text-muted); display: none; }
+
     footer {
       text-align: center;
       padding-top: 20px;
@@ -532,9 +538,9 @@
         </div>
       </div>
       <div class="header-actions">
-        <div class="status-pill">
+        <div class="status-pill" id="status-pill">
           <div class="pulse-dot"></div>
-          <span id="system-status">MONITOREO EN VIVO</span>
+          <span id="system-status">CONECTANDO…</span>
         </div>
         <div class="live-clock" id="live-clock">--:--:--</div>
       </div>
@@ -547,8 +553,8 @@
           <span class="kpi-title">Capital Total Estimado</span>
           <span class="kpi-badge">Cartera</span>
         </div>
-        <div class="kpi-value" id="kpi-total-usdt">$0.00 <span style="font-size:14px;color:var(--text-muted)">USDT</span></div>
-        <div class="kpi-sub" id="kpi-total-cop">≈ $0 COP</div>
+        <div class="kpi-value"><span id="kpi-total-usdt-num">—</span> <span class="kpi-unit">USDT</span></div>
+        <div class="kpi-sub" id="kpi-total-cop">&nbsp;</div>
       </div>
 
       <div class="kpi-card blue">
@@ -556,17 +562,17 @@
           <span class="kpi-title">Saldo USDT Disponible</span>
           <span class="kpi-badge">Spot + Earn</span>
         </div>
-        <div class="kpi-value" id="kpi-free-usdt">$0.00 <span style="font-size:14px;color:var(--text-muted)">USDT</span></div>
-        <div class="kpi-sub" id="kpi-slots">Slots en uso: 0 / 5</div>
+        <div class="kpi-value"><span id="kpi-free-usdt-num">—</span> <span class="kpi-unit">USDT</span></div>
+        <div class="kpi-sub" id="kpi-slots">&nbsp;</div>
       </div>
 
       <div class="kpi-card purple">
         <div class="kpi-header">
           <span class="kpi-title">Ganancia Neta Realizada</span>
-          <span class="kpi-badge" style="color:var(--accent-green);background:rgba(16,185,129,0.15)">100% Win Rate</span>
+          <span class="kpi-badge" id="kpi-winrate" style="color:var(--accent-green);background:rgba(16,185,129,0.15)">— Win Rate</span>
         </div>
-        <div class="kpi-value pos-profit" id="kpi-realized-pnl">+0.00 <span style="font-size:14px">USDT</span></div>
-        <div class="kpi-sub" id="kpi-realized-cop">≈ +$0 COP acumulados</div>
+        <div class="kpi-value pos-profit"><span id="kpi-realized-pnl-num">—</span> <span style="font-size:14px">USDT</span></div>
+        <div class="kpi-sub" id="kpi-realized-cop">Calculando desde Binance…</div>
       </div>
 
       <div class="kpi-card amber">
@@ -574,8 +580,8 @@
           <span class="kpi-title">Ciclos Cerrados</span>
           <span class="kpi-badge">Auditoría Binance</span>
         </div>
-        <div class="kpi-value" id="kpi-cycles-count">12 <span style="font-size:14px;color:var(--text-muted)">de 12 ganados</span></div>
-        <div class="kpi-sub">0 operaciones perdidas</div>
+        <div class="kpi-value"><span id="kpi-cycles-num">—</span> <span class="kpi-unit" id="kpi-cycles-total"></span></div>
+        <div class="kpi-sub" id="kpi-losses">&nbsp;</div>
       </div>
     </div>
 
@@ -586,6 +592,7 @@
     </div>
 
     <div class="positions-grid" id="positions-container">
+      <div id="positions-empty">🎯 <b>Sin posiciones abiertas.</b><br><span style="font-size:13px">El bot está escaneando el radar para comprar en la próxima caída confirmada.</span></div>
       <!-- Se inyectan y actualizan fluidamente in-place -->
     </div>
 
@@ -661,423 +668,11 @@
 
     <!-- Footer -->
     <footer>
-      <p>🦅 Bot Cazador Spot Autónomo • Datos directos desde Binance API Oficial • Actualización fluida continua</p>
+      <p>🦅 Bot Cazador Spot Autónomo • Datos directos desde Binance API Oficial • Actualización cada 2 segundos</p>
     </footer>
 
   </div>
 
-  <script>
-    const COP_PER_USDT = 4200;
-    let pnlChart = null;
-    let currentPositionsSymbols = [];
-    let currentRadarSymbols = [];
-    let currentHistoryCount = -1;
-
-    function fmt(val, dec = 4) {
-      if (val === undefined || val === null) return "0";
-      const num = parseFloat(val);
-      if (num === 0) return "0.00";
-      if (num < 0.0001) return num.toFixed(8);
-      if (num < 0.01) return num.toFixed(6);
-      if (num < 1) return num.toFixed(4);
-      return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: dec });
-    }
-
-    // Actualiza texto de un elemento solo si cambió (Evita layout shifts y parpadeo)
-    function setSafeText(id, text) {
-      const el = document.getElementById(id);
-      if (el && el.innerText !== text) {
-        el.innerText = text;
-      }
-    }
-
-    function setSafeHtml(id, html) {
-      const el = document.getElementById(id);
-      if (el && el.innerHTML !== html) {
-        el.innerHTML = html;
-      }
-    }
-
-    function updateClock() {
-      const now = new Date();
-      setSafeText("live-clock", now.toLocaleTimeString('es-CO'));
-    }
-    setInterval(updateClock, 1000);
-    updateClock();
-
-    async function fetchStatus() {
-      try {
-        const res = await fetch("/api/status");
-        if (!res.ok) throw new Error("API status offline");
-        const data = await res.json();
-        renderDashboardSmooth(data);
-      } catch (e) {
-        fetchFallbackBinance();
-      }
-    }
-
-    function renderDashboardSmooth(data) {
-      // 1. KPIs Top
-      setSafeHtml("kpi-total-usdt", `$${fmt(data.portfolio.totalEstimatedUsdt, 2)} <span style="font-size:14px;color:var(--text-muted)">USDT</span>`);
-      setSafeText("kpi-total-cop", `≈ $${Math.round(data.portfolio.totalEstimatedCop).toLocaleString('es-CO')} COP`);
-
-      const totalUsdtFree = data.portfolio.usdtFree + data.portfolio.usdtEarn;
-      setSafeHtml("kpi-free-usdt", `$${fmt(totalUsdtFree, 2)} <span style="font-size:14px;color:var(--text-muted)">USDT</span>`);
-      setSafeText("kpi-slots", `Slots en uso: ${data.portfolio.openPositionsCount} / ${data.portfolio.maxSlots}`);
-
-      const pnlSign = data.performance.totalPnlUsdt >= 0 ? "+" : "";
-      setSafeText("kpi-realized-pnl", `${pnlSign}${fmt(data.performance.totalPnlUsdt, 3)} USDT`);
-      setSafeText("kpi-realized-cop", `≈ ${pnlSign}$${Math.round(data.performance.totalPnlCop).toLocaleString('es-CO')} COP acumulados`);
-      setSafeHtml("kpi-cycles-count", `${data.performance.wins} <span style="font-size:14px;color:var(--text-muted)">de ${data.performance.cyclesCount} ganados</span>`);
-
-      // 2. Posiciones Activas (Smooth in-place updates)
-      setSafeText("active-positions-count", `${data.positions.length} activa(s)`);
-      const posContainer = document.getElementById("positions-container");
-
-      const newSymbols = data.positions.map(p => p.symbol).sort().join(",");
-      if (newSymbols !== currentPositionsSymbols.sort().join(",")) {
-        // Reconstruir estructura solo si se añadió o cerró una posición
-        currentPositionsSymbols = data.positions.map(p => p.symbol);
-        if (data.positions.length === 0) {
-          posContainer.innerHTML = `
-            <div style="grid-column: 1 / -1; padding: 40px; text-align: center; background: var(--bg-card); border-radius: 18px; border: 1px dashed var(--border-subtle); color: var(--text-muted);">
-              🎯 <b>Sin posiciones abiertas en este instante.</b><br>
-              <span style="font-size: 13px;">El bot tiene saldo libre en USDT y está escaneando el radar para disparar compras con descuento en caídas confirmadas.</span>
-            </div>
-          `;
-        } else {
-          posContainer.innerHTML = data.positions.map(p => `
-            <div class="position-card" id="card-${p.symbol}">
-              <div class="pos-head">
-                <div class="coin-badge">
-                  <div class="coin-avatar">${p.base.substring(0, 3)}</div>
-                  <div>
-                    <div class="coin-name">${p.symbol}</div>
-                    <div class="coin-qty">${fmt(p.qty, 2)} ${p.base} • Invertidos: $${fmt(p.investedUsdt, 2)} USDT</div>
-                  </div>
-                </div>
-                <div id="badge-${p.symbol}"></div>
-              </div>
-
-              <div class="price-row">
-                <div class="price-col">
-                  <span>Entrada</span>
-                  <strong>$${fmt(p.buyPrice)}</strong>
-                </div>
-                <div class="price-col">
-                  <span>Precio Actual</span>
-                  <strong id="price-${p.symbol}">--</strong>
-                </div>
-                <div class="price-col">
-                  <span>Gatillo (+0.8%)</span>
-                  <strong>$${fmt(p.target08)}</strong>
-                </div>
-              </div>
-
-              <div class="progress-wrapper">
-                <div class="progress-info">
-                  <span style="color:var(--text-muted)">Progreso de Meta</span>
-                  <span style="font-family:var(--font-mono);" id="prog-info-${p.symbol}">--</span>
-                </div>
-                <div class="progress-track">
-                  <div class="progress-fill" id="prog-fill-${p.symbol}" style="width: 8%;"></div>
-                </div>
-              </div>
-
-              <div class="pos-footer">
-                <div>
-                  <span class="pnl-label">Ganancia Flotante:</span>
-                </div>
-                <div class="pnl-value" id="pnl-${p.symbol}">--</div>
-              </div>
-            </div>
-          `).join("");
-        }
-      }
-
-      // Actualizar valores in-place suavemente sin redibujar DOM
-      data.positions.forEach(p => {
-        const isGain = p.gainPct >= 0;
-        const pnlSign = isGain ? "+" : "";
-        const targetDist = p.target08 > p.curPrice ? (((p.target08 - p.curPrice) / p.curPrice) * 100) : 0;
-
-        // Badge
-        const badgeEl = document.getElementById(`badge-${p.symbol}`);
-        if (badgeEl) {
-          if (p.activated) {
-            badgeEl.innerHTML = `<span class="trailing-status-pill pill-active">🚀 TRAILING ACTIVO</span>`;
-          } else {
-            badgeEl.innerHTML = `<span class="trailing-status-pill pill-waiting">⏳ AVANZANDO AL +0.8%</span>`;
-          }
-        }
-
-        // Precio
-        const priceEl = document.getElementById(`price-${p.symbol}`);
-        if (priceEl) {
-          priceEl.innerText = `$${fmt(p.curPrice)}`;
-          priceEl.style.color = isGain ? 'var(--accent-green)' : 'var(--accent-rose)';
-        }
-
-        // Barra de progreso y texto
-        const progFill = document.getElementById(`prog-fill-${p.symbol}`);
-        const progInfo = document.getElementById(`prog-info-${p.symbol}`);
-        if (progFill && progInfo) {
-          const widthPct = Math.min(100, Math.max(8, p.progressPct));
-          progFill.style.width = `${widthPct}%`;
-          if (p.activated) {
-            progFill.classList.add("trailing-mode");
-            progInfo.innerHTML = `🎯 <b>Pico: $${fmt(p.highestPrice)} (+${fmt(p.peakGainPct, 2)}%)</b> | Salida garantizada: $${fmt(p.stopPrice)}`;
-          } else {
-            progFill.classList.remove("trailing-mode");
-            progInfo.innerText = `Meta: $${fmt(p.target08)} (falta: +${fmt(targetDist, 2)}%)`;
-          }
-        }
-
-        // PnL
-        const pnlEl = document.getElementById(`pnl-${p.symbol}`);
-        if (pnlEl) {
-          pnlEl.className = `pnl-value ${isGain ? 'pos-profit' : 'pos-loss'}`;
-          pnlEl.innerHTML = `${pnlSign}${fmt(p.pnlUsdt, 2)} USDT (${pnlSign}${fmt(p.gainPct, 2)}%)
-            <span style="font-size:12px;opacity:0.8;display:block;text-align:right">≈ ${pnlSign}$${Math.round(p.pnlCop).toLocaleString('es-CO')} COP</span>`;
-        }
-      });
-
-      // 3. Radar (In-place updates)
-      const radarTbody = document.getElementById("radar-tbody");
-      const radarSyms = data.radar.map(r => r.symbol).sort().join(",");
-      if (radarSyms !== currentRadarSymbols.sort().join(",")) {
-        currentRadarSymbols = data.radar.map(r => r.symbol);
-        radarTbody.innerHTML = data.radar.map(r => `
-          <tr id="radar-row-${r.symbol}">
-            <td><strong>${r.symbol}</strong></td>
-            <td id="radar-price-${r.symbol}">$${fmt(r.curPrice)}</td>
-            <td id="radar-drop-${r.symbol}">-${fmt(r.dropPct, 2)}%</td>
-            <td id="radar-rsi-${r.symbol}"><span class="rsi-pill rsi-neutral">RSI ${fmt(r.rsi, 1)}</span></td>
-            <td id="radar-status-${r.symbol}">📡 Escaneando</td>
-          </tr>
-        `).join("");
-      } else {
-        data.radar.forEach(r => {
-          setSafeText(`radar-price-${r.symbol}`, `$${fmt(r.curPrice)}`);
-          
-          const dropEl = document.getElementById(`radar-drop-${r.symbol}`);
-          if (dropEl) {
-            dropEl.innerText = `-${fmt(r.dropPct, 2)}%`;
-            dropEl.style.color = r.dropPct >= 1.5 ? 'var(--accent-rose)' : 'var(--text-muted)';
-          }
-
-          const rsiEl = document.getElementById(`radar-rsi-${r.symbol}`);
-          if (rsiEl) {
-            const rsiClass = rsiEl.rsi <= 45 ? "rsi-dip" : "rsi-neutral";
-            rsiEl.innerHTML = `<span class="rsi-pill ${rsiClass}">RSI ${fmt(r.rsi, 1)}</span>`;
-          }
-
-          const stEl = document.getElementById(`radar-status-${r.symbol}`);
-          if (stEl) {
-            if (r.isHunting) {
-              stEl.innerHTML = `<span style="color:var(--accent-green);font-weight:700">🎯 Cazando Piso ($${fmt(r.lowestPrice)})</span>`;
-            } else if (r.dropPct >= 1.5) {
-              stEl.innerHTML = `<span style="color:var(--accent-blue)">🔻 Caída (-${fmt(r.dropPct, 1)}%)</span>`;
-            } else {
-              stEl.innerHTML = `<span style="color:var(--text-dim)">📡 Escaneando</span>`;
-            }
-          }
-        });
-      }
-
-      // 4. Historial (Actualizar solo si hay nuevos ciclos)
-      if (currentHistoryCount !== data.recentCycles.length) {
-        currentHistoryCount = data.recentCycles.length;
-        const histTbody = document.getElementById("history-tbody");
-        histTbody.innerHTML = data.recentCycles.map((c, i) => {
-          const dateStr = new Date(c.time).toLocaleString('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          const sign = c.pnlUsdt >= 0 ? "+" : "";
-          return `
-            <tr>
-              <td style="color:var(--text-dim)">${i + 1}</td>
-              <td><strong>${c.symbol}</strong></td>
-              <td style="color:var(--text-dim)">${dateStr}</td>
-              <td>$${fmt(c.avgBuy)}</td>
-              <td>$${fmt(c.avgSell)}</td>
-              <td class="pos-profit"><strong>${sign}${fmt(c.pnlUsdt, 3)} USDT</strong></td>
-              <td class="pos-profit">${sign}${fmt(c.pnlPct, 2)}%</td>
-              <td><span class="win-tag">GANADO</span></td>
-            </tr>
-          `;
-        }).join("");
-
-        // Gráfica silenciosa
-        renderPnlChartSmooth(data.recentCycles);
-      }
-    }
-
-    function renderPnlChartSmooth(cycles) {
-      if (!cycles || cycles.length === 0) return;
-      
-      const sorted = [...cycles].reverse();
-      let cumPnl = 0;
-      const labels = sorted.map((c, idx) => `#${idx + 1} ${c.symbol.replace("USDT","")}`);
-      const dataPoints = sorted.map(c => {
-        cumPnl += c.pnlUsdt;
-        return parseFloat(cumPnl.toFixed(3));
-      });
-
-      const ctx = document.getElementById("pnlChart").getContext("2d");
-
-      if (pnlChart) {
-        pnlChart.data.labels = labels;
-        pnlChart.data.datasets[0].data = dataPoints;
-        pnlChart.update('none'); // Update sin animación para que no parpadee
-        return;
-      }
-
-      pnlChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: 'Ganancia Acumulada (USDT)',
-            data: dataPoints,
-            borderColor: '#10B981',
-            backgroundColor: 'rgba(16, 185, 129, 0.12)',
-            fill: true,
-            tension: 0.35,
-            borderWidth: 2.5,
-            pointBackgroundColor: '#10B981',
-            pointRadius: 4,
-            pointHoverRadius: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: { duration: 400 },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: 'rgba(15, 23, 42, 0.9)',
-              titleFont: { family: 'Outfit', size: 12 },
-              bodyFont: { family: 'JetBrains Mono', size: 13 },
-              callbacks: {
-                label: (ctx) => ` +${ctx.raw} USDT (≈ $${Math.round(ctx.raw * COP_PER_USDT).toLocaleString('es-CO')} COP)`
-              }
-            }
-          },
-          scales: {
-            x: {
-              grid: { color: 'rgba(255, 255, 255, 0.04)' },
-              ticks: { color: '#64748B', font: { family: 'JetBrains Mono', size: 10 } }
-            },
-            y: {
-              grid: { color: 'rgba(255, 255, 255, 0.04)' },
-              ticks: {
-                color: '#64748B',
-                font: { family: 'JetBrains Mono', size: 11 },
-                callback: (v) => `+$${v}`
-              }
-            }
-          }
-        }
-      });
-    }
-
-    // Modo Standalone (Fallback fluido)
-    async function fetchFallbackBinance() {
-      try {
-        const res = await fetch("https://api.binance.com/api/v3/ticker/price?symbols=%5B%22ETHUSDT%22,%22SOLUSDT%22,%22PEPEUSDT%22,%22BTCUSDT%22,%22AVAXUSDT%22%5D");
-        const tickers = await res.json();
-        const map = {};
-        tickers.forEach(t => map[t.symbol] = parseFloat(t.price));
-        
-        const fallbackData = {
-          portfolio: {
-            totalEstimatedUsdt: 198.50,
-            totalEstimatedCop: 198.50 * 4200,
-            usdtFree: 50.25,
-            usdtEarn: 2.03,
-            totalInvested: 148.02,
-            openPositionsCount: 3,
-            maxSlots: 5
-          },
-          positions: [
-            {
-              symbol: "ETHUSDT",
-              base: "ETH",
-              qty: 0.0208,
-              investedUsdt: 50.00,
-              buyPrice: 2404.00,
-              curPrice: map["ETHUSDT"] || 2412.00,
-              target08: 2423.23,
-              progressPct: Math.max(0, (((map["ETHUSDT"] || 2412.00) - 2404) / (2423.23 - 2404)) * 100),
-              gainPct: (((map["ETHUSDT"] || 2412.00) - 2404) / 2404) * 100,
-              pnlUsdt: (0.0208 * (map["ETHUSDT"] || 2412.00)) - 50.00,
-              pnlCop: ((0.0208 * (map["ETHUSDT"] || 2412.00)) - 50.00) * 4200,
-              highestPrice: Math.max(2404, map["ETHUSDT"] || 2412),
-              peakGainPct: (((Math.max(2404, map["ETHUSDT"] || 2412)) - 2404) / 2404) * 100,
-              stopPrice: 2404 * 1.005,
-              activated: false
-            },
-            {
-              symbol: "SOLUSDT",
-              base: "SOL",
-              qty: 0.447,
-              investedUsdt: 48.17,
-              buyPrice: 107.77,
-              curPrice: map["SOLUSDT"] || 105.16,
-              target08: 108.63,
-              progressPct: Math.max(0, (((map["SOLUSDT"] || 105.16) - 107.77) / (108.63 - 107.77)) * 100),
-              gainPct: (((map["SOLUSDT"] || 105.16) - 107.77) / 107.77) * 100,
-              pnlUsdt: (0.447 * (map["SOLUSDT"] || 105.16)) - 48.17,
-              pnlCop: ((0.447 * (map["SOLUSDT"] || 105.16)) - 48.17) * 4200,
-              highestPrice: 107.92,
-              peakGainPct: 0.14,
-              stopPrice: 107.60,
-              activated: false
-            },
-            {
-              symbol: "PEPEUSDT",
-              base: "PEPE",
-              qty: 21314134.53,
-              investedUsdt: 99.85,
-              buyPrice: 0.00000468,
-              curPrice: map["PEPEUSDT"] || 0.00000449,
-              target08: 0.00000472,
-              progressPct: Math.max(0, (((map["PEPEUSDT"] || 0.00000449) - 0.00000468) / (0.00000472 - 0.00000468)) * 100),
-              gainPct: (((map["PEPEUSDT"] || 0.00000449) - 0.00000468) / 0.00000468) * 100,
-              pnlUsdt: (21314134.53 * (map["PEPEUSDT"] || 0.00000449)) - 99.85,
-              pnlCop: ((21314134.53 * (map["PEPEUSDT"] || 0.00000449)) - 99.85) * 4200,
-              highestPrice: 0.00000470,
-              peakGainPct: 0.42,
-              stopPrice: 0.00000467,
-              activated: false
-            }
-          ],
-          radar: [
-            { symbol: "BTCUSDT", curPrice: map["BTCUSDT"] || 81700, dropPct: 3.8, rsi: 42.1, isHunting: false },
-            { symbol: "AVAXUSDT", curPrice: map["AVAXUSDT"] || 9.20, dropPct: 8.9, rsi: 34.5, isHunting: false }
-          ],
-          performance: {
-            totalPnlUsdt: 2.105,
-            totalPnlCop: 2.105 * 4200,
-            totalFeesUsdt: 0.35,
-            wins: 12,
-            losses: 0,
-            winRate: 100,
-            cyclesCount: 12
-          },
-          recentCycles: [
-            { symbol: "ETHUSDT", time: Date.now() - 36000000, avgBuy: 2470.12, avgSell: 2507.45, pnlUsdt: 0.328, pnlPct: 1.51 },
-            { symbol: "SOLUSDT", time: Date.now() - 72000000, avgBuy: 104.90, avgSell: 106.85, pnlUsdt: 0.468, pnlPct: 1.86 },
-            { symbol: "XRPUSDT", time: Date.now() - 108000000, avgBuy: 0.521, avgSell: 0.530, pnlUsdt: 0.345, pnlPct: 1.73 }
-          ]
-        };
-        renderDashboardSmooth(fallbackData);
-      } catch (err) {}
-    }
-
-    // Polling cada 3 segundos sin parpadeo
-    setInterval(fetchStatus, 3000);
-    fetchStatus();
-  </script>
+  <script src="/app.js"></script>
 </body>
 </html>

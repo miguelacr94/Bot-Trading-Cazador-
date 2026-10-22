@@ -7,15 +7,97 @@ import { computeRealizedPnl, PNL_SYMBOLS } from "./pnl.js";
 dotenv.config();
 const PORT = parseInt(process.env.DASHBOARD_PORT || process.env.PORT || "3333", 10);
 const COP_PER_USDT = 4200;
+const BINANCE_PUBLIC = "https://api.binance.com";
+/**
+ * Dashboard de solo lectura.
+ * Los datos se refrescan en segundo plano y se guardan en caché:
+ * /api/status responde al instante y nunca devuelve datos vacíos por un error puntual.
+ */
 export class DashboardServer {
     server = null;
     client;
     publicDir;
     port;
+    timers = [];
+    // Caché (último valor bueno conocido)
+    prices = {};
+    radarMeta = {};
+    usdtFree = null;
+    usdtEarn = null;
+    pnl = null;
+    lastPriceOk = 0;
+    busy = {};
     constructor(port = PORT) {
         this.port = port;
         this.publicDir = path.resolve(process.cwd(), "public");
         this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
+    }
+    readJson(file) {
+        try {
+            const f = path.resolve(process.cwd(), file);
+            if (fs.existsSync(f))
+                return JSON.parse(fs.readFileSync(f, "utf-8"));
+        }
+        catch { }
+        return [];
+    }
+    trackedSymbols() {
+        const pos = this.readJson(".trailing-positions.json").map(([s]) => s);
+        const buys = this.readJson(".trailing-buys.json").map(([s]) => s);
+        return Array.from(new Set([...PNL_SYMBOLS, ...pos, ...buys]));
+    }
+    /** Ejecuta una tarea de refresco sin solaparla consigo misma */
+    async guarded(name, fn) {
+        if (this.busy[name])
+            return;
+        this.busy[name] = true;
+        try {
+            await fn();
+        }
+        catch { }
+        finally {
+            this.busy[name] = false;
+        }
+    }
+    async refreshPrices() {
+        const syms = this.trackedSymbols();
+        const url = `${BINANCE_PUBLIC}/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(syms))}`;
+        const res = await fetch(url);
+        if (!res.ok)
+            return;
+        const arr = await res.json();
+        for (const t of arr)
+            this.prices[t.symbol] = parseFloat(t.price);
+        this.lastPriceOk = Date.now();
+    }
+    async refreshRadar() {
+        for (const sym of PNL_SYMBOLS) {
+            try {
+                const res = await fetch(`${BINANCE_PUBLIC}/api/v3/klines?symbol=${sym}&interval=15m&limit=35`);
+                if (!res.ok)
+                    continue;
+                const data = await res.json();
+                const closes = data.map((k) => parseFloat(k[4]));
+                const highs = data.map((k) => parseFloat(k[2]));
+                const cur = closes[closes.length - 1];
+                const maxRecent = Math.max(...highs.slice(-20));
+                this.radarMeta[sym] = {
+                    rsi: this.calculateRSI(closes, 14),
+                    dropPct: maxRecent > 0 ? ((maxRecent - cur) / maxRecent) * 100 : 0
+                };
+            }
+            catch { }
+        }
+    }
+    async refreshAccount() {
+        const acc = await this.client.account({ recvWindow: 60000 });
+        const b = acc.data.balances || [];
+        this.usdtFree = parseFloat(b.find((x) => x.asset === "USDT")?.free || "0");
+        this.usdtEarn = parseFloat(b.find((x) => x.asset === "LDUSDT")?.free || "0");
+    }
+    async refreshPnl() {
+        const s = await computeRealizedPnl(this.client);
+        this.pnl = s;
     }
     calculateRSI(closes, period = 14) {
         if (closes.length <= period)
@@ -43,8 +125,7 @@ export class DashboardServer {
         }
         if (avgLoss === 0)
             return 100;
-        const rs = avgGain / avgLoss;
-        return 100 - (100 / (1 + rs));
+        return 100 - (100 / (1 + avgGain / avgLoss));
     }
     getCallbackPct(symbol) {
         if (symbol.includes("PEPE"))
@@ -53,69 +134,21 @@ export class DashboardServer {
             return 0.45;
         return 0.30;
     }
-    async getStatusData() {
-        // 1. Cargar posiciones trailing desde disco
-        let rawPositions = [];
-        try {
-            const pFile = path.resolve(process.cwd(), ".trailing-positions.json");
-            if (fs.existsSync(pFile)) {
-                rawPositions = JSON.parse(fs.readFileSync(pFile, "utf-8"));
-            }
-        }
-        catch { }
-        // 2. Cargar trailing buys desde disco
-        let rawBuys = [];
-        try {
-            const bFile = path.resolve(process.cwd(), ".trailing-buys.json");
-            if (fs.existsSync(bFile)) {
-                rawBuys = JSON.parse(fs.readFileSync(bFile, "utf-8"));
-            }
-        }
-        catch { }
-        // 3. Precios en tiempo real públicos de Binance
-        const tickersMap = {};
-        const symsToQuery = Array.from(new Set([
-            ...PNL_SYMBOLS,
-            ...rawPositions.map(([s]) => s),
-            ...rawBuys.map(([s]) => s)
-        ]));
-        await Promise.all(symsToQuery.map(async (s) => {
-            try {
-                const t = await this.client.tickerPrice(s);
-                tickersMap[s] = parseFloat(t.data.price);
-            }
-            catch { }
-        }));
-        // 4. Balances de cuenta
-        let usdtFree = 0;
-        let usdtEarn = 0;
-        let balances = [];
-        try {
-            const acc = await this.client.account({ recvWindow: 60000 });
-            balances = acc.data.balances || [];
-            usdtFree = parseFloat(balances.find((b) => b.asset === "USDT")?.free || "0");
-            usdtEarn = parseFloat(balances.find((b) => b.asset === "LDUSDT")?.free || "0");
-        }
-        catch { }
-        // 5. Procesar Posiciones Activas
+    /** Construye la respuesta a partir de la caché (síncrono, instantáneo) */
+    getStatusData() {
+        const rawPositions = this.readJson(".trailing-positions.json");
+        const rawBuys = this.readJson(".trailing-buys.json");
         let totalInvested = 0;
-        let totalCurrentValue = usdtFree + usdtEarn;
+        let positionsValue = 0;
         const positions = rawPositions.map(([symbol, pos]) => {
-            const curPrice = tickersMap[symbol] || pos.buyPrice;
+            const curPrice = this.prices[symbol] || pos.buyPrice;
             const target08 = pos.buyPrice * 1.008;
             const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
-            // Progreso hacia la meta (0% en entrada, 100% en target08)
-            let progressPct = 0;
-            if (target08 > pos.buyPrice) {
-                progressPct = ((curPrice - pos.buyPrice) / (target08 - pos.buyPrice)) * 100;
-            }
-            const pnlUsdt = (pos.qty * curPrice) - pos.investedUsdt;
-            const pnlCop = pnlUsdt * COP_PER_USDT;
+            const progressPct = ((curPrice - pos.buyPrice) / (target08 - pos.buyPrice)) * 100;
+            const pnlUsdt = pos.qty * curPrice - pos.investedUsdt;
             const callback = this.getCallbackPct(symbol);
-            const stopPrice = pos.highestPrice * (1 - callback / 100);
-            const peakGainPct = ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100;
             totalInvested += pos.investedUsdt;
-            totalCurrentValue += (pos.qty * curPrice);
+            positionsValue += pos.qty * curPrice;
             return {
                 symbol,
                 base: symbol.replace("USDT", ""),
@@ -124,96 +157,78 @@ export class DashboardServer {
                 buyPrice: pos.buyPrice,
                 curPrice,
                 target08,
-                progressPct: Math.max(0, Math.min(150, progressPct)),
+                progressPct: Math.max(0, Math.min(100, progressPct)),
                 gainPct,
                 pnlUsdt,
-                pnlCop,
+                pnlCop: pnlUsdt * COP_PER_USDT,
                 highestPrice: pos.highestPrice,
-                peakGainPct,
-                stopPrice,
-                callbackPct: callback,
-                activated: pos.activated || gainPct >= 0.8,
-                buyTime: pos.buyTime
+                peakGainPct: ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100,
+                stopPrice: pos.highestPrice * (1 - callback / 100),
+                activated: !!pos.activated
             };
         });
-        // 6. Procesar Radar de Caídas
-        const radar = await Promise.all(PNL_SYMBOLS.filter((s) => !rawPositions.some(([posSym]) => posSym === s)).map(async (sym) => {
-            const curPrice = tickersMap[sym] || 0;
-            let rsi = 50;
-            let drop20 = 0;
-            try {
-                const klinesRes = await this.client.klines(sym, "15m", { limit: 35 });
-                const closes = klinesRes.data.map((k) => parseFloat(k[4]));
-                const highs = klinesRes.data.map((k) => parseFloat(k[2]));
-                rsi = this.calculateRSI(closes, 14);
-                const maxRecent = Math.max(...highs.slice(-20));
-                if (maxRecent > 0 && curPrice > 0) {
-                    drop20 = ((maxRecent - curPrice) / maxRecent) * 100;
-                }
-            }
-            catch { }
-            const buyWatch = rawBuys.find(([s]) => s === sym)?.[1];
+        const radar = PNL_SYMBOLS
+            .filter((s) => !rawPositions.some(([p]) => p === s))
+            .map((sym) => {
+            const meta = this.radarMeta[sym];
+            const watch = rawBuys.find(([s]) => s === sym)?.[1];
             return {
                 symbol: sym,
-                base: sym.replace("USDT", ""),
-                curPrice,
-                rsi: parseFloat(rsi.toFixed(1)),
-                dropPct: parseFloat(drop20.toFixed(2)),
-                isHunting: !!buyWatch,
-                lowestPrice: buyWatch?.lowestPrice || curPrice,
-                triggerPrice: buyWatch ? buyWatch.lowestPrice * 1.0025 : null
+                curPrice: this.prices[sym] ?? null,
+                rsi: meta ? meta.rsi : null,
+                dropPct: meta ? meta.dropPct : null,
+                isHunting: !!watch,
+                lowestPrice: watch?.lowestPrice ?? null
             };
-        }));
-        // 7. PnL Auditado y Ciclos Cerrados
-        let pnlSummary = { cycles: [], totalPnl: 0, totalFees: 0, wins: 0, losses: 0, bySymbol: {} };
-        try {
-            pnlSummary = await computeRealizedPnl(this.client);
-        }
-        catch { }
+        });
+        const cash = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
+        const total = positionsValue + cash;
+        const p = this.pnl;
         return {
             updatedAt: new Date().toISOString(),
+            pricesFresh: Date.now() - this.lastPriceOk < 15000,
+            accountAvailable: this.usdtFree !== null,
             portfolio: {
-                totalEstimatedUsdt: totalCurrentValue,
-                totalEstimatedCop: totalCurrentValue * COP_PER_USDT,
-                usdtFree,
-                usdtEarn,
+                totalEstimatedUsdt: total,
+                totalEstimatedCop: total * COP_PER_USDT,
+                usdtFree: this.usdtFree,
+                usdtEarn: this.usdtEarn,
                 totalInvested,
                 openPositionsCount: positions.length,
                 maxSlots: 5
             },
             positions,
             radar,
-            performance: {
-                totalPnlUsdt: pnlSummary.totalPnl,
-                totalPnlCop: pnlSummary.totalPnl * COP_PER_USDT,
-                totalFeesUsdt: pnlSummary.totalFees,
-                wins: pnlSummary.wins,
-                losses: pnlSummary.losses,
-                winRate: (pnlSummary.wins + pnlSummary.losses) > 0
-                    ? Math.round((pnlSummary.wins / (pnlSummary.wins + pnlSummary.losses)) * 100)
-                    : 100,
-                cyclesCount: pnlSummary.cycles.length
-            },
-            recentCycles: pnlSummary.cycles.slice(-15).reverse()
+            performance: p ? {
+                totalPnlUsdt: p.totalPnl,
+                totalPnlCop: p.totalPnl * COP_PER_USDT,
+                wins: p.wins,
+                losses: p.losses,
+                cyclesCount: p.cycles.length,
+                winRate: p.cycles.length ? Math.round((p.wins / p.cycles.length) * 100) : 100
+            } : null,
+            recentCycles: p ? p.cycles.slice(-15).reverse() : null
         };
     }
+    startRefreshLoops() {
+        const every = (name, ms, fn) => {
+            const run = () => this.guarded(name, fn);
+            run();
+            this.timers.push(setInterval(run, ms));
+        };
+        every("prices", 2000, () => this.refreshPrices());
+        every("account", 15000, () => this.refreshAccount());
+        every("radar", 60000, () => this.refreshRadar());
+        every("pnl", 120000, () => this.refreshPnl());
+    }
     start() {
-        this.server = http.createServer(async (req, res) => {
-            // CORS headers
-            res.setHeader("Access-Control-Allow-Origin", "*");
-            res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-            res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-            if (req.method === "OPTIONS") {
-                res.writeHead(204);
-                res.end();
-                return;
-            }
+        this.startRefreshLoops();
+        this.server = http.createServer((req, res) => {
             const parsedUrl = new URL(req.url || "/", `http://${req.headers.host}`);
             if (parsedUrl.pathname === "/api/status") {
                 try {
-                    const data = await this.getStatusData();
-                    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-                    res.end(JSON.stringify(data));
+                    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+                    res.end(JSON.stringify(this.getStatusData()));
                 }
                 catch (e) {
                     res.writeHead(500, { "Content-Type": "application/json" });
@@ -221,24 +236,26 @@ export class DashboardServer {
                 }
                 return;
             }
-            // Servir index.html
-            const filePath = path.join(this.publicDir, parsedUrl.pathname === "/" ? "index.html" : parsedUrl.pathname);
-            if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-                const ext = path.extname(filePath).toLowerCase();
-                const mimeTypes = {
+            const rel = parsedUrl.pathname === "/" ? "index.html" : parsedUrl.pathname.replace(/^\/+/, "");
+            const filePath = path.resolve(this.publicDir, rel);
+            if (filePath.startsWith(this.publicDir) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+                const mime = {
                     ".html": "text/html; charset=utf-8",
                     ".css": "text/css; charset=utf-8",
                     ".js": "application/javascript; charset=utf-8",
                     ".json": "application/json",
-                    ".png": "image/png",
-                    ".svg": "image/svg+xml"
+                    ".svg": "image/svg+xml",
+                    ".png": "image/png"
                 };
-                res.writeHead(200, { "Content-Type": mimeTypes[ext] || "text/plain" });
+                res.writeHead(200, { "Content-Type": mime[path.extname(filePath).toLowerCase()] || "text/plain" });
                 fs.createReadStream(filePath).pipe(res);
                 return;
             }
             res.writeHead(404, { "Content-Type": "text/plain" });
             res.end("404 Not Found");
+        });
+        this.server.on("error", (e) => {
+            console.error(`⚠️ Dashboard no pudo iniciar en el puerto ${this.port}: ${e.message}`);
         });
         this.server.listen(this.port, () => {
             console.log(`🌐 Dashboard web disponible en: http://localhost:${this.port}`);
@@ -246,13 +263,10 @@ export class DashboardServer {
         return this.server;
     }
     stop() {
-        if (this.server) {
-            this.server.close();
-        }
+        this.timers.forEach(clearInterval);
+        this.server?.close();
     }
 }
-// Iniciar standalone si se invoca directamente
 if (process.env.DASHBOARD_STANDALONE === "1") {
-    const ds = new DashboardServer();
-    ds.start();
+    new DashboardServer().start();
 }
