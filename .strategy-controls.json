@@ -6,5 +6,10 @@
   },
   "autoPilot": true,
   "approvalTimeoutSec": 180,
-  "updatedAt": 1792770674268
+  "updatedAt": 1792770674268,
+  "allocations": {
+    "trailing_rebound": 50,
+    "smart_dca": 35,
+    "micro_grid": 15
+  }
 }

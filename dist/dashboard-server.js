@@ -323,6 +323,50 @@ export class DashboardServer {
                 }
                 return;
             }
+            if (parsedUrl.pathname === "/api/strategies/allocation" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => body += chunk);
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        let t = Math.max(0, parseInt(data.trailing || "0", 10));
+                        let d = Math.max(0, parseInt(data.dca || "0", 10));
+                        let g = Math.max(0, parseInt(data.grid || "0", 10));
+                        const sum = t + d + g;
+                        if (sum === 0) {
+                            t = 50;
+                            d = 35;
+                            g = 15;
+                        }
+                        else if (sum !== 100) {
+                            // Normalizar a 100 si no suma exactamente 100
+                            t = Math.round((t / sum) * 100);
+                            d = Math.round((d / sum) * 100);
+                            g = 100 - t - d;
+                        }
+                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+                        const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {
+                            strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false },
+                            autoPilot: true,
+                            approvalTimeoutSec: 180
+                        };
+                        controls.allocations = {
+                            trailing_rebound: t,
+                            smart_dca: d,
+                            micro_grid: g
+                        };
+                        controls.updatedAt = Date.now();
+                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                        res.end(JSON.stringify({ success: true, controls }));
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
             if (parsedUrl.pathname === "/api/strategies/toggle" && req.method === "POST") {
                 let body = "";
                 req.on("data", chunk => body += chunk);

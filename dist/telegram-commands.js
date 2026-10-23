@@ -21,6 +21,7 @@ export class TelegramCommands {
             const commands = [
                 { command: "menu", description: "📋 Lista completa de comandos" },
                 { command: "estrategias", description: "⚙️ Ver y alternar motores activos (Trailing, DCA, Grid)" },
+                { command: "presupuesto", description: "💼 Ver y modificar presupuesto por estrategia (% y $)" },
                 { command: "aprobar", description: "✅ Aprobar oportunidad recomendada pendiente" },
                 { command: "ignorar", description: "❌ Descartar oportunidad pendiente" },
                 { command: "informe", description: "📑 Diagnóstico completo en tiempo real" },

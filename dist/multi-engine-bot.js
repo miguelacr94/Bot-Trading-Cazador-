@@ -37,6 +37,11 @@ export class TrailingMasterBot {
             smart_dca: true,
             micro_grid: false
         },
+        allocations: {
+            trailing_rebound: 50,
+            smart_dca: 35,
+            micro_grid: 15
+        },
         autoPilot: true,
         approvalTimeoutSec: 180,
         updatedAt: Date.now()
@@ -152,6 +157,9 @@ export class TrailingMasterBot {
             const file = path.resolve(process.cwd(), ".strategy-controls.json");
             if (fs.existsSync(file)) {
                 this.controls = JSON.parse(fs.readFileSync(file, "utf-8"));
+                if (!this.controls.allocations) {
+                    this.controls.allocations = { trailing_rebound: 50, smart_dca: 35, micro_grid: 15 };
+                }
                 this.autoPilot = this.controls.autoPilot;
             }
         }
@@ -781,6 +789,47 @@ export class TrailingMasterBot {
                         `👉 /aprobar | /ignorar\n`;
                 }
                 return msg;
+            }
+            if (cmd === "/presupuesto" || cmd === "presupuesto") {
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const freeUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                const a = this.controls.allocations;
+                const tUsdt = (freeUsdt * (a.trailing_rebound / 100)).toFixed(2);
+                const dUsdt = (freeUsdt * (a.smart_dca / 100)).toFixed(2);
+                const gUsdt = (freeUsdt * (a.micro_grid / 100)).toFixed(2);
+                let msg = `💼 <b>PRESUPUESTO ASIGNADO POR ESTRATEGIA</b> 📊\n\n`;
+                msg += `• 💼 <b>USDT Líquido Disponible:</b> ${freeUsdt.toFixed(2)} USDT\n\n`;
+                msg += `🏹 <b>1. Cazador Trailing:</b> <b>${a.trailing_rebound}%</b> (~${tUsdt} USDT)\n` +
+                    `   Estado: ${this.controls.strategies.trailing_rebound ? "🟢 ACTIVO" : "🔴 PAUSADO"}\n\n`;
+                msg += `🛡️ <b>2. Smart DCA:</b> <b>${a.smart_dca}%</b> (~${dUsdt} USDT)\n` +
+                    `   Estado: ${this.controls.strategies.smart_dca ? "🟢 ACTIVO" : "🔴 PAUSADO"}\n\n`;
+                msg += `🌐 <b>3. Micro-Grid:</b> <b>${a.micro_grid}%</b> (~${gUsdt} USDT)\n` +
+                    `   Estado: ${this.controls.strategies.micro_grid ? "🟢 ACTIVO" : "🔴 PAUSADO"}\n\n`;
+                msg += `🎛️ <b>Para modificar porcentajes:</b>\n` +
+                    `Escribe: <code>/asignar &lt;trailing&gt; &lt;dca&gt; &lt;grid&gt;</code>\n` +
+                    `Ejemplo: <code>/asignar 50 35 15</code> o <code>/asignar 33 33 34</code> (debe sumar 100).`;
+                return msg;
+            }
+            if (cmd === "/asignar" || cmd === "asignar") {
+                let t = parseInt(arg1 || "0", 10);
+                let d = parseInt(arg2 || "0", 10);
+                let g = parseInt(parts[3] || "0", 10);
+                if (isNaN(t) || isNaN(d) || isNaN(g) || (t + d + g !== 100)) {
+                    return `⚠️ <b>Formato incorrecto:</b> La suma de los 3 porcentajes debe ser exactamente 100.\n\n` +
+                        `Ejemplo de uso: <code>/asignar 50 35 15</code>\n` +
+                        `(50% Trailing, 35% Smart DCA, 15% Micro-Grid)`;
+                }
+                this.controls.allocations = {
+                    trailing_rebound: t,
+                    smart_dca: d,
+                    micro_grid: g
+                };
+                this.saveStrategyControls();
+                return `✅ <b>¡PRESUPUESTO ACTUALIZADO!</b> 🎯\n\n` +
+                    `• 🏹 <b>Cazador Trailing:</b> <b>${t}%</b>\n` +
+                    `• 🛡️ <b>Smart DCA:</b> <b>${d}%</b>\n` +
+                    `• 🌐 <b>Micro-Grid:</b> <b>${g}%</b>\n\n` +
+                    `💾 Guardado en disco. El bot respetará estas cuotas para las próximas operaciones.`;
             }
             if (cmd === "/toggle_trailing" || cmd === "toggle_trailing") {
                 this.controls.strategies.trailing_rebound = !this.controls.strategies.trailing_rebound;

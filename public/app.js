@@ -263,6 +263,53 @@
 
   // ---------- ciclo de refresco (sin solapamiento) ----------
   
+  
+  // ---------- Presupuesto por Estrategia (Allocations) ----------
+  let latestFreeUsdt = 0;
+  let isDraggingSliders = false;
+
+  function updateBudgetSum() {
+    const sT = parseInt(document.getElementById("slider-trailing")?.value || "0", 10);
+    const sD = parseInt(document.getElementById("slider-dca")?.value || "0", 10);
+    const sG = parseInt(document.getElementById("slider-grid")?.value || "0", 10);
+
+    const sum = sT + sD + sG;
+    const badge = document.getElementById("budget-sum-badge");
+    const saveBtn = document.getElementById("btn-save-alloc");
+
+    if (badge) {
+      badge.textContent = sum + "%";
+      if (sum === 100) {
+        badge.className = "";
+        if (saveBtn) saveBtn.style.opacity = "1";
+      } else {
+        badge.className = "error";
+        badge.textContent = sum + "% (debe sumar 100%)";
+        if (saveBtn) saveBtn.style.opacity = "0.5";
+      }
+    }
+  }
+
+  async function saveAllocations(t, d, g) {
+    try {
+      const payload = { trailing: t, dca: d, grid: g };
+      const res = await fetch("/api/strategies/allocation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const btn = document.getElementById("btn-save-alloc");
+        if (btn) {
+          const oldTxt = btn.textContent;
+          btn.textContent = "✅ ¡Guardado!";
+          setTimeout(() => btn.textContent = oldTxt, 1500);
+        }
+        fetchStrategies();
+      }
+    } catch(e) {}
+  }
+
   // ---------- Orquestador Multi-Estrategia & Oportunidad Pendiente ----------
   let currentOpportunity = null;
 
@@ -286,6 +333,47 @@
       if (tTrailing && !tTrailing.matches(":focus")) tTrailing.checked = !!s.trailing_rebound;
       if (tDca && !tDca.matches(":focus")) tDca.checked = !!s.smart_dca;
       if (tGrid && !tGrid.matches(":focus")) tGrid.checked = !!s.micro_grid;
+
+      // Actualizar Presupuestos y Porcentajes
+      const a = c.allocations || { trailing_rebound: 50, smart_dca: 35, micro_grid: 15 };
+      const aT = a.trailing_rebound;
+      const aD = a.smart_dca;
+      const aG = a.micro_grid;
+
+      const tBadge = document.getElementById("alloc-trailing-badge");
+      const dBadge = document.getElementById("alloc-dca-badge");
+      const gBadge = document.getElementById("alloc-grid-badge");
+
+      const tBar = document.getElementById("alloc-trailing-bar");
+      const dBar = document.getElementById("alloc-dca-bar");
+      const gBar = document.getElementById("alloc-grid-bar");
+
+      const tAmt = document.getElementById("alloc-trailing-amount");
+      const dAmt = document.getElementById("alloc-dca-amount");
+      const gAmt = document.getElementById("alloc-grid-amount");
+
+      if (tBadge) tBadge.textContent = aT + "% Asignado";
+      if (dBadge) dBadge.textContent = aD + "% Asignado";
+      if (gBadge) gBadge.textContent = aG + "% Asignado";
+
+      if (tBar) tBar.style.width = aT + "%";
+      if (dBar) dBar.style.width = aD + "%";
+      if (gBar) gBar.style.width = aG + "%";
+
+      if (tAmt) tAmt.textContent = "~$" + (latestFreeUsdt * (aT / 100)).toFixed(2) + " USDT libres";
+      if (dAmt) dAmt.textContent = "~$" + (latestFreeUsdt * (aD / 100)).toFixed(2) + " USDT libres";
+      if (gAmt) gAmt.textContent = "~$" + (latestFreeUsdt * (aG / 100)).toFixed(2) + " USDT libres";
+
+      if (!isDraggingSliders) {
+        const sT = document.getElementById("slider-trailing");
+        const sD = document.getElementById("slider-dca");
+        const sG = document.getElementById("slider-grid");
+
+        if (sT) { sT.value = aT; document.getElementById("slider-trailing-val").textContent = aT + "%"; }
+        if (sD) { sD.value = aD; document.getElementById("slider-dca-val").textContent = aD + "%"; }
+        if (sG) { sG.value = aG; document.getElementById("slider-grid-val").textContent = aG + "%"; }
+        updateBudgetSum();
+      }
       if (tAuto && !tAuto.matches(":focus")) {
         tAuto.checked = !!c.autoPilot;
         if (modeLabel) modeLabel.textContent = c.autoPilot ? "🟢 Piloto Automático" : "🟡 Modo Manual";
@@ -349,6 +437,52 @@
 
   // Asignar eventos de botones una sola vez
   setTimeout(() => {
+
+    const sT = document.getElementById("slider-trailing");
+    const sD = document.getElementById("slider-dca");
+    const sG = document.getElementById("slider-grid");
+
+    const onSliderChange = () => {
+      isDraggingSliders = true;
+      if (sT) document.getElementById("slider-trailing-val").textContent = sT.value + "%";
+      if (sD) document.getElementById("slider-dca-val").textContent = sD.value + "%";
+      if (sG) document.getElementById("slider-grid-val").textContent = sG.value + "%";
+      updateBudgetSum();
+    };
+
+    const onSliderEnd = () => {
+      setTimeout(() => isDraggingSliders = false, 2000);
+    };
+
+    [sT, sD, sG].forEach(s => {
+      s?.addEventListener("input", onSliderChange);
+      s?.addEventListener("change", onSliderEnd);
+    });
+
+    document.getElementById("btn-save-alloc")?.addEventListener("click", () => {
+      const t = parseInt(sT?.value || "50", 10);
+      const d = parseInt(sD?.value || "35", 10);
+      const g = parseInt(sG?.value || "15", 10);
+      if (t + d + g === 100) {
+        saveAllocations(t, d, g);
+      } else {
+        alert("La suma debe ser exactamente 100%. Actualmente suma " + (t + d + g) + "%");
+      }
+    });
+
+    document.querySelectorAll(".btn-preset").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const t = parseInt(btn.dataset.t, 10);
+        const d = parseInt(btn.dataset.d, 10);
+        const g = parseInt(btn.dataset.g, 10);
+        if (sT) { sT.value = t; document.getElementById("slider-trailing-val").textContent = t + "%"; }
+        if (sD) { sD.value = d; document.getElementById("slider-dca-val").textContent = d + "%"; }
+        if (sG) { sG.value = g; document.getElementById("slider-grid-val").textContent = g + "%"; }
+        updateBudgetSum();
+        saveAllocations(t, d, g);
+      });
+    });
+
     document.getElementById("toggle-trailing")?.addEventListener("change", () => toggleStrategy("trailing_rebound"));
     document.getElementById("toggle-dca")?.addEventListener("change", () => toggleStrategy("smart_dca"));
     document.getElementById("toggle-grid")?.addEventListener("change", () => toggleStrategy("micro_grid"));
@@ -367,6 +501,7 @@
       clearTimeout(t);
       if (!res.ok) throw new Error(res.status);
       const d = await res.json();
+      latestFreeUsdt = (d.portfolio?.usdtFree ?? 0) + (d.portfolio?.usdtEarn ?? 0);
       renderAuthBanner(d.authError);
       renderKpis(d);
       renderPositions(d.positions);

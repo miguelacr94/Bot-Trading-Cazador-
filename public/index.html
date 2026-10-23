@@ -746,6 +746,128 @@
     input:checked + .slider { background-color: #10B981; }
     input:checked + .slider:before { transform: translateX(20px); }
   
+  
+    .strategy-alloc-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+    .alloc-badge {
+      font-weight: 700;
+      color: #38BDF8;
+      background: rgba(56, 189, 248, 0.15);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .alloc-amount {
+      color: #94A3B8;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .alloc-bar-bg {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .alloc-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .alloc-bar-fill.green { background: #10B981; }
+    .alloc-bar-fill.blue { background: #38BDF8; }
+    .alloc-bar-fill.purple { background: #A855F7; }
+
+    .budget-allocation-hub {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .budget-hub-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 14px;
+    }
+    #budget-sum-badge {
+      color: #34D399;
+      background: rgba(16, 185, 129, 0.2);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+    }
+    #budget-sum-badge.error {
+      color: #F87171;
+      background: rgba(244, 63, 94, 0.2);
+    }
+    .btn-save-alloc {
+      cursor: pointer;
+      background: #10B981;
+      color: white;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      transition: all 0.2s;
+    }
+    .btn-save-alloc:hover {
+      background: #059669;
+      transform: scale(1.02);
+    }
+    .sliders-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .slider-box {
+      background: rgba(0, 0, 0, 0.25);
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+    }
+    .slider-box label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #E2E8F0;
+      margin-bottom: 6px;
+    }
+    .slider-box input[type="range"] {
+      width: 100%;
+      accent-color: #10B981;
+      cursor: pointer;
+    }
+    .preset-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-preset {
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: #94A3B8;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-preset:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #FFFFFF;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
   </style>
 </head>
 <body>
@@ -815,6 +937,11 @@
           <div class="strategy-info">
             <div class="strategy-name">🏹 1. Cazador Trailing</div>
             <div class="strategy-desc">Trailing Buy en piso + Trailing Take Profit en cima (+0.8% a +3.5%)</div>
+            <div class="strategy-alloc-row">
+              <span class="alloc-badge" id="alloc-trailing-badge">50% Asignado</span>
+              <span class="alloc-amount" id="alloc-trailing-amount">-- USDT libres</span>
+            </div>
+            <div class="alloc-bar-bg"><div class="alloc-bar-fill green" id="alloc-trailing-bar" style="width:50%;"></div></div>
           </div>
           <label class="switch">
             <input type="checkbox" id="toggle-trailing" checked>
@@ -825,6 +952,11 @@
           <div class="strategy-info">
             <div class="strategy-name">🛡️ 2. Smart DCA (Seguridad)</div>
             <div class="strategy-desc">Promedia caídas en soporte (≥ 2.5%) para salir antes con ganancia</div>
+            <div class="strategy-alloc-row">
+              <span class="alloc-badge" id="alloc-dca-badge" style="color:#A855F7; background:rgba(168,85,247,0.15);">35% Asignado</span>
+              <span class="alloc-amount" id="alloc-dca-amount">-- USDT libres</span>
+            </div>
+            <div class="alloc-bar-bg"><div class="alloc-bar-fill purple" id="alloc-dca-bar" style="width:35%;"></div></div>
           </div>
           <label class="switch">
             <input type="checkbox" id="toggle-dca" checked>
@@ -835,11 +967,43 @@
           <div class="strategy-info">
             <div class="strategy-name">🌐 3. Micro-Grid (Rango)</div>
             <div class="strategy-desc">Malla de compras y ventas rápidas en mercados laterales planos</div>
+            <div class="strategy-alloc-row">
+              <span class="alloc-badge" id="alloc-grid-badge" style="color:#06B6D4; background:rgba(6,182,212,0.15);">15% Asignado</span>
+              <span class="alloc-amount" id="alloc-grid-amount">-- USDT libres</span>
+            </div>
+            <div class="alloc-bar-bg"><div class="alloc-bar-fill blue" id="alloc-grid-bar" style="width:15%;"></div></div>
           </div>
           <label class="switch">
             <input type="checkbox" id="toggle-grid">
             <span class="slider"></span>
           </label>
+        </div>
+      </div>
+
+      <!-- Interactive Budget Allocator -->
+      <div class="budget-allocation-hub">
+        <div class="budget-hub-title">
+          <span>📊 Presupuesto por Estrategia (Total: <span id="budget-sum-badge">100%</span>)</span>
+          <button id="btn-save-alloc" class="btn-save-alloc">💾 Guardar Porcentajes</button>
+        </div>
+        <div class="sliders-row">
+          <div class="slider-box">
+            <label><span>🏹 Trailing</span> <b id="slider-trailing-val">50%</b></label>
+            <input type="range" id="slider-trailing" min="0" max="100" step="5" value="50">
+          </div>
+          <div class="slider-box">
+            <label><span>🛡️ Smart DCA</span> <b id="slider-dca-val">35%</b></label>
+            <input type="range" id="slider-dca" min="0" max="100" step="5" value="35">
+          </div>
+          <div class="slider-box">
+            <label><span>🌐 Micro-Grid</span> <b id="slider-grid-val">15%</b></label>
+            <input type="range" id="slider-grid" min="0" max="100" step="5" value="15">
+          </div>
+        </div>
+        <div class="preset-buttons">
+          <button class="btn-preset" data-t="50" data-d="35" data-g="15">⚡ Balanceado (50 / 35 / 15)</button>
+          <button class="btn-preset" data-t="33" data-d="33" data-g="34">⚖️ Equitativo (33 / 33 / 34)</button>
+          <button class="btn-preset" data-t="70" data-d="30" data-g="0">🚀 Caza Rápida (70 / 30 / 0)</button>
         </div>
       </div>
     </div>
