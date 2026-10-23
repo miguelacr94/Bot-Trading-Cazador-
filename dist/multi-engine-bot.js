@@ -57,6 +57,44 @@ export class TrailingMasterBot {
     /**
      * Margen de retroceso (Callback) adaptado a la volatilidad de cada par.
      */
+    isNightMode() {
+        try {
+            const hour = new Date().toLocaleString("en-US", { timeZone: "America/Bogota", hour: "numeric", hour12: false });
+            const h = parseInt(hour, 10);
+            return h >= 1 && h < 6;
+        }
+        catch {
+            return false;
+        }
+    }
+    getHardCapPct() {
+        return this.isNightMode() ? 5.0 : 3.5;
+    }
+    async getFearAndGreed() {
+        try {
+            const res = await fetch("https://api.alternative.me/fng/?limit=1");
+            const d = await res.json();
+            const item = d.data?.[0];
+            if (item) {
+                return { value: parseInt(item.value, 10), classification: item.value_classification };
+            }
+        }
+        catch (e) { }
+        return { value: 50, classification: "Neutral" };
+    }
+    async depositToEarn(asset, amount) {
+        try {
+            await this.client.subscribeFlexibleProduct("USDT001", amount.toFixed(2), { recvWindow: 60000 });
+            await this.notifier.send(`🏦 <b>[BÓVEDA DE GANANCIAS ACTIVADA]</b> 🔒\n\n` +
+                `• Se apartaron <b>+${amount.toFixed(2)} USDT</b> limpios de la ganancia.\n` +
+                `• Destino: <b>Simple Earn Flexible</b> generando intereses diarios automáticos.\n` +
+                `💡 <i>¡Tu ganancia quedó blindada fuera del riesgo de mercado!</i>`);
+            console.log(`🏦 Bóveda de ganancias: ${amount.toFixed(2)} USDT transferidos a Simple Earn.`);
+        }
+        catch (e) {
+            console.error("Error suscribiendo a Earn:", e.response?.data?.msg || e.message);
+        }
+    }
     getCallbackPct(symbol) {
         if (symbol.includes("PEPE"))
             return 0.55; // Mayor margen para posición viva de PEPE
@@ -587,7 +625,37 @@ export class TrailingMasterBot {
                 `🛡️ <i>${hitHardCap ? "Meta máxima de +3.5% alcanzada." : "Venta óptima capturada en la cima del rebote."}</i>\n` +
                 `📊 <i>Escribe /reporte para ver el acumulado real.</i>`;
             await this.notifier.send(alertMsg);
-            console.log(alertMsg.replace(/<[^>]*>/g, "").replace(/<\/?i>/g, ""));
+            console.log(alertMsg.replace(/<[^>]*>/g, ""));
+            // 1. Chart Snapshot para Telegram
+            try {
+                const chartUrl = `https://quickchart.io/chart?w=500&h=250&devicePixelRatio=2&c=` + encodeURIComponent(JSON.stringify({
+                    type: "line",
+                    data: {
+                        labels: ["Entrada", "Suelo", "Subida", "Pico Máx", "Venta Exitosa"],
+                        datasets: [{
+                                label: pos.symbol,
+                                data: [pos.buyPrice, pos.buyPrice * 0.998, (pos.buyPrice + pos.highestPrice) / 2, pos.highestPrice, avgSell],
+                                borderColor: profitUsdt >= 0 ? "#10B981" : "#F43F5E",
+                                backgroundColor: profitUsdt >= 0 ? "rgba(16,185,129,0.1)" : "rgba(244,63,94,0.1)",
+                                fill: true,
+                                tension: 0.3
+                            }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } },
+                        scales: { x: { grid: { color: "rgba(255,255,255,0.05)" } }, y: { grid: { color: "rgba(255,255,255,0.05)" } } }
+                    }
+                }));
+                await this.notifier.sendPhoto(chartUrl, `📊 <b>Gráfico de Salida en la Cima: ${pos.symbol}</b> (+${profitUsdt.toFixed(2)} USDT)`);
+            }
+            catch (e) { }
+            // 2. Bóveda Automática de Ganancias (25% a Simple Earn)
+            if (profitUsdt >= 0.50) {
+                const vaultAmt = Math.floor(profitUsdt * 0.25 * 100) / 100;
+                if (vaultAmt >= 0.10) {
+                    await this.depositToEarn("USDT", vaultAmt);
+                }
+            }
             return true;
         }
         catch (e) {

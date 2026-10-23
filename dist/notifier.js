@@ -25,4 +25,24 @@ export class TelegramNotifier {
             console.error('⚠️ Error enviando notificación a Telegram:', error.message);
         }
     }
+    async sendPhoto(photoUrl, caption) {
+        if (!this.botToken || !this.chatId)
+            return;
+        try {
+            const url = `https://api.telegram.org/bot${this.botToken}/sendPhoto`;
+            await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: this.chatId,
+                    photo: photoUrl,
+                    caption: caption || '',
+                    parse_mode: 'HTML',
+                }),
+            });
+        }
+        catch (error) {
+            console.error('⚠️ Error enviando foto a Telegram:', error.message);
+        }
+    }
 }

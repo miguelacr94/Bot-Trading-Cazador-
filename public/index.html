@@ -868,6 +868,109 @@
       border-color: rgba(255, 255, 255, 0.2);
     }
 
+  
+    .fng-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: #FBBF24;
+    }
+    .night-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(168, 85, 247, 0.15);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      color: #C084FC;
+    }
+    .compound-card {
+      margin-bottom: 24px;
+      padding: 20px 24px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(6, 182, 212, 0.04) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      backdrop-filter: blur(12px);
+    }
+    .compound-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .compound-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+    .compound-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: #34D399;
+      background: rgba(16, 185, 129, 0.2);
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+    .vault-mini-badge {
+      font-size: 12px;
+      color: #CBD5E1;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+    }
+    .vault-mini-badge b { color: #38BDF8; font-family: var(--font-mono); }
+    .compound-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .compound-item {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .compound-item.highlight {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.06);
+    }
+    .compound-period {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94A3B8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .compound-val-usdt {
+      font-size: 18px;
+      font-weight: 800;
+      color: #10B981;
+      font-family: var(--font-mono);
+    }
+    .compound-val-cop {
+      font-size: 12px;
+      color: #64748B;
+      font-family: var(--font-mono);
+    }
+
   </style>
 </head>
 <body>
@@ -883,6 +986,13 @@
         </div>
       </div>
       <div class="header-actions">
+        
+        <div class="fng-pill" id="fng-pill" title="Crypto Fear & Greed Index">
+          <span>🌡️</span> <span id="fng-text">50 Neutral</span>
+        </div>
+        <div class="night-pill" id="night-pill" style="display:none;" title="Modo Cazador Nocturno (1 AM - 6 AM COT)">
+          <span>🌙 Modo Nocturno</span>
+        </div>
         <div class="status-pill" id="status-pill">
           <div class="pulse-dot"></div>
           <span id="system-status">CONECTANDO…</span>
@@ -1004,6 +1114,37 @@
           <button class="btn-preset" data-t="50" data-d="35" data-g="15">⚡ Balanceado (50 / 35 / 15)</button>
           <button class="btn-preset" data-t="33" data-d="33" data-g="34">⚖️ Equitativo (33 / 33 / 34)</button>
           <button class="btn-preset" data-t="70" data-d="30" data-g="0">🚀 Caza Rápida (70 / 30 / 0)</button>
+        </div>
+      </div>
+    </div>
+
+    
+    <!-- Compound Growth Projector Card -->
+    <div class="compound-card" id="compound-card">
+      <div class="compound-header">
+        <div class="compound-title">
+          <span>🚀 Proyector de Interés Compuesto</span>
+          <span class="compound-tag" id="compound-rate-tag">Calculando proyección…</span>
+        </div>
+        <div class="vault-mini-badge" id="vault-mini-badge" title="Saldo blindado en Bóveda Simple Earn">
+          <span>🏦 Bóveda Earn:</span> <b id="vault-amount">zsh.00 USDT</b>
+        </div>
+      </div>
+      <div class="compound-grid">
+        <div class="compound-item">
+          <div class="compound-period">📅 En 30 Días</div>
+          <div class="compound-val-usdt" id="proj-30d-usdt">+0.00 USDT</div>
+          <div class="compound-val-cop" id="proj-30d-cop">≈ zsh COP</div>
+        </div>
+        <div class="compound-item">
+          <div class="compound-period">📅 En 60 Días</div>
+          <div class="compound-val-usdt" id="proj-60d-usdt">+0.00 USDT</div>
+          <div class="compound-val-cop" id="proj-60d-cop">≈ zsh COP</div>
+        </div>
+        <div class="compound-item highlight">
+          <div class="compound-period">🎯 En 90 Días</div>
+          <div class="compound-val-usdt" id="proj-90d-usdt">+0.00 USDT</div>
+          <div class="compound-val-cop" id="proj-90d-cop">≈ zsh COP</div>
         </div>
       </div>
     </div>

@@ -66,6 +66,37 @@
       setText($("kpi-realized-cop"), `≈ ${s}$${cop(perf.totalPnlCop)} COP acumulados`);
       setText($("kpi-winrate"), `${perf.winRate}% Win Rate`);
       setText($("kpi-cycles-num"), `${perf.wins}`);
+
+    // Render Fear & Greed
+    const fng = d.marketSentiment;
+    if (fng) {
+      const fngEl = $("fng-text");
+      if (fngEl) fngEl.textContent = `${fng.value} ${fng.classification}`;
+      const fngPill = $("fng-pill");
+      if (fngPill) {
+        fngPill.style.color = fng.value <= 30 ? "#F87171" : fng.value >= 70 ? "#34D399" : "#FBBF24";
+      }
+    }
+
+    // Render Night Mode Pill
+    const nightEl = $("night-pill");
+    if (nightEl) nightEl.style.display = d.nightMode ? "inline-flex" : "none";
+
+    // Render Vault Amount
+    const vEl = $("vault-amount");
+    if (vEl && pf) vEl.textContent = `${fmt(pf.usdtEarn || 0)} USDT`;
+
+    // Render Compound Projections
+    const proj = d.projections;
+    if (proj) {
+      setText($("compound-rate-tag"), `+${fmt(proj.dailyAvgUsdt)} USDT/día prom.`);
+      setText($("proj-30d-usdt"), `+${fmt(proj.p30dUsdt)} USDT`);
+      setText($("proj-30d-cop"), `≈ +${cop(proj.p30dCop)} COP`);
+      setText($("proj-60d-usdt"), `+${fmt(proj.p60dUsdt)} USDT`);
+      setText($("proj-60d-cop"), `≈ +${cop(proj.p60dCop)} COP`);
+      setText($("proj-90d-usdt"), `+${fmt(proj.p90dUsdt)} USDT`);
+      setText($("proj-90d-cop"), `≈ +${cop(proj.p90dCop)} COP`);
+    }
       setText($("kpi-cycles-total"), `de ${perf.cyclesCount} ganados`);
       setText($("kpi-losses"), `${perf.losses} operaciones perdidas`);
     }

@@ -28,6 +28,7 @@ export class DashboardServer {
     lastPriceOk = 0;
     authError = null;
     busy = {};
+    fng = null;
     constructor(port = PORT) {
         this.port = port;
         this.publicDir = path.resolve(process.cwd(), "public");
@@ -193,6 +194,31 @@ export class DashboardServer {
             return 100;
         return 100 - (100 / (1 + avgGain / avgLoss));
     }
+    isNightMode() {
+        try {
+            const hour = new Date().toLocaleString("en-US", { timeZone: "America/Bogota", hour: "numeric", hour12: false });
+            const h = parseInt(hour, 10);
+            return h >= 1 && h < 6;
+        }
+        catch {
+            return false;
+        }
+    }
+    async refreshFng() {
+        try {
+            const res = await fetch("https://api.alternative.me/fng/?limit=1");
+            const d = await res.json();
+            const item = d.data?.[0];
+            if (item) {
+                this.fng = {
+                    value: parseInt(item.value, 10),
+                    classification: item.value_classification,
+                    updatedAt: Date.now()
+                };
+            }
+        }
+        catch (e) { }
+    }
     getCallbackPct(symbol) {
         if (symbol.includes("PEPE"))
             return 0.55;
@@ -274,6 +300,24 @@ export class DashboardServer {
                 cyclesCount: p.cycles.length,
                 winRate: p.cycles.length ? Math.round((p.wins / p.cycles.length) * 100) : 100
             } : null,
+            marketSentiment: this.fng || { value: 50, classification: "Neutral", updatedAt: Date.now() },
+            nightMode: this.isNightMode(),
+            projections: p && p.cycles.length > 0 ? (() => {
+                const firstTime = p.cycles[0].time || (Date.now() - 7 * 86400 * 1000);
+                const days = Math.max(1, (Date.now() - firstTime) / (86400 * 1000));
+                const dailyRunRate = Math.max(0.1, p.totalPnl / days);
+                return {
+                    daysTracked: Math.round(days),
+                    dailyAvgUsdt: dailyRunRate,
+                    dailyAvgCop: dailyRunRate * COP_PER_USDT,
+                    p30dUsdt: dailyRunRate * 30,
+                    p30dCop: dailyRunRate * 30 * COP_PER_USDT,
+                    p60dUsdt: dailyRunRate * 60,
+                    p60dCop: dailyRunRate * 60 * COP_PER_USDT,
+                    p90dUsdt: dailyRunRate * 90,
+                    p90dCop: dailyRunRate * 90 * COP_PER_USDT
+                };
+            })() : null,
             recentCycles: p ? p.cycles.slice(-15).reverse() : null
         };
     }
@@ -286,6 +330,7 @@ export class DashboardServer {
         every("prices", 2000, () => this.refreshPrices());
         every("account", 15000, () => this.refreshAccount());
         every("radar", 60000, () => this.refreshRadar());
+        every("fng", 300000, () => this.refreshFng());
         every("pnl", 30000, () => this.pnl && !this.authError ? Promise.resolve() : this.refreshPnl());
         every("pnlFull", 120000, () => this.refreshPnl());
     }
