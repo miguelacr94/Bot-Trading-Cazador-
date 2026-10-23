@@ -203,6 +203,14 @@ export class TrailingMasterBot {
     async checkTrailingPositions() {
         for (const [symbol, pos] of this.activeTrailingPositions.entries()) {
             try {
+                const asset = symbol.replace("USDT", "");
+                const freeBal = await this.getFreeBalance(asset);
+                if (freeBal < pos.qty * 0.1) {
+                    console.log("🧹 " + symbol + " ya fue vendida en Binance (saldo cero). Retirando de memoria.");
+                    this.activeTrailingPositions.delete(symbol);
+                    this.saveTrailingPositions();
+                    continue;
+                }
                 const ticker = await this.client.tickerPrice(symbol);
                 const curPrice = parseFloat(ticker.data.price);
                 const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
@@ -231,8 +239,8 @@ export class TrailingMasterBot {
                         const stopPrice = curPrice * (1 - callback / 100);
                         const minLockedGain = ((stopPrice - pos.buyPrice) / pos.buyPrice) * 100;
                         const peakAlert = `📈 <b>¡NUEVO PICO ALCANZADO: ${symbol}!</b> 🚀\n\n` +
-                            `• <b>Nuevo techo:</b> ${curPrice.toFixed(4)} (<b>+${gainPct.toFixed(2)}%</b>)\n` +
-                            `• 🛡️ <b>Nuevo piso de venta garantizado:</b> ${stopPrice.toFixed(4)}\n` +
+                            `• <b>Nuevo techo:</b> ${fmtPrice(curPrice)} (<b>+${gainPct.toFixed(2)}%</b>)\n` +
+                            `• 🛡️ <b>Nuevo piso de venta garantizado:</b> ${fmtPrice(stopPrice)}\n` +
                             `• 💵 <b>Ganancia amarrada:</b> +${minLockedGain.toFixed(2)}% NETO\n\n` +
                             `🏹 <i>El bot sigue persiguiendo la cima hacia arriba...</i>`;
                         await this.notifier.send(peakAlert);
