@@ -1,0 +1,10 @@
+{
+  "strategies": {
+    "trailing_rebound": true,
+    "smart_dca": true,
+    "micro_grid": false
+  },
+  "autoPilot": true,
+  "approvalTimeoutSec": 180,
+  "updatedAt": 1792770674268
+}

@@ -21,6 +21,9 @@ export class TelegramCommands {
       // Registrar menú de comandos en Telegram
       const commands = [
         { command: "menu", description: "📋 Lista completa de comandos" },
+        { command: "estrategias", description: "⚙️ Ver y alternar motores activos (Trailing, DCA, Grid)" },
+        { command: "aprobar", description: "✅ Aprobar oportunidad recomendada pendiente" },
+        { command: "ignorar", description: "❌ Descartar oportunidad pendiente" },
         { command: "informe", description: "📑 Diagnóstico completo en tiempo real" },
         { command: "trailing", description: "🏹 Posiciones activas rastreando el pico" },
         { command: "cazando", description: "🔻 Trailing Buy: monedas cazando el piso" },
@@ -28,9 +31,6 @@ export class TelegramCommands {
         { command: "estado", description: "📊 Órdenes activas y precios en Binance" },
         { command: "radar", description: "📡 Escáner de suelos y RSI en tiempo real" },
         { command: "balance", description: "💼 Consultar saldos en Binance Spot" },
-        { command: "motores", description: "⚙️ Estrategias y parámetros activos" },
-        { command: "comprar", description: "🛒 Comprar cripto (ej: /comprar eth 20)" },
-        { command: "vender", description: "🚨 Venta inmediata por mercado (ej: /vender sol)" },
         { command: "modo", description: "🤖 Ver o cambiar modo (/modo auto | manual)" },
         { command: "pausa", description: "⏸️ Pausar compras automáticas" },
         { command: "reanudar", description: "▶️ Reanudar compras automáticas" }

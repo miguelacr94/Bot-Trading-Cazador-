@@ -304,6 +304,73 @@ export class DashboardServer {
                 }
                 return;
             }
+            if (parsedUrl.pathname === "/api/strategies" && req.method === "GET") {
+                try {
+                    const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+                    const oppFile = path.resolve(process.cwd(), ".pending-opportunity.json");
+                    const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {
+                        strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false },
+                        autoPilot: true,
+                        approvalTimeoutSec: 180
+                    };
+                    const pending = fs.existsSync(oppFile) ? JSON.parse(fs.readFileSync(oppFile, "utf-8")) : null;
+                    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+                    res.end(JSON.stringify({ controls, pendingOpportunity: pending, serverTime: Date.now() }));
+                }
+                catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+                return;
+            }
+            if (parsedUrl.pathname === "/api/strategies/toggle" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => body += chunk);
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+                        const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {
+                            strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false },
+                            autoPilot: true,
+                            approvalTimeoutSec: 180
+                        };
+                        if (data.strategy && controls.strategies[data.strategy] !== undefined) {
+                            controls.strategies[data.strategy] = !controls.strategies[data.strategy];
+                        }
+                        else if (data.autoPilot !== undefined) {
+                            controls.autoPilot = !!data.autoPilot;
+                        }
+                        controls.updatedAt = Date.now();
+                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                        res.end(JSON.stringify({ success: true, controls }));
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            if (parsedUrl.pathname === "/api/opportunity/action" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => body += chunk);
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const actionFile = path.resolve(process.cwd(), ".opportunity-action.json");
+                        fs.writeFileSync(actionFile, JSON.stringify({ action: data.action, time: Date.now() }, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                        res.end(JSON.stringify({ success: true }));
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
             const rel = parsedUrl.pathname === "/" ? "index.html" : parsedUrl.pathname.replace(/^\/+/, "");
             const filePath = path.resolve(this.publicDir, rel);
             if (filePath.startsWith(this.publicDir) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {

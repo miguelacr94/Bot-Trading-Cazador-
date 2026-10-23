@@ -527,6 +527,225 @@
       font-size: 12px;
       border-top: 1px solid var(--border-subtle);
     }
+  
+    /* Opportunity Alert Card */
+    .opportunity-card {
+      margin-bottom: 24px;
+      padding: 20px 24px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.08) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      box-shadow: 0 8px 32px rgba(245, 158, 11, 0.15);
+      animation: pulse-glow 3s infinite alternate;
+    }
+    @keyframes pulse-glow {
+      from { box-shadow: 0 4px 20px rgba(245, 158, 11, 0.1); }
+      to { box-shadow: 0 8px 35px rgba(245, 158, 11, 0.25); }
+    }
+    .opp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .opp-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(245, 158, 11, 0.25);
+      color: #FCD34D;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .opp-timer {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      color: #FBBF24;
+      background: rgba(0,0,0,0.3);
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+    .opp-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .opp-title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .opp-symbol {
+      font-size: 22px;
+      font-weight: 800;
+      color: #FFFFFF;
+    }
+    .opp-strategy-tag {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34D399;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .opp-reason {
+      color: #E2E8F0;
+      font-size: 14px;
+      line-height: 1.5;
+      margin: 4px 0 12px 0;
+    }
+    .opp-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .btn-opp {
+      cursor: pointer;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 13px;
+      border: none;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-approve {
+      background: #10B981;
+      color: #FFFFFF;
+    }
+    .btn-approve:hover {
+      background: #059669;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+    }
+    .btn-ignore {
+      background: rgba(255, 255, 255, 0.08);
+      color: #CBD5E1;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .btn-ignore:hover {
+      background: rgba(244, 63, 94, 0.2);
+      border-color: rgba(244, 63, 94, 0.4);
+      color: #FDA4AF;
+    }
+    .opp-footnote {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #94A3B8;
+      font-style: italic;
+    }
+
+    /* Strategy Control Hub */
+    .strategy-hub-card {
+      margin-bottom: 24px;
+      padding: 20px 24px;
+      border-radius: 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(12px);
+    }
+    .hub-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .hub-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+    .hub-icon { font-size: 18px; }
+    .hub-mode-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hub-mode-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .strategies-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .strategy-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      transition: all 0.2s ease;
+    }
+    .strategy-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+    .strategy-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-right: 12px;
+    }
+    .strategy-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+    .strategy-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.4;
+    }
+
+    /* Switch Toggles */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(255, 255, 255, 0.15);
+      transition: .3s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: #10B981; }
+    input:checked + .slider:before { transform: translateX(20px); }
+  
   </style>
 </head>
 <body>
@@ -554,6 +773,75 @@
       🔒 <b>Binance rechazó la conexión privada:</b> <code id="auth-banner-msg"></code><br>
       Saldo, ganancias e historial no se pueden leer desde esta máquina. Los precios sí se actualizan.
       Normalmente es porque la IP de este equipo no está en la lista blanca de tu API Key.
+    </div>
+
+    <!-- Live Pending Opportunity Alert -->
+    <div id="opportunity-card" class="opportunity-card" style="display:none;">
+      <div class="opp-header">
+        <div class="opp-badge">⚡ OPORTUNIDAD RECOMENDADA</div>
+        <div class="opp-timer" id="opp-countdown">⏱️ 02:45 restantes</div>
+      </div>
+      <div class="opp-body">
+        <div class="opp-title-row">
+          <div class="opp-symbol" id="opp-symbol">SOLUSDT</div>
+          <div class="opp-strategy-tag" id="opp-strategy">Smart DCA (Promediado de Seguridad)</div>
+        </div>
+        <p class="opp-reason" id="opp-reason">Cayó en soporte clave. Inyectar orden de seguridad bajará el precio promedio de entrada.</p>
+        <div class="opp-actions">
+          <button id="btn-opp-approve" class="btn-opp btn-approve">✅ Aprobar y Ejecutar</button>
+          <button id="btn-opp-ignore" class="btn-opp btn-ignore">❌ Ignorar</button>
+        </div>
+      </div>
+      <div class="opp-footnote">🤖 Modo Autónomo: Si no respondes antes del tiempo límite, el bot ejecutará automáticamente la oportunidad recomendada.</div>
+    </div>
+
+    <!-- Strategy Control Hub -->
+    <div class="strategy-hub-card">
+      <div class="hub-header">
+        <div class="hub-title">
+          <span class="hub-icon">⚙️</span>
+          <span>Orquestador Multi-Estrategia</span>
+        </div>
+        <div class="hub-mode-toggle">
+          <span class="hub-mode-label" id="mode-label">🟢 Piloto Automático</span>
+          <label class="switch">
+            <input type="checkbox" id="toggle-autopilot" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="strategies-grid">
+        <div class="strategy-item">
+          <div class="strategy-info">
+            <div class="strategy-name">🏹 1. Cazador Trailing</div>
+            <div class="strategy-desc">Trailing Buy en piso + Trailing Take Profit en cima (+0.8% a +3.5%)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-trailing" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="strategy-item">
+          <div class="strategy-info">
+            <div class="strategy-name">🛡️ 2. Smart DCA (Seguridad)</div>
+            <div class="strategy-desc">Promedia caídas en soporte (≥ 2.5%) para salir antes con ganancia</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-dca" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="strategy-item">
+          <div class="strategy-info">
+            <div class="strategy-name">🌐 3. Micro-Grid (Rango)</div>
+            <div class="strategy-desc">Malla de compras y ventas rápidas en mercados laterales planos</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-grid">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
     </div>
 
     <!-- KPI Summary Grid -->

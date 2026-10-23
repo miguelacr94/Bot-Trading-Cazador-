@@ -262,7 +262,104 @@
   }
 
   // ---------- ciclo de refresco (sin solapamiento) ----------
+  
+  // ---------- Orquestador Multi-Estrategia & Oportunidad Pendiente ----------
+  let currentOpportunity = null;
+
+  async function fetchStrategies() {
+    try {
+      const res = await fetch("/api/strategies", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !data.controls) return;
+
+      const c = data.controls;
+      const s = c.strategies || {};
+
+      // Actualizar toggles sólo si el usuario no los está arrastrando en este milisegundo
+      const tTrailing = document.getElementById("toggle-trailing");
+      const tDca = document.getElementById("toggle-dca");
+      const tGrid = document.getElementById("toggle-grid");
+      const tAuto = document.getElementById("toggle-autopilot");
+      const modeLabel = document.getElementById("mode-label");
+
+      if (tTrailing && !tTrailing.matches(":focus")) tTrailing.checked = !!s.trailing_rebound;
+      if (tDca && !tDca.matches(":focus")) tDca.checked = !!s.smart_dca;
+      if (tGrid && !tGrid.matches(":focus")) tGrid.checked = !!s.micro_grid;
+      if (tAuto && !tAuto.matches(":focus")) {
+        tAuto.checked = !!c.autoPilot;
+        if (modeLabel) modeLabel.textContent = c.autoPilot ? "🟢 Piloto Automático" : "🟡 Modo Manual";
+      }
+
+      // Oportunidad pendiente
+      const oppCard = document.getElementById("opportunity-card");
+      const opp = data.pendingOpportunity;
+      currentOpportunity = opp;
+
+      if (opp && oppCard) {
+        oppCard.style.display = "block";
+        const symEl = document.getElementById("opp-symbol");
+        const stratEl = document.getElementById("opp-strategy");
+        const reasonEl = document.getElementById("opp-reason");
+        const timerEl = document.getElementById("opp-countdown");
+
+        if (symEl) symEl.textContent = opp.symbol;
+        if (stratEl) stratEl.textContent = opp.strategyName;
+        if (reasonEl) reasonEl.textContent = opp.reason;
+
+        const remMs = Math.max(0, opp.expiresAt - (data.serverTime || Date.now()));
+        const remSec = Math.floor(remMs / 1000);
+        const mins = Math.floor(remSec / 60);
+        const secs = remSec % 60;
+        if (timerEl) {
+          timerEl.textContent = `⏱️ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')} restantes`;
+        }
+      } else if (oppCard) {
+        oppCard.style.display = "none";
+      }
+    } catch (e) {}
+  }
+
+  // Enviar cambio de estrategia al backend
+  async function toggleStrategy(key, isAutoPilot = false) {
+    try {
+      const payload = isAutoPilot ? { autoPilot: document.getElementById("toggle-autopilot").checked } : { strategy: key };
+      await fetch("/api/strategies/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      fetchStrategies();
+    } catch(e) {}
+  }
+
+  // Enviar acción sobre oportunidad pendiente
+  async function handleOpportunityAction(action) {
+    try {
+      const oppCard = document.getElementById("opportunity-card");
+      if (oppCard) oppCard.style.display = "none";
+      await fetch("/api/opportunity/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action })
+      });
+      setTimeout(fetchStrategies, 500);
+    } catch(e) {}
+  }
+
+  // Asignar eventos de botones una sola vez
+  setTimeout(() => {
+    document.getElementById("toggle-trailing")?.addEventListener("change", () => toggleStrategy("trailing_rebound"));
+    document.getElementById("toggle-dca")?.addEventListener("change", () => toggleStrategy("smart_dca"));
+    document.getElementById("toggle-grid")?.addEventListener("change", () => toggleStrategy("micro_grid"));
+    document.getElementById("toggle-autopilot")?.addEventListener("change", () => toggleStrategy(null, true));
+
+    document.getElementById("btn-opp-approve")?.addEventListener("click", () => handleOpportunityAction("approve"));
+    document.getElementById("btn-opp-ignore")?.addEventListener("click", () => handleOpportunityAction("ignore"));
+  }, 1000);
+
   async function tick() {
+    fetchStrategies();
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 5000);

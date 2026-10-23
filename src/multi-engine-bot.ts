@@ -50,9 +50,46 @@ interface ActivePosition {
   highestPrice: number;
   activated: boolean;
   buyTime: number;
+  lastDcaTime?: number;
+  dcaCount?: number;
+}
+
+export interface StrategyControls {
+  strategies: {
+    trailing_rebound: boolean;
+    smart_dca: boolean;
+    micro_grid: boolean;
+  };
+  autoPilot: boolean;
+  approvalTimeoutSec: number;
+  updatedAt: number;
+}
+
+export interface PendingOpportunity {
+  id: string;
+  symbol: string;
+  strategy: "trailing_rebound" | "smart_dca" | "micro_grid";
+  strategyName: string;
+  reason: string;
+  amount: number;
+  curPrice: number;
+  potentialTarget?: string;
+  createdAt: number;
+  expiresAt: number;
 }
 
 export class TrailingMasterBot {
+  private controls: StrategyControls = {
+    strategies: {
+      trailing_rebound: true,
+      smart_dca: true,
+      micro_grid: false
+    },
+    autoPilot: true,
+    approvalTimeoutSec: 180,
+    updatedAt: Date.now()
+  };
+  private pendingOpportunity: PendingOpportunity | null = null;
   private client: any;
   private notifier: TelegramNotifier;
   private telegramCommands: TelegramCommands;
@@ -144,6 +181,8 @@ export class TrailingMasterBot {
     this.telegramCommands = new TelegramCommands((cmd) => this.handleTelegramCommand(cmd));
     this.loadTrailingPositions();
     this.loadBuyWatches();
+    this.loadStrategyControls();
+    this.loadPendingOpportunity();
     this.dashboardServer = new DashboardServer();
     this.dashboardServer.start();
   }
@@ -154,6 +193,235 @@ export class TrailingMasterBot {
     } catch(e: any) {
       console.error("Error guardando trailing buys:", e.message);
     }
+  }
+
+  private loadStrategyControls() {
+    try {
+      const file = path.resolve(process.cwd(), ".strategy-controls.json");
+      if (fs.existsSync(file)) {
+        this.controls = JSON.parse(fs.readFileSync(file, "utf-8"));
+        this.autoPilot = this.controls.autoPilot;
+      }
+    } catch(e: any) {
+      console.error("Error cargando strategy controls:", e.message);
+    }
+  }
+
+  private saveStrategyControls() {
+    try {
+      this.controls.updatedAt = Date.now();
+      this.controls.autoPilot = this.autoPilot;
+      fs.writeFileSync(path.resolve(process.cwd(), ".strategy-controls.json"), JSON.stringify(this.controls, null, 2));
+    } catch(e: any) {
+      console.error("Error guardando strategy controls:", e.message);
+    }
+  }
+
+  private loadPendingOpportunity() {
+    try {
+      const file = path.resolve(process.cwd(), ".pending-opportunity.json");
+      if (fs.existsSync(file)) {
+        this.pendingOpportunity = JSON.parse(fs.readFileSync(file, "utf-8"));
+      }
+    } catch(e: any) {}
+  }
+
+  private savePendingOpportunity() {
+    try {
+      const file = path.resolve(process.cwd(), ".pending-opportunity.json");
+      if (this.pendingOpportunity) {
+        fs.writeFileSync(file, JSON.stringify(this.pendingOpportunity, null, 2));
+      } else if (fs.existsSync(file)) {
+        fs.unlinkSync(file);
+      }
+    } catch(e: any) {}
+  }
+
+  private async checkOpportunityActionFile() {
+    try {
+      const file = path.resolve(process.cwd(), ".opportunity-action.json");
+      if (fs.existsSync(file)) {
+        const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+        fs.unlinkSync(file);
+        if (data.action === "approve" && this.pendingOpportunity) {
+          console.log(`🌐 Acción recibida desde Dashboard: APROBAR ${this.pendingOpportunity.symbol}`);
+          const opp = this.pendingOpportunity;
+          this.pendingOpportunity = null;
+          this.savePendingOpportunity();
+          await this.notifier.send(`🌐 <b>[APROBACIÓN DESDE DASHBOARD]</b> Ejecutando ${opp.strategyName} en <b>${opp.symbol}</b>...`);
+          await this.executeOpportunity(opp);
+        } else if (data.action === "ignore" && this.pendingOpportunity) {
+          console.log(`🌐 Acción recibida desde Dashboard: IGNORAR ${this.pendingOpportunity.symbol}`);
+          this.pendingOpportunity = null;
+          this.savePendingOpportunity();
+          await this.notifier.send(`🌐 <b>[CANCELADO DESDE DASHBOARD]</b> Oportunidad descartada.`);
+        }
+      }
+    } catch(e: any) {}
+  }
+
+  private async checkOpportunityTimeout() {
+    if (!this.pendingOpportunity) return;
+    if (Date.now() >= this.pendingOpportunity.expiresAt) {
+      const opp = this.pendingOpportunity;
+      this.pendingOpportunity = null;
+      this.savePendingOpportunity();
+
+      if (this.controls.autoPilot) {
+        console.log(`⚡ [AUTO-PILOTO] Tiempo de 3 min agotado. Ejecutando automáticamente ${opp.strategyName} en ${opp.symbol}...`);
+        await this.notifier.send(
+          `⚡ <b>[AUTO-PILOTO ACTIVADO]</b>\n\n` +
+          `⏱️ Tiempo de espera agotado sin respuesta.\n` +
+          `🚀 Ejecutando automáticamente la recomendación para asegurar la ventana:\n` +
+          `• <b>Moneda:</b> ${opp.symbol}\n` +
+          `• <b>Estrategia:</b> ${opp.strategyName}\n` +
+          `• <b>Monto:</b> ${opp.amount.toFixed(2)} USDT`
+        );
+        await this.executeOpportunity(opp);
+      } else {
+        console.log(`⌛ [MODO MANUAL] Tiempo agotado. Oportunidad en ${opp.symbol} descartada.`);
+        await this.notifier.send(`⌛ <i>Tiempo de espera agotado. Oportunidad en ${opp.symbol} descartada (Modo Manual).</i>`);
+      }
+    }
+  }
+
+  async executeOpportunity(opp: PendingOpportunity): Promise<boolean> {
+    if (opp.strategy === "smart_dca") {
+      const pos = this.activeTrailingPositions.get(opp.symbol);
+      if (!pos) {
+        console.error(`Posición para Smart DCA en ${opp.symbol} ya no existe.`);
+        return false;
+      }
+      return await this.executeSmartDca(pos, opp.amount);
+    } else if (opp.strategy === "trailing_rebound") {
+      return await this.executeSmartBuy(opp.symbol, opp.amount, "Trailing Rebound Confirmado");
+    } else if (opp.strategy === "micro_grid") {
+      return await this.executeSmartBuy(opp.symbol, opp.amount, "Micro-Grid Rango Lateral");
+    }
+    return false;
+  }
+
+  async notifyOpportunity(opp: PendingOpportunity) {
+    const mins = Math.round(this.controls.approvalTimeoutSec / 60);
+    const alertMsg = `🎯 <b>¡NUEVA OPORTUNIDAD DETECTADA!</b> 💡\n\n` +
+      `• <b>Moneda:</b> <b>${opp.symbol}</b>\n` +
+      `• 🏛️ <b>Estrategia recomendada:</b> <b>${opp.strategyName}</b>\n` +
+      `• 📊 <b>Diagnóstico:</b> ${opp.reason}\n` +
+      `• 💵 <b>Monto sugerido:</b> ${opp.amount.toFixed(2)} USDT\n` +
+      `• ⏱️ <b>Tiempo de espera:</b> ${mins} minutos para confirmar\n\n` +
+      `<b>¿Qué deseas hacer?</b>\n` +
+      `👉 /aprobar — <i>Ejecutar [${opp.strategyName}]</i>\n` +
+      `👉 /ignorar — <i>Descartar oportunidad</i>\n\n` +
+      `🤖 <i>${this.controls.autoPilot ? `Modo Autónomo ACTIVO: Si no respondes en ${mins} min, el bot ejecutará automáticamente la recomendación.` : "Modo Manual ACTIVO: Esperará tu aprobación explícita."}</i>`;
+
+    await this.notifier.send(alertMsg);
+    console.log(alertMsg.replace(/<[^>]*>/g, ""));
+  }
+
+  async executeSmartDca(pos: ActivePosition, usdtAmount: number): Promise<boolean> {
+    try {
+      const investStr = (usdtAmount - 0.15).toFixed(2);
+      console.log(`🛡️ [Smart DCA] Ejecutando orden de seguridad de ${investStr} USDT en ${pos.symbol}...`);
+
+      const buyRes = await this.client.newOrder(pos.symbol, "BUY", "MARKET", {
+        quoteOrderQty: investStr,
+        newOrderRespType: "FULL",
+        recvWindow: 60000
+      });
+
+      const asset = pos.symbol.replace("USDT", "");
+      const spent = parseFloat(buyRes.data.cummulativeQuoteQty);
+      const grossQty = parseFloat(buyRes.data.executedQty);
+      let feeInBase = 0;
+      for (const f of buyRes.data.fills || []) {
+        if (f.commissionAsset === asset) feeInBase += parseFloat(f.commission);
+      }
+      const newQty = grossQty - feeInBase;
+
+      const oldBuyPrice = pos.buyPrice;
+      const oldInvested = pos.investedUsdt;
+      const oldQty = pos.qty;
+
+      pos.investedUsdt = oldInvested + spent;
+      pos.qty = oldQty + newQty;
+      pos.buyPrice = pos.investedUsdt / pos.qty;
+      pos.highestPrice = Math.max(pos.highestPrice, pos.buyPrice);
+      pos.lastDcaTime = Date.now();
+      pos.dcaCount = (pos.dcaCount || 0) + 1;
+      this.saveTrailingPositions();
+
+      const savedPct = ((oldBuyPrice - pos.buyPrice) / oldBuyPrice) * 100;
+      const newTarget = (pos.buyPrice * 1.008).toFixed(4);
+
+      const alertMsg = `🛡️ <b>¡SMART DCA EJECUTADO CON ÉXITO!</b> 🎯\n\n` +
+        `• <b>Moneda:</b> <b>${pos.symbol}</b>\n` +
+        `• <b>Inyección de seguridad:</b> ${spent.toFixed(2)} USDT (+${newQty.toFixed(4)} ${asset})\n` +
+        `• 📉 <b>Precio entrada anterior:</b> ${fmtPrice(oldBuyPrice)}\n` +
+        `• 🎯 <b>NUEVO PRECIO PROMEDIO:</b> <b>${fmtPrice(pos.buyPrice)}</b> (¡<b>-${savedPct.toFixed(2)}%</b> más bajo!)\n` +
+        `• 💵 <b>Total invertido:</b> ${pos.investedUsdt.toFixed(2)} USDT\n` +
+        `• 🏁 <b>Nueva meta de ganancia (+0.8%):</b> ${newTarget}\n\n` +
+        `💡 <i>¡Excelente movimiento defensivo! El precio de salida quedó mucho más cerca y saldremos en ganancia con un rebote menor.</i>`;
+
+      await this.notifier.send(alertMsg);
+      console.log(alertMsg.replace(/<[^>]*>/g, ""));
+      return true;
+    } catch(e: any) {
+      const msg = e.response?.data?.msg || e.message;
+      console.error(`❌ Error ejecutando Smart DCA en ${pos.symbol}:`, msg);
+      await this.notifier.send(`⚠️ <i>No se pudo ejecutar Smart DCA en ${pos.symbol}: ${msg}</i>`);
+      return false;
+    }
+  }
+
+  async checkSmartDcaOpportunities(usdt: number): Promise<boolean> {
+    if (!this.controls.strategies.smart_dca) return false;
+    if (this.pendingOpportunity) return false;
+    if (usdt < this.minUsdtToTrade) return false;
+
+    for (const [sym, pos] of this.activeTrailingPositions.entries()) {
+      try {
+        if (pos.dcaCount && pos.dcaCount >= 2) continue;
+        if (pos.lastDcaTime && (Date.now() - pos.lastDcaTime) < 3 * 3600 * 1000) continue;
+
+        const curPrice = parseFloat((await this.client.tickerPrice(sym)).data.price);
+        const dropPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
+
+        if (dropPct <= -2.5) {
+          const klines = await this.client.klines(sym, "15m", { limit: 25 });
+          const closes = klines.data.map((k: any) => parseFloat(k[4]));
+          const rsi = this.calculateRSI(closes, 14);
+
+          if (rsi <= 45) {
+            const amount = Math.min(15, Math.max(10, Math.floor(usdt * 0.5 * 100) / 100));
+            const estQty = amount / curPrice;
+            const estAvg = (pos.investedUsdt + amount) / (pos.qty + estQty);
+            const savedPct = ((pos.buyPrice - estAvg) / pos.buyPrice) * 100;
+            const target08 = (estAvg * 1.008).toFixed(4);
+
+            const opp: PendingOpportunity = {
+              id: `dca_${sym}_${Date.now()}`,
+              symbol: sym,
+              strategy: "smart_dca",
+              strategyName: "Smart DCA (Promediado de Seguridad)",
+              reason: `Cayó ${dropPct.toFixed(2)}% desde la entrada (RSI ${rsi.toFixed(1)}). Invertir ${amount.toFixed(2)} USDT baja la entrada promedio a ${fmtPrice(estAvg)} (-${savedPct.toFixed(2)}%). Nueva meta: ${target08}`,
+              amount,
+              curPrice,
+              potentialTarget: target08,
+              createdAt: Date.now(),
+              expiresAt: Date.now() + this.controls.approvalTimeoutSec * 1000
+            };
+
+            this.pendingOpportunity = opp;
+            this.savePendingOpportunity();
+            await this.notifyOpportunity(opp);
+            return true;
+          }
+        }
+      } catch (e: any) {
+        console.error(`Error evaluando Smart DCA para ${sym}:`, e.message);
+      }
+    }
+    return false;
   }
 
   private loadBuyWatches() {
@@ -376,7 +644,7 @@ export class TrailingMasterBot {
         `📊 <i>Escribe /reporte para ver el acumulado real.</i>`;
 
       await this.notifier.send(alertMsg);
-      console.log(alertMsg.replace(/<\/?b>/g, "").replace(/<\/?i>/g, ""));
+      console.log(alertMsg.replace(/<[^>]*>/g, "").replace(/<\/?i>/g, ""));
       return true;
     } catch(e: any) {
       const msg = e.response?.data?.msg || e.message;
@@ -433,7 +701,7 @@ export class TrailingMasterBot {
         `🛡️ <i>En cuanto suba al +0.8%, el bot asegura la ganancia y persigue el pico para exprimir el máximo beneficio.</i>`;
 
       await this.notifier.send(alertMsg);
-      console.log(alertMsg.replace(/<\/?b>/g, "").replace(/<\/?i>/g, ""));
+      console.log(alertMsg.replace(/<[^>]*>/g, "").replace(/<\/?i>/g, ""));
       return true;
     } catch(e: any) {
       const msg = e.response?.data?.msg || e.message;
@@ -548,20 +816,90 @@ export class TrailingMasterBot {
       const arg2 = parts[2];
 
       if (cmd === "/menu" || cmd === "menu" || cmd === "/start") {
-        return `📱 <b>CENTRO DE COMANDOS CON TRAILING STOP</b>\n\n` +
-          `• /informe - Diagnóstico completo en tiempo real\n` +
-          `• /trailing - Posiciones activas rastreando el pico\n` +
-          `• /cazando - Trailing Buy: monedas cazando el piso\n` +
-          `• /reporte - Ganancias reales acumuladas (desde Binance)\n` +
-          `• /estado - Órdenes vivas y progreso hacia la meta\n` +
-          `• /radar - Escáner de suelos en tiempo real\n` +
-          `• /balance - Saldos libres y bloqueados en Binance\n` +
-          `• /motores - Estrategias y parámetros activos\n` +
-          `• /comprar eth [monto] - Comprar moneda con trailing stop\n` +
-          `• /vender sol - Vender moneda al mercado (emergencia)\n` +
-          `• /modo auto | /modo manual - Piloto autónomo o manual\n` +
-          `• /pausa y /reanudar\n\n` +
+        return `📱 <b>CENTRO DE COMANDOS MULTI-ESTRATEGIA SPOT</b>\n\n` +
+          `• /estrategias - ⚙️ Panel y switches de estrategias (Trailing, DCA, Grid)\n` +
+          `• /aprobar - ✅ Aprobar oportunidad recomendada pendiente\n` +
+          `• /ignorar - ❌ Descartar oportunidad recomendada\n` +
+          `• /informe - 📑 Diagnóstico completo en tiempo real\n` +
+          `• /trailing - 🏹 Posiciones activas rastreando el pico\n` +
+          `• /cazando - 🔻 Trailing Buy: monedas cazando el piso\n` +
+          `• /reporte - 📈 Ganancias reales acumuladas (Binance)\n` +
+          `• /estado - 📊 Órdenes vivas y precios en Binance\n` +
+          `• /radar - 📡 Escáner de suelos en tiempo real\n` +
+          `• /balance - 💼 Saldos libres y en Earn en Binance\n` +
+          `• /modo auto | /modo manual - 🤖 Piloto autónomo o manual\n` +
+          `• /pausa y /reanudar - ⏸️ Pausar o reanudar compras\n\n` +
           `💡 <i>Toca cualquiera de los enlaces azules para ejecutar.</i>`;
+      }
+
+      if (cmd === "/estrategias" || cmd === "estrategias") {
+        const c = this.controls.strategies;
+        const mins = Math.round(this.controls.approvalTimeoutSec / 60);
+        let msg = `⚙️ <b>ORQUESTADOR MULTI-ESTRATEGIA SPOT</b> 🕹️\n\n`;
+        msg += `• <b>1. Cazador Trailing:</b> ${c.trailing_rebound ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
+        msg += `  <i>Trailing Buy en piso + Trailing Take Profit en cima (+0.8% a +3.5%).</i>\n`;
+        msg += `  👉 /toggle_trailing\n\n`;
+
+        msg += `• <b>2. Smart DCA (Seguridad):</b> ${c.smart_dca ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
+        msg += `  <i>Promedia caídas en soporte (≥ 2.5%) para salir antes con ganancia.</i>\n`;
+        msg += `  👉 /toggle_dca\n\n`;
+
+        msg += `• <b>3. Micro-Grid (Rango):</b> ${c.micro_grid ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
+        msg += `  <i>Malla de compras y ventas rápidas en mercados laterales planos.</i>\n`;
+        msg += `  👉 /toggle_grid\n\n`;
+
+        msg += `• 🤖 <b>Modo Centinela:</b> ${this.controls.autoPilot ? "🟢 Autónomo (Auto-ejecuta a los " + mins + " min)" : "🟡 Manual Estricto"}\n`;
+        msg += `  👉 /modo auto | /modo manual\n\n`;
+
+        if (this.pendingOpportunity) {
+          const remSec = Math.max(0, Math.round((this.pendingOpportunity.expiresAt - Date.now()) / 1000));
+          msg += `⚡ <b>OPORTUNIDAD PENDIENTE:</b>\n` +
+                 `• Moneda: <b>${this.pendingOpportunity.symbol}</b>\n` +
+                 `• Estrategia: <b>${this.pendingOpportunity.strategyName}</b>\n` +
+                 `• ⏱️ Tiempo restante: <b>${remSec}s</b>\n` +
+                 `👉 /aprobar | /ignorar\n`;
+        }
+
+        return msg;
+      }
+
+      if (cmd === "/toggle_trailing" || cmd === "toggle_trailing") {
+        this.controls.strategies.trailing_rebound = !this.controls.strategies.trailing_rebound;
+        this.saveStrategyControls();
+        return `🏹 <b>Cazador Trailing:</b> ${this.controls.strategies.trailing_rebound ? "🟢 ACTIVADO" : "🔴 PAUSADO"}.`;
+      }
+
+      if (cmd === "/toggle_dca" || cmd === "toggle_dca") {
+        this.controls.strategies.smart_dca = !this.controls.strategies.smart_dca;
+        this.saveStrategyControls();
+        return `🛡️ <b>Smart DCA:</b> ${this.controls.strategies.smart_dca ? "🟢 ACTIVADO" : "🔴 PAUSADO"}.`;
+      }
+
+      if (cmd === "/toggle_grid" || cmd === "toggle_grid") {
+        this.controls.strategies.micro_grid = !this.controls.strategies.micro_grid;
+        this.saveStrategyControls();
+        return `🌐 <b>Micro-Grid:</b> ${this.controls.strategies.micro_grid ? "🟢 ACTIVADO" : "🔴 PAUSADO"}.`;
+      }
+
+      if (cmd === "/aprobar" || cmd === "aprobar") {
+        if (!this.pendingOpportunity) {
+          return "ℹ️ No hay ninguna oportunidad pendiente en este momento.";
+        }
+        const opp = this.pendingOpportunity;
+        this.pendingOpportunity = null;
+        this.savePendingOpportunity();
+        setTimeout(() => this.executeOpportunity(opp), 100);
+        return `🚀 <b>¡APROBADO!</b> Ejecutando <b>${opp.strategyName}</b> en <b>${opp.symbol}</b> por ${opp.amount.toFixed(2)} USDT...`;
+      }
+
+      if (cmd === "/ignorar" || cmd === "ignorar") {
+        if (!this.pendingOpportunity) {
+          return "ℹ️ No hay ninguna oportunidad pendiente en este momento.";
+        }
+        const sym = this.pendingOpportunity.symbol;
+        this.pendingOpportunity = null;
+        this.savePendingOpportunity();
+        return `❌ Oportunidad en <b>${sym}</b> descartada. El bot continuará escaneando.`;
       }
 
       if (cmd === "/cazando" || cmd === "cazando") {
@@ -841,6 +1179,10 @@ export class TrailingMasterBot {
     this.isProcessing = true;
 
     try {
+      this.loadStrategyControls();
+      await this.checkOpportunityActionFile();
+      await this.checkOpportunityTimeout();
+
       // Auto-sincronizar periódicamente posiciones de Binance
       this.cycleCount = (this.cycleCount || 0) + 1;
       if (this.cycleCount % 6 === 1) {
@@ -860,11 +1202,17 @@ export class TrailingMasterBot {
 
       console.log(`[${time}] Monitoreo... USDT libre: $${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
 
-      // 2. Si hay saldo libre y ranuras: Trailing Buy (detectar caída -> seguir piso -> comprar en rebote)
-      if (this.autoPilot && usdt >= this.minUsdtToTrade && this.activeTrailingPositions.size < 5) {
-        await this.scanForDips(activeSymbols);
-        if (this.buyWatches.size > 0) {
-          await this.checkBuyWatches(usdt);
+      // 2. Evaluar oportunidades si hay saldo libre y no hay oportunidad pendiente
+      if (usdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
+        // A) Primero evaluar Smart DCA en posiciones activas que hayan caído
+        const dcaTriggered = await this.checkSmartDcaOpportunities(usdt);
+
+        // B) Si no hay DCA y Trailing Rebound está activo: vigilar caídas y suelos
+        if (!dcaTriggered && this.controls.strategies.trailing_rebound && this.activeTrailingPositions.size < 5) {
+          await this.scanForDips(activeSymbols);
+          if (this.buyWatches.size > 0) {
+            await this.checkBuyWatches(usdt);
+          }
         }
       }
 
