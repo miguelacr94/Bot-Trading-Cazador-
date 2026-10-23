@@ -105,6 +105,58 @@ export class DashboardServer {
     const b = acc.data.balances || [];
     this.usdtFree = parseFloat(b.find((x: any) => x.asset === "USDT")?.free || "0");
     this.usdtEarn = parseFloat(b.find((x: any) => x.asset === "LDUSDT")?.free || "0");
+
+    // Sincronizar automáticamente posiciones activas desde Binance (incluye Spot y Simple Earn LD*)
+    try {
+      const pFile = path.resolve(process.cwd(), ".trailing-positions.json");
+      let diskPositions: [string, any][] = fs.existsSync(pFile) ? JSON.parse(fs.readFileSync(pFile, "utf-8")) : [];
+      let updated = false;
+
+      const candidates = ["PEPE", "SOL", "ETH", "AVAX", "BTC", "BNB", "XRP"];
+      for (const base of candidates) {
+        const sym = base + "USDT";
+        if (diskPositions.some(([s]) => s === sym)) continue;
+
+        const spotBal = parseFloat(b.find((x: any) => x.asset === base)?.free || "0");
+        const earnBal = parseFloat(b.find((x: any) => x.asset === ("LD" + base))?.free || "0");
+        const totalQty = spotBal + earnBal;
+
+        const curPrice = this.prices[sym] || 0;
+        if (totalQty > 0 && curPrice > 0 && (totalQty * curPrice) >= 10) {
+          let buyPrice = curPrice;
+          let buyTime = Date.now();
+          try {
+            const tr = await this.client.myTrades(sym, { limit: 5 });
+            const lastBuy = (tr.data || []).reverse().find((t: any) => t.isBuyer);
+            if (lastBuy) {
+              buyPrice = parseFloat(lastBuy.price);
+              buyTime = lastBuy.time;
+            }
+          } catch {}
+
+          diskPositions.push([
+            sym,
+            {
+              symbol: sym,
+              buyPrice,
+              qty: totalQty,
+              investedUsdt: totalQty * buyPrice,
+              highestPrice: Math.max(buyPrice, curPrice),
+              activated: ((curPrice - buyPrice) / buyPrice) * 100 >= 0.8,
+              buyTime
+            }
+          ]);
+          updated = true;
+          console.log("🔗 [AUTO-DETECT] " + sym + " sincronizado en dashboard: " + totalQty + " " + base + " a $" + buyPrice);
+        }
+      }
+
+      if (updated) {
+        fs.writeFileSync(pFile, JSON.stringify(diskPositions, null, 2), "utf-8");
+      }
+    } catch (e: any) {
+      console.error("Error auto-sincronizando posiciones:", e.message);
+    }
   }
 
   private async refreshPnl() {
