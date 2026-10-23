@@ -266,7 +266,7 @@
   
   // ---------- Presupuesto por Estrategia (Allocations) ----------
   let latestFreeUsdt = 0;
-  let isDraggingSliders = false;
+  let userHasUnsavedBudgetChanges = false;
 
   function updateBudgetSum() {
     const sT = parseInt(document.getElementById("slider-trailing")?.value || "0", 10);
@@ -299,11 +299,15 @@
         body: JSON.stringify(payload)
       });
       if (res.ok) {
+        userHasUnsavedBudgetChanges = false;
         const btn = document.getElementById("btn-save-alloc");
         if (btn) {
-          const oldTxt = btn.textContent;
           btn.textContent = "✅ ¡Guardado!";
-          setTimeout(() => btn.textContent = oldTxt, 1500);
+          btn.style.boxShadow = "0 0 16px rgba(16, 185, 129, 0.6)";
+          setTimeout(() => {
+            btn.textContent = "💾 Guardar Porcentajes";
+            btn.style.boxShadow = "none";
+          }, 2000);
         }
         fetchStrategies();
       }
@@ -364,7 +368,7 @@
       if (dAmt) dAmt.textContent = "~$" + (latestFreeUsdt * (aD / 100)).toFixed(2) + " USDT libres";
       if (gAmt) gAmt.textContent = "~$" + (latestFreeUsdt * (aG / 100)).toFixed(2) + " USDT libres";
 
-      if (!isDraggingSliders) {
+      if (!userHasUnsavedBudgetChanges) {
         const sT = document.getElementById("slider-trailing");
         const sD = document.getElementById("slider-dca");
         const sG = document.getElementById("slider-grid");
@@ -443,20 +447,18 @@
     const sG = document.getElementById("slider-grid");
 
     const onSliderChange = () => {
-      isDraggingSliders = true;
+      userHasUnsavedBudgetChanges = true;
       if (sT) document.getElementById("slider-trailing-val").textContent = sT.value + "%";
       if (sD) document.getElementById("slider-dca-val").textContent = sD.value + "%";
       if (sG) document.getElementById("slider-grid-val").textContent = sG.value + "%";
       updateBudgetSum();
-    };
-
-    const onSliderEnd = () => {
-      setTimeout(() => isDraggingSliders = false, 2000);
+      const saveBtn = document.getElementById("btn-save-alloc");
+      if (saveBtn) saveBtn.style.boxShadow = "0 0 14px rgba(245, 158, 11, 0.5)";
     };
 
     [sT, sD, sG].forEach(s => {
       s?.addEventListener("input", onSliderChange);
-      s?.addEventListener("change", onSliderEnd);
+      s?.addEventListener("change", onSliderChange);
     });
 
     document.getElementById("btn-save-alloc")?.addEventListener("click", () => {
