@@ -194,6 +194,24 @@ export class DashboardServer {
             return 100;
         return 100 - (100 / (1 + avgGain / avgLoss));
     }
+    isWeekendMode() {
+        try {
+            const now = new Date();
+            const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
+            const hourStr = now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" });
+            const hour = parseInt(hourStr, 10);
+            if (dayStr === "Fri" && hour >= 17)
+                return true;
+            if (dayStr === "Sat")
+                return true;
+            if (dayStr === "Sun" && hour < 18)
+                return true;
+            return false;
+        }
+        catch {
+            return false;
+        }
+    }
     isNightMode() {
         try {
             const hour = new Date().toLocaleString("en-US", { timeZone: "America/Bogota", hour: "numeric", hour12: false });
@@ -302,6 +320,7 @@ export class DashboardServer {
             } : null,
             marketSentiment: this.fng || { value: 50, classification: "Neutral", updatedAt: Date.now() },
             nightMode: this.isNightMode(),
+            weekendMode: this.isWeekendMode(),
             projections: p && p.cycles.length > 0 ? (() => {
                 const firstTime = p.cycles[0].time || (Date.now() - 7 * 86400 * 1000);
                 const days = Math.max(1, (Date.now() - firstTime) / (86400 * 1000));
@@ -354,7 +373,7 @@ export class DashboardServer {
                     const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
                     const oppFile = path.resolve(process.cwd(), ".pending-opportunity.json");
                     const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {
-                        strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false },
+                        strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false, cazador_weekend: true },
                         autoPilot: true,
                         approvalTimeoutSec: 180
                     };
@@ -377,28 +396,31 @@ export class DashboardServer {
                         let t = Math.max(0, parseInt(data.trailing || "0", 10));
                         let d = Math.max(0, parseInt(data.dca || "0", 10));
                         let g = Math.max(0, parseInt(data.grid || "0", 10));
-                        const sum = t + d + g;
+                        let w = Math.max(0, parseInt(data.weekend || "0", 10));
+                        const sum = t + d + g + w;
                         if (sum === 0) {
                             t = 50;
-                            d = 35;
-                            g = 15;
+                            d = 30;
+                            g = 0;
+                            w = 20;
                         }
                         else if (sum !== 100) {
-                            // Normalizar a 100 si no suma exactamente 100
                             t = Math.round((t / sum) * 100);
                             d = Math.round((d / sum) * 100);
-                            g = 100 - t - d;
+                            g = Math.round((g / sum) * 100);
+                            w = 100 - t - d - g;
                         }
                         const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
                         const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {
-                            strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false },
+                            strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false, cazador_weekend: true },
                             autoPilot: true,
                             approvalTimeoutSec: 180
                         };
                         controls.allocations = {
                             trailing_rebound: t,
                             smart_dca: d,
-                            micro_grid: g
+                            micro_grid: g,
+                            cazador_weekend: w
                         };
                         controls.updatedAt = Date.now();
                         fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
@@ -420,7 +442,7 @@ export class DashboardServer {
                         const data = JSON.parse(body || "{}");
                         const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
                         const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {
-                            strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false },
+                            strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false, cazador_weekend: true },
                             autoPilot: true,
                             approvalTimeoutSec: 180
                         };

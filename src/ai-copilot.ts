@@ -23,6 +23,7 @@ export interface BotContextSnapshot {
     trailing_rebound: number;
     smart_dca: number;
     micro_grid: number;
+    cazador_weekend?: number;
   };
   autoPilot: boolean;
   marketSentiment: { value: number; classification: string };
@@ -65,7 +66,7 @@ export class AiCopilot {
     userMessage: string,
     context: BotContextSnapshot,
     actionHandlers: {
-      setAllocations?: (t: number, d: number, g: number) => Promise<string>;
+      setAllocations?: (t: number, d: number, g: number, w?: number) => Promise<string>;
       setAutoPilot?: (auto: boolean) => Promise<string>;
       pauseTrading?: (paused: boolean) => Promise<string>;
     }
@@ -97,6 +98,7 @@ Te comunicas directamente con Miguel a través de su bot privado de Telegram.
 3. ESTRATEGIAS ACTIVAS:
    • Trailing Rebound: Compra con +0.25% de rebote confirmado desde el piso. Vende al +0.80% asegurado o persigue el pico con callback de 0.30%.
    • Smart DCA: Si una moneda cae -2.5% con RSI bajo, promedia matemáticamente para acercar la salida en verde. Límite: 2 inyecciones y enfriamiento de 2 horas.
+   • Cazador Weekend: Se activa los fines de semana (viernes 17:00 a domingo 18:00 COT). Caza la mejor sobreventa con Trailing Buy en el piso exacto (+0.35% rebote) y persigue el rebote máximo de domingo noche, lunes o el día que suba más con Trailing Take Profit (+0.80% a +3.5%) para vender en la cima sin pérdida.
    • Bóveda Simple Earn: 25% de las ganancias se envían a ganar interés pasivo flexible en Binance Earn.
 
 === ESTADO FINANCIERO EN VIVO DE MIGUEL ===
@@ -105,7 +107,7 @@ Te comunicas directamente con Miguel a través de su bot privado de Telegram.
 • USDT en Bóveda Simple Earn: $${context.earnUsdt.toFixed(2)} USDT
 • Récord Histórico: ${context.performance.wins} victorias / ${context.performance.losses} derrotas (Win Rate: ${context.performance.winRate}%). Ganancia neta acumulada en caja: +$${context.performance.totalPnlUsdt.toFixed(2)} USDT (~$${(context.performance.totalPnlUsdt * 4200).toLocaleString("es-CO")} COP).
 • Piloto Automático: ${context.autoPilot ? "🟢 ACTIVO (Auto-ejecuta recomendaciones si no respondes en 3 min)" : "🟡 MANUAL (Solo compra bajo tu confirmación explícita)"}
-• Presupuesto actual: Trailing ${context.allocations.trailing_rebound}% | Smart DCA ${context.allocations.smart_dca}% | Micro-Grid ${context.allocations.micro_grid}%
+• Presupuesto actual: Trailing ${context.allocations.trailing_rebound}% | Smart DCA ${context.allocations.smart_dca}% | Micro-Grid ${context.allocations.micro_grid}% | Cazador Weekend ${context.allocations.cazador_weekend ?? 20}%
 • Sentimiento de Mercado (Fear & Greed): ${context.marketSentiment.value}/100 (${context.marketSentiment.classification})
 
 === DESGLOSE DETALLADO DE POSICIONES ABIERTAS ===

@@ -303,8 +303,9 @@
     const sT = parseInt(document.getElementById("slider-trailing")?.value || "0", 10);
     const sD = parseInt(document.getElementById("slider-dca")?.value || "0", 10);
     const sG = parseInt(document.getElementById("slider-grid")?.value || "0", 10);
+    const sW = parseInt(document.getElementById("slider-weekend")?.value || "0", 10);
 
-    const sum = sT + sD + sG;
+    const sum = sT + sD + sG + sW;
     const badge = document.getElementById("budget-sum-badge");
     const saveBtn = document.getElementById("btn-save-alloc");
 
@@ -321,9 +322,9 @@
     }
   }
 
-  async function saveAllocations(t, d, g) {
+  async function saveAllocations(t, d, g, w) {
     try {
-      const payload = { trailing: t, dca: d, grid: g };
+      const payload = { trailing: t, dca: d, grid: g, weekend: w };
       const res = await fetch("/api/strategies/allocation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -362,51 +363,62 @@
       const tTrailing = document.getElementById("toggle-trailing");
       const tDca = document.getElementById("toggle-dca");
       const tGrid = document.getElementById("toggle-grid");
+      const tWeekend = document.getElementById("toggle-weekend");
       const tAuto = document.getElementById("toggle-autopilot");
       const modeLabel = document.getElementById("mode-label");
 
       if (tTrailing && !tTrailing.matches(":focus")) tTrailing.checked = !!s.trailing_rebound;
       if (tDca && !tDca.matches(":focus")) tDca.checked = !!s.smart_dca;
       if (tGrid && !tGrid.matches(":focus")) tGrid.checked = !!s.micro_grid;
+      if (tWeekend && !tWeekend.matches(":focus")) tWeekend.checked = !!s.cazador_weekend;
 
       // Actualizar Presupuestos y Porcentajes
-      const a = c.allocations || { trailing_rebound: 50, smart_dca: 35, micro_grid: 15 };
-      const aT = a.trailing_rebound;
-      const aD = a.smart_dca;
-      const aG = a.micro_grid;
+      const a = c.allocations || { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
+      const aT = a.trailing_rebound ?? 50;
+      const aD = a.smart_dca ?? 30;
+      const aG = a.micro_grid ?? 0;
+      const aW = a.cazador_weekend ?? 20;
 
       const tBadge = document.getElementById("alloc-trailing-badge");
       const dBadge = document.getElementById("alloc-dca-badge");
       const gBadge = document.getElementById("alloc-grid-badge");
+      const wBadge = document.getElementById("alloc-weekend-badge");
 
       const tBar = document.getElementById("alloc-trailing-bar");
       const dBar = document.getElementById("alloc-dca-bar");
       const gBar = document.getElementById("alloc-grid-bar");
+      const wBar = document.getElementById("alloc-weekend-bar");
 
       const tAmt = document.getElementById("alloc-trailing-amount");
       const dAmt = document.getElementById("alloc-dca-amount");
       const gAmt = document.getElementById("alloc-grid-amount");
+      const wAmt = document.getElementById("alloc-weekend-amount");
 
       if (tBadge) tBadge.textContent = aT + "% Asignado";
       if (dBadge) dBadge.textContent = aD + "% Asignado";
       if (gBadge) gBadge.textContent = aG + "% Asignado";
+      if (wBadge) wBadge.textContent = aW + "% Asignado";
 
       if (tBar) tBar.style.width = aT + "%";
       if (dBar) dBar.style.width = aD + "%";
       if (gBar) gBar.style.width = aG + "%";
+      if (wBar) wBar.style.width = aW + "%";
 
       if (tAmt) tAmt.textContent = "~$" + (latestFreeUsdt * (aT / 100)).toFixed(2) + " USDT libres";
       if (dAmt) dAmt.textContent = "~$" + (latestFreeUsdt * (aD / 100)).toFixed(2) + " USDT libres";
       if (gAmt) gAmt.textContent = "~$" + (latestFreeUsdt * (aG / 100)).toFixed(2) + " USDT libres";
+      if (wAmt) wAmt.textContent = "~$" + (latestFreeUsdt * (aW / 100)).toFixed(2) + " USDT libres";
 
       if (!userHasUnsavedBudgetChanges) {
         const sT = document.getElementById("slider-trailing");
         const sD = document.getElementById("slider-dca");
         const sG = document.getElementById("slider-grid");
+        const sW = document.getElementById("slider-weekend");
 
         if (sT) { sT.value = aT; document.getElementById("slider-trailing-val").textContent = aT + "%"; }
         if (sD) { sD.value = aD; document.getElementById("slider-dca-val").textContent = aD + "%"; }
         if (sG) { sG.value = aG; document.getElementById("slider-grid-val").textContent = aG + "%"; }
+        if (sW) { sW.value = aW; document.getElementById("slider-weekend-val").textContent = aW + "%"; }
         updateBudgetSum();
       }
       if (tAuto && !tAuto.matches(":focus")) {
@@ -476,30 +488,33 @@
     const sT = document.getElementById("slider-trailing");
     const sD = document.getElementById("slider-dca");
     const sG = document.getElementById("slider-grid");
+    const sW = document.getElementById("slider-weekend");
 
     const onSliderChange = () => {
       userHasUnsavedBudgetChanges = true;
       if (sT) document.getElementById("slider-trailing-val").textContent = sT.value + "%";
       if (sD) document.getElementById("slider-dca-val").textContent = sD.value + "%";
       if (sG) document.getElementById("slider-grid-val").textContent = sG.value + "%";
+      if (sW) document.getElementById("slider-weekend-val").textContent = sW.value + "%";
       updateBudgetSum();
       const saveBtn = document.getElementById("btn-save-alloc");
       if (saveBtn) saveBtn.style.boxShadow = "0 0 14px rgba(245, 158, 11, 0.5)";
     };
 
-    [sT, sD, sG].forEach(s => {
+    [sT, sD, sG, sW].forEach(s => {
       s?.addEventListener("input", onSliderChange);
       s?.addEventListener("change", onSliderChange);
     });
 
     document.getElementById("btn-save-alloc")?.addEventListener("click", () => {
       const t = parseInt(sT?.value || "50", 10);
-      const d = parseInt(sD?.value || "35", 10);
-      const g = parseInt(sG?.value || "15", 10);
-      if (t + d + g === 100) {
-        saveAllocations(t, d, g);
+      const d = parseInt(sD?.value || "30", 10);
+      const g = parseInt(sG?.value || "0", 10);
+      const w = parseInt(sW?.value || "20", 10);
+      if (t + d + g + w === 100) {
+        saveAllocations(t, d, g, w);
       } else {
-        alert("La suma debe ser exactamente 100%. Actualmente suma " + (t + d + g) + "%");
+        alert("La suma debe ser exactamente 100%. Actualmente suma " + (t + d + g + w) + "%");
       }
     });
 
@@ -508,17 +523,20 @@
         const t = parseInt(btn.dataset.t, 10);
         const d = parseInt(btn.dataset.d, 10);
         const g = parseInt(btn.dataset.g, 10);
+        const w = parseInt(btn.dataset.w || "0", 10);
         if (sT) { sT.value = t; document.getElementById("slider-trailing-val").textContent = t + "%"; }
         if (sD) { sD.value = d; document.getElementById("slider-dca-val").textContent = d + "%"; }
         if (sG) { sG.value = g; document.getElementById("slider-grid-val").textContent = g + "%"; }
+        if (sW) { sW.value = w; document.getElementById("slider-weekend-val").textContent = w + "%"; }
         updateBudgetSum();
-        saveAllocations(t, d, g);
+        saveAllocations(t, d, g, w);
       });
     });
 
     document.getElementById("toggle-trailing")?.addEventListener("change", () => toggleStrategy("trailing_rebound"));
     document.getElementById("toggle-dca")?.addEventListener("change", () => toggleStrategy("smart_dca"));
     document.getElementById("toggle-grid")?.addEventListener("change", () => toggleStrategy("micro_grid"));
+    document.getElementById("toggle-weekend")?.addEventListener("change", () => toggleStrategy("cazador_weekend"));
     document.getElementById("toggle-autopilot")?.addEventListener("change", () => toggleStrategy(null, true));
 
     document.getElementById("btn-opp-approve")?.addEventListener("click", () => handleOpportunityAction("approve"));
