@@ -75,7 +75,6 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
                 ...this.history,
                 { role: "user", parts: [{ text: userMessage }] }
             ];
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             const payload = {
                 system_instruction: {
                     parts: [{ text: systemInstruction }]
@@ -86,15 +85,32 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
                     maxOutputTokens: 1500 // Ampliado para reportes ricos y completos sin cortes
                 }
             };
-            const res = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
+            let reply;
+            for (const model of candidateModels) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                    const res = await fetch(url, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        reply = data.candidates[0].content.parts[0].text;
+                        break;
+                    }
+                    else if (data.error?.code === 503 || data.error?.code === 429) {
+                        console.log(`Modelo ${model} ocupado (${data.error.code}). Probando modelo de respaldo...`);
+                        continue;
+                    }
+                }
+                catch (e) {
+                    console.error(`Error llamando a ${model}:`, e.message);
+                }
+            }
             if (!reply) {
-                console.error("Gemini no devolvió respuesta:", JSON.stringify(data));
+                console.error("Gemini no devolvió respuesta en ningún modelo.");
                 return "🤖 <i>Tuve un inconveniente al procesar tu mensaje. Intenta de nuevo en unos segundos.</i>";
             }
             // Guardar en historial
