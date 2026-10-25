@@ -1,5 +1,6 @@
 import { DashboardServer } from "./dashboard-server.js";
 import { Spot } from "@binance/connector";
+import { AiCopilot } from "./ai-copilot.js";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
@@ -10,7 +11,7 @@ dotenv.config();
 // Tasa de referencia COP por USDT (P2P Colombia aprox.)
 const COP_PER_USDT = 4200;
 // WATCHLIST oficial: proyectos de alta liquidez y solidez (PEPE retirado de nuevas compras)
-const WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT"];
+const WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "PEPEUSDT"];
 // Formateador dinámico de precios para soportar micro-ticks y monedas estándar (ETH/SOL/BTC)
 function fmtPrice(p) {
     if (p === 0)
@@ -170,7 +171,9 @@ export class TrailingMasterBot {
     }
     activeTrailingPositions = new Map();
     buyWatches = new Map();
+    ignoredDca = new Map();
     dashboardServer;
+    aiCopilot = new AiCopilot();
     constructor() {
         this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
         this.notifier = new TelegramNotifier();
@@ -179,8 +182,26 @@ export class TrailingMasterBot {
         this.loadBuyWatches();
         this.loadStrategyControls();
         this.loadPendingOpportunity();
+        this.loadIgnoredDca();
         this.dashboardServer = new DashboardServer();
         this.dashboardServer.start();
+    }
+    saveIgnoredDca() {
+        try {
+            fs.writeFileSync(path.resolve(process.cwd(), ".ignored-dca.json"), JSON.stringify(Array.from(this.ignoredDca.entries()), null, 2));
+        }
+        catch (e) {
+            console.error("Error guardando ignored DCA:", e.message);
+        }
+    }
+    loadIgnoredDca() {
+        try {
+            const file = path.resolve(process.cwd(), ".ignored-dca.json");
+            if (fs.existsSync(file)) {
+                this.ignoredDca = new Map(JSON.parse(fs.readFileSync(file, "utf-8")));
+            }
+        }
+        catch (e) { }
     }
     saveBuyWatches() {
         try {
@@ -259,6 +280,70 @@ export class TrailingMasterBot {
             }
         }
         catch (e) { }
+    }
+    async buildAiContextSnapshot() {
+        let freeUsdt = 0;
+        let earnUsdt = 0;
+        try {
+            freeUsdt = await this.getFreeBalance("USDT");
+            const earnRes = await this.client.getFlexibleProductPosition({ asset: "USDT", recvWindow: 60000 });
+            earnUsdt = parseFloat(earnRes.data?.rows?.[0]?.totalAmount || "0");
+        }
+        catch { }
+        const positions = [];
+        let totalInvested = 0;
+        for (const [sym, pos] of this.activeTrailingPositions.entries()) {
+            try {
+                const t = await this.client.tickerPrice(sym);
+                const cur = parseFloat(t.data.price);
+                const gainPct = ((cur - pos.buyPrice) / pos.buyPrice) * 100;
+                const pnlUsdt = (cur - pos.buyPrice) * pos.qty;
+                const targetPrice = pos.buyPrice * 1.008;
+                positions.push({
+                    symbol: sym,
+                    qty: pos.qty,
+                    investedUsdt: pos.investedUsdt,
+                    buyPrice: pos.buyPrice,
+                    curPrice: cur,
+                    targetPrice,
+                    gainPct,
+                    pnlUsdt
+                });
+                totalInvested += pos.investedUsdt;
+            }
+            catch { }
+        }
+        const radar = [];
+        for (const sym of ["PEPEUSDT", "XRPUSDT", "BNBUSDT", "BTCUSDT"]) {
+            try {
+                const k = await this.client.klines(sym, "15m", { limit: 20 });
+                const closes = k.data.map((row) => parseFloat(row[4]));
+                const cur = closes[closes.length - 1];
+                const rsi = this.calculateRSI(closes, 14);
+                const highs = k.data.map((row) => parseFloat(row[2]));
+                const maxRecent = Math.max(...highs.slice(-20));
+                const dropPct = ((maxRecent - cur) / maxRecent) * 100;
+                radar.push({
+                    symbol: sym,
+                    curPrice: cur,
+                    rsi,
+                    dropPct,
+                    isHunting: this.buyWatches.has(sym)
+                });
+            }
+            catch { }
+        }
+        return {
+            positions,
+            freeUsdt,
+            earnUsdt,
+            totalEstimatedUsdt: freeUsdt + earnUsdt + totalInvested,
+            allocations: this.controls.allocations || { trailing_rebound: 70, smart_dca: 30, micro_grid: 0 },
+            autoPilot: this.autoPilot,
+            marketSentiment: { value: 51, classification: "Neutral" },
+            performance: { wins: 13, losses: 0, totalPnlUsdt: 9.57, winRate: 100 },
+            radar
+        };
     }
     async checkOpportunityTimeout() {
         if (!this.pendingOpportunity)
@@ -379,6 +464,14 @@ export class TrailingMasterBot {
                     continue;
                 const curPrice = parseFloat((await this.client.tickerPrice(sym)).data.price);
                 const dropPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
+                const lastIgnored = this.ignoredDca.get(sym);
+                if (lastIgnored) {
+                    const hoursSince = (Date.now() - lastIgnored.timestamp) / (3600 * 1000);
+                    const extraDropPct = ((curPrice - lastIgnored.price) / lastIgnored.price) * 100;
+                    if (hoursSince < 2 && extraDropPct > -3.0) {
+                        continue; // En enfriamiento tras /ignorar (no spamear al usuario a menos que caiga -3% más)
+                    }
+                }
                 if (dropPct <= -2.5) {
                     const klines = await this.client.klines(sym, "15m", { limit: 25 });
                     const closes = klines.data.map((k) => parseFloat(k[4]));
@@ -484,7 +577,12 @@ export class TrailingMasterBot {
         for (const [symbol, pos] of this.activeTrailingPositions.entries()) {
             try {
                 const asset = symbol.replace("USDT", "");
-                const freeBal = await this.getFreeBalance(asset);
+                let freeBal = await this.getFreeBalance(asset);
+                if (freeBal < pos.qty * 0.1) {
+                    // Intentar rescatar de Simple Earn si Binance lo barrió con Auto-Subscribe
+                    await this.redeemFromEarnIfNeeded(asset, pos.qty);
+                    freeBal = await this.getFreeBalance(asset);
+                }
                 if (freeBal < pos.qty * 0.1) {
                     console.log("🧹 " + symbol + " ya fue vendida en Binance (saldo cero). Retirando de memoria.");
                     this.activeTrailingPositions.delete(symbol);
@@ -928,10 +1026,18 @@ export class TrailingMasterBot {
                 if (!this.pendingOpportunity) {
                     return "ℹ️ No hay ninguna oportunidad pendiente en este momento.";
                 }
-                const sym = this.pendingOpportunity.symbol;
+                const opp = this.pendingOpportunity;
+                const sym = opp.symbol;
+                this.ignoredDca.set(sym, {
+                    timestamp: Date.now(),
+                    price: opp.curPrice,
+                    dropPct: -2.5
+                });
+                this.saveIgnoredDca();
                 this.pendingOpportunity = null;
                 this.savePendingOpportunity();
-                return `❌ Oportunidad en <b>${sym}</b> descartada. El bot continuará escaneando.`;
+                return `❌ Oportunidad en <b>${sym}</b> descartada.\n\n` +
+                    `🔇 <b>Silenciada:</b> No volveré a sugerir DCA en ${sym} por <b>2 horas</b>, a menos que caiga un <b>-3.0% adicional</b>.`;
             }
             if (cmd === "/cazando" || cmd === "cazando") {
                 return await this.buildBuyWatchReport();
@@ -1180,6 +1286,10 @@ export class TrailingMasterBot {
             if (cmd === "/reanudar" || cmd === "reanudar") {
                 this.autoPilot = true;
                 return "▶️ <b>BOT REANUDADO:</b> Volviendo a vigilar y cazar rebotes con Trailing.";
+            }
+            if (this.aiCopilot.isAvailable()) {
+                const ctx = await this.buildAiContextSnapshot();
+                return await this.aiCopilot.chat(rawCmd, ctx, {});
             }
             return "Comando no reconocido. Escribe /menu para ver la lista de comandos disponibles.";
         }

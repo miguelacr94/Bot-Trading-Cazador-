@@ -18,3 +18,8 @@ node_modules/
 .trailing-positions.json
 
 .trailing-buys.json
+
+# Controles locales y oportunidades
+.strategy-controls.json
+.ignored-dca.json
+.pending-opportunity.json
