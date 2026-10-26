@@ -77,6 +77,7 @@ export interface StrategyControls {
     cazador_weekend: number;
   };
   autoPilot: boolean;
+  aiEnabled?: boolean;
   approvalTimeoutSec: number;
   updatedAt: number;
 }
@@ -115,6 +116,7 @@ export class TrailingMasterBot {
       cazador_weekend: 20
     },
     autoPilot: true,
+    aiEnabled: false,
     approvalTimeoutSec: 180,
     updatedAt: Date.now()
   };
@@ -1104,6 +1106,7 @@ export class TrailingMasterBot {
         return `📱 <b>CENTRO DE COMANDOS MULTI-ESTRATEGIA SPOT</b>\n\n` +
           `• /estrategias - ⚙️ Panel y switches de estrategias (Trailing, DCA, Grid, Weekend)\n` +
           `• /regimen - 🧭 Diagnóstico de volatilidad y Día Quieto\n` +
+          `• /toggle_ia - 🤖 Silenciar o activar respuestas de Gemini AI\n` +
           `• /aprobar_grid | /ignorar_grid - 🌐 Control de Micro-Grid\n` +
           `• /toggle_weekend - 🏖️ Switch Cazador Weekend (Vie-Dom)\n` +
           `• /weekend - 🏖️ Diagnóstico y estado de Cazador Weekend\n` +
@@ -1246,7 +1249,13 @@ export class TrailingMasterBot {
                `• 🏖️ <b>Cazador Weekend:</b> ${w}% base ${!isW ? `(👉 <i>0% ahora: se apartará el viernes a las 17:00 COT</i>)` : `(👉 <b>${w}% ACTIVO</b>)`}\n\n` +
                `💾 <i>Presupuesto inteligente activo: En días hábiles todo el capital trabaja en Trailing, y el fin de semana se recupera automáticamente para cazar la caída más oportuna.</i>`;
       }
-            if (cmd === "/toggle_trailing" || cmd === "toggle_trailing") {
+            if (cmd === "/toggle_ia" || cmd === "/toggle_ai" || cmd === "toggle_ia" || cmd === "toggle_ai") {
+        this.controls.aiEnabled = !this.controls.aiEnabled;
+        this.saveStrategyControls();
+        return `🤖 <b>Copiloto Gemini AI:</b> ${this.controls.aiEnabled ? "🟢 ACTIVADO (Solo responderá consultas explícitas con /ai)" : "🔴 SILENCIADO (Cero respuestas automáticas, cero consumo de tokens)"}.`;
+      }
+
+      if (cmd === "/toggle_trailing" || cmd === "toggle_trailing") {
         this.controls.strategies.trailing_rebound = !this.controls.strategies.trailing_rebound;
         this.saveStrategyControls();
         return `🏹 <b>Cazador Trailing:</b> ${this.controls.strategies.trailing_rebound ? "🟢 ACTIVADO" : "🔴 PAUSADO"}.`;
@@ -1618,10 +1627,28 @@ export class TrailingMasterBot {
         return "▶️ <b>BOT REANUDADO:</b> Volviendo a vigilar y cazar rebotes con Trailing.";
       }
 
-      if (this.aiCopilot.isAvailable()) {
-        const ctx = await this.buildAiContextSnapshot();
-        return await this.aiCopilot.chat(rawCmd, ctx, {});
+      // 1. Respuestas de cortesía o confirmaciones rápidas (CERO respuesta de IA)
+      const ackList = ["ok", "vale", "listo", "bien", "gracias", "thx", "perfecto", "entendido", "recibido", "👍", "👌", "dale", "ignorar", "descartar"];
+      if (ackList.includes(cmd)) {
+        return "👍";
       }
+
+      // 2. Si el mensaje empieza con barra / y no fue reconocido, NUNCA enviar a la IA
+      if (rawCmd.trim().startsWith("/")) {
+        return "Comando no reconocido. Escribe /menu para ver la lista de comandos disponibles.";
+      }
+
+      // 3. Solo llamar a Gemini AI si está explícitamente activada Y se usa /ai o una pregunta directa
+      const isExplicitAi = cmd === "/ai" || cmd === "/ia" || cmd === "/chat" || cmd === "ai" || cmd === "ia";
+      const isDirectQuestion = rawCmd.trim().startsWith("¿") || rawCmd.trim().startsWith("?");
+
+      if (this.controls.aiEnabled && (isExplicitAi || isDirectQuestion) && this.aiCopilot.isAvailable()) {
+        const queryText = isExplicitAi ? rawCmd.replace(/^\/(ai|ia|chat)\s*/i, "").trim() : rawCmd;
+        if (!queryText) return "❓ Escribe tu pregunta después de /ai. Ejemplo: <code>/ai ¿cómo ves el mercado hoy?</code>";
+        const ctx = await this.buildAiContextSnapshot();
+        return await this.aiCopilot.chat(queryText, ctx, {});
+      }
+
       return "Comando no reconocido. Escribe /menu para ver la lista de comandos disponibles.";
     } catch(e: any) {
       return `⚠️ Error: ${e.message}`;
