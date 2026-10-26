@@ -78,6 +78,7 @@ export interface StrategyControls {
   };
   autoPilot: boolean;
   aiEnabled?: boolean;
+  gridIgnoredUntil?: number;
   approvalTimeoutSec: number;
   updatedAt: number;
 }
@@ -1301,13 +1302,23 @@ export class TrailingMasterBot {
 
       if (cmd === "/aprobar_grid" || cmd === "aprobar_grid" || cmd === "/activar_grid") {
         this.pendingRegimeSwitch = null;
+        this.controls.gridIgnoredUntil = 0;
         await this.activateMicroGrid(false);
         return `🌐 <b>Micro-Grid ACTIVADO por ti.</b> Presupuesto reasignado para operar en canales laterales planos.`;
       }
 
       if (cmd === "/ignorar_grid" || cmd === "ignorar_grid") {
         this.pendingRegimeSwitch = null;
-        return `❌ Sugerencia de Micro-Grid descartada. El bot permanecerá al 100% en Cazador Trailing.`;
+        this.controls.gridIgnoredUntil = Date.now() + 12 * 3600 * 1000; // Silenciar sugerencia por 12 horas
+        if (this.controls.strategies.micro_grid) {
+          await this.deactivateMicroGrid();
+        } else {
+          this.saveStrategyControls();
+        }
+        return `❌ <b>Sugerencia de Micro-Grid descartada.</b>\n\n` +
+               `• 🛡️ El bot permanecerá al 100% en Cazador Trailing (${this.controls.allocations.trailing_rebound}% Trailing / ${this.controls.allocations.smart_dca}% Smart DCA).\n` +
+               `• 🔇 <b>Silenciado:</b> No volveré a insistir con Micro-Grid durante <b>12 horas</b> (ni se activará solo).\n\n` +
+               `💡 <i>Si deseas activarlo manualmente cuando quieras, puedes escribir /aprobar_grid o /toggle_grid.</i>`;
       }
 
       if (cmd === "/regimen" || cmd === "regimen") {
@@ -1703,8 +1714,10 @@ export class TrailingMasterBot {
         this.lastDetectedRegime = currentRegime;
       }
 
-      // A) DÍA QUIETO DETECTADO: Activar Micro-Grid si está apagado y no hay sugerencia pendiente
-      if (isQuiet && !this.controls.strategies.micro_grid && !this.pendingRegimeSwitch) {
+      const isIgnored = !!(this.controls.gridIgnoredUntil && Date.now() < this.controls.gridIgnoredUntil);
+
+      // A) DÍA QUIETO DETECTADO: Activar Micro-Grid si está apagado, no hay sugerencia pendiente y no está silenciado
+      if (isQuiet && !this.controls.strategies.micro_grid && !this.pendingRegimeSwitch && !isIgnored) {
         this.pendingRegimeSwitch = {
           type: "activate_grid",
           reason: `Rango estrecho en Bitcoin de ${range24h.toFixed(2)}% (${low.toFixed(0)} - ${high.toFixed(0)})`,
@@ -1725,9 +1738,15 @@ export class TrailingMasterBot {
         console.log(alertMsg.replace(/<[^>]*>/g, ""));
       }
 
-      // B) FIN DE DÍA QUIETO / VOLATILIDAD REACTIVADA: Si el mercado despierta (range >= 2.5%) y Micro-Grid está activo
-      if (!isQuiet && range24h >= 2.5 && this.controls.strategies.micro_grid) {
-        await this.deactivateMicroGrid(range24h);
+      // B) FIN DE DÍA QUIETO / VOLATILIDAD REACTIVADA: Si el mercado despierta (range >= 2.5%)
+      if (!isQuiet && range24h >= 2.5) {
+        if (this.controls.strategies.micro_grid) {
+          await this.deactivateMicroGrid(range24h);
+        }
+        if (this.controls.gridIgnoredUntil) {
+          this.controls.gridIgnoredUntil = 0;
+          this.saveStrategyControls();
+        }
       }
 
       this.lastDetectedRegime = currentRegime;
