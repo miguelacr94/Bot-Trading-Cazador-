@@ -112,6 +112,7 @@ export class TrailingMasterBot {
   private autoPilot = true;
   private minUsdtToTrade = 10;
   private cycleCount = 0;
+  private lastWeekendWindowState: boolean | null = null;
 
   /**
    * Margen de retroceso (Callback) adaptado a la volatilidad de cada par.
@@ -293,9 +294,9 @@ export class TrailingMasterBot {
       if (fs.existsSync(file)) {
         this.controls = JSON.parse(fs.readFileSync(file, "utf-8"));
         if (!this.controls.strategies) {
-          this.controls.strategies = { trailing_rebound: true, smart_dca: true, micro_grid: false, cazador_weekend: true };
+          this.controls.strategies = { trailing_rebound: true, smart_dca: true, micro_grid: false, cazador_weekend: this.isWeekendWindow() };
         } else if (this.controls.strategies.cazador_weekend === undefined) {
-          this.controls.strategies.cazador_weekend = true;
+          this.controls.strategies.cazador_weekend = this.isWeekendWindow();
         }
         if (!this.controls.allocations) {
           this.controls.allocations = { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
@@ -1066,7 +1067,9 @@ export class TrailingMasterBot {
         msg += `  <i>Malla de compras y ventas rápidas en mercados laterales planos.</i>\n`;
         msg += `  👉 /toggle_grid\n\n`;
 
-        msg += `• <b>4. 🏖️ Cazador Weekend:</b> ${c.cazador_weekend ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
+        const isW = this.isWeekendWindow();
+        const weekendBadge = isW && c.cazador_weekend ? "🟢 <b>ACTIVO (En Ventana)</b>" : (!isW ? "⚪ <i>EN ESPERA (Se reactiva Viernes 17:00 COT)</i>" : "🔴 <i>PAUSADO</i>");
+        msg += `• <b>4. 🏖️ Cazador Weekend:</b> ${weekendBadge}\n`;
         msg += `  <i>Aprovecha caídas de fin de semana (Vie-Dom) y exprime venta en el pico más alto (Dom noche/Lunes).</i>\n`;
         msg += `  👉 /toggle_weekend | /weekend\n\n`;
 
@@ -1179,10 +1182,10 @@ export class TrailingMasterBot {
         const isAct = this.controls.strategies.cazador_weekend;
         const alloc = this.controls.allocations.cazador_weekend ?? 20;
         let msg = `🏖️ <b>ESTRATEGIA CAZADOR WEEKEND</b> 🎯\n\n`;
-        msg += `• 🕹️ <b>Estado del Switch:</b> ${isAct ? "🟢 ACTIVADO" : "🔴 PAUSADO"} (👉 /toggle_weekend)\n`;
-        msg += `• ⏱️ <b>Ventana de Operación:</b> ${isWindow ? "🟢 <b>VENTANA ABIERTA (Vie 17:00 a Dom 18:00 COT)</b>" : "⚪ En espera (Se abre viernes 17:00 COT)"}\n`;
+        msg += `• ⏱️ <b>Ventana de Operación:</b> ${isWindow ? "🟢 <b>VENTANA ABIERTA (Vie 17:00 a Dom 18:00 COT)</b>" : "⚪ <b>CERRADA / EN ESPERA (Se reactiva Viernes 17:00 COT)</b>"}\n`;
+        msg += `• 🕹️ <b>Estado del Switch:</b> ${isAct ? "🟢 ACTIVADO" : "⚪ AUTO-DESACTIVADO (Lunes a Viernes)"} (👉 /toggle_weekend)\n`;
         msg += `• 💼 <b>Presupuesto Asignado:</b> <b>${alloc}%</b> del capital libre\n`;
-        msg += `• 🏹 <b>Mecánica de Compra:</b> Caza el piso más bajo en sobreventa y entra con rebote +0.35%.\n`;
+        msg += `• 🏹 <b>Mecánica de Compra:</b> Caza el piso más bajo en sobreventa durante el fin de semana y entra con rebote +0.35%.\n`;
         msg += `• 🚀 <b>Mecánica de Venta:</b> Trailing Take Profit (+0.80% a +3.5%) persigue el pico más alto (domingo noche, lunes o el día que más suba), vendiendo en la cima sin pérdidas jamás.\n\n`;
         if (this.buyWatches.size > 0) {
           msg += `🔻 <b>Monedas cazando el piso ahora mismo:</b>\n`;
@@ -1190,7 +1193,7 @@ export class TrailingMasterBot {
             msg += `  • <b>${sym}:</b> Piso ${w.lowestPrice} (Armado a ${w.armedPrice})\n`;
           }
         } else {
-          msg += `📡 <i>Monitoreando caídas y sobreventas en la Watchlist...</i>`;
+          msg += isWindow ? `📡 <i>Monitoreando caídas y sobreventas en la Watchlist...</i>` : `😴 <i>En pausa hasta el viernes a las 17:00 COT.</i>`;
         }
         return msg;
       }
@@ -1589,6 +1592,46 @@ export class TrailingMasterBot {
 
     try {
       this.loadStrategyControls();
+
+      // Control de ciclo automático de Cazador Weekend (Vie 17:00 a Dom 18:00 COT)
+      const isWeekend = this.isWeekendWindow();
+      if (this.lastWeekendWindowState === null) {
+        this.lastWeekendWindowState = isWeekend;
+        if (!isWeekend && this.controls.strategies.cazador_weekend) {
+          console.log("🏖️ [CAZADOR WEEKEND] Fuera de fin de semana (Lunes). Auto-desactivando switch.");
+          this.controls.strategies.cazador_weekend = false;
+          this.saveStrategyControls();
+        }
+      } else if (this.lastWeekendWindowState !== isWeekend) {
+        this.lastWeekendWindowState = isWeekend;
+        if (!isWeekend) {
+          if (this.controls.strategies.cazador_weekend) {
+            console.log("🏖️ [CAZADOR WEEKEND] Ventana de fin de semana finalizada. Auto-desactivando switch.");
+            this.controls.strategies.cazador_weekend = false;
+            this.saveStrategyControls();
+            await this.notifier.send(
+              "🏖️ <b>[CAZADOR WEEKEND: AUTO-DESACTIVADO]</b> ⏸️\n\n" +
+              "• La ventana de compras de fin de semana ha finalizado (Domingo 18:00 COT).\n" +
+              "• El switch se ha <b>auto-desactivado</b> para no hacer compras en días de semana.\n" +
+              "• 🚀 <b>Ventas:</b> Posiciones abiertas siguen rastreando el pico máximo con Trailing Take Profit.\n" +
+              "• ⏰ Se reactivará automáticamente el próximo viernes a las 17:00 COT."
+            );
+          }
+        } else {
+          if (!this.controls.strategies.cazador_weekend) {
+            console.log("🏖️ [CAZADOR WEEKEND] Ventana de fin de semana iniciada. Auto-activando switch.");
+            this.controls.strategies.cazador_weekend = true;
+            this.saveStrategyControls();
+            await this.notifier.send(
+              "🏖️ <b>[CAZADOR WEEKEND: AUTO-ACTIVADO]</b> 🟢\n\n" +
+              "• ¡Ventana de fin de semana abierta (Viernes 17:00 COT)!\n" +
+              "• El switch se ha <b>auto-activado</b> para cazar caídas y sobreventas con Trailing Buy.\n" +
+              "• 🎯 Monitoreando la Watchlist..."
+            );
+          }
+        }
+      }
+
       await this.checkOpportunityActionFile();
       await this.checkOpportunityTimeout();
 

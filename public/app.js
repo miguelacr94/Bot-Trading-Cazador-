@@ -370,7 +370,10 @@
       if (tTrailing && !tTrailing.matches(":focus")) tTrailing.checked = !!s.trailing_rebound;
       if (tDca && !tDca.matches(":focus")) tDca.checked = !!s.smart_dca;
       if (tGrid && !tGrid.matches(":focus")) tGrid.checked = !!s.micro_grid;
-      if (tWeekend && !tWeekend.matches(":focus")) tWeekend.checked = !!s.cazador_weekend;
+      const isWeekendMode = !!data.weekendMode;
+      if (tWeekend && !tWeekend.matches(":focus")) {
+        tWeekend.checked = !!s.cazador_weekend && isWeekendMode;
+      }
 
       // Actualizar Presupuestos y Porcentajes
       const a = c.allocations || { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
@@ -397,7 +400,21 @@
       if (tBadge) tBadge.textContent = aT + "% Asignado";
       if (dBadge) dBadge.textContent = aD + "% Asignado";
       if (gBadge) gBadge.textContent = aG + "% Asignado";
-      if (wBadge) wBadge.textContent = aW + "% Asignado";
+      if (wBadge) {
+        if (isWeekendMode && s.cazador_weekend) {
+          wBadge.textContent = aW + "% Asignado (🟢 En Ventana)";
+          wBadge.style.color = "#EC4899";
+          wBadge.style.background = "rgba(236,72,153,0.15)";
+        } else if (!isWeekendMode) {
+          wBadge.textContent = aW + "% Asignado (⚪ En Espera hasta Viernes)";
+          wBadge.style.color = "#9CA3AF";
+          wBadge.style.background = "rgba(156,163,175,0.15)";
+        } else {
+          wBadge.textContent = aW + "% Asignado (🔴 Pausado)";
+          wBadge.style.color = "#EF4444";
+          wBadge.style.background = "rgba(239,68,68,0.15)";
+        }
+      }
 
       if (tBar) tBar.style.width = aT + "%";
       if (dBar) dBar.style.width = aD + "%";
