@@ -377,10 +377,15 @@
 
       // Actualizar Presupuestos y Porcentajes
       const a = c.allocations || { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
+      const base = c.baseAllocations || { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
       const aT = a.trailing_rebound ?? 50;
       const aD = a.smart_dca ?? 30;
       const aG = a.micro_grid ?? 0;
       const aW = a.cazador_weekend ?? 20;
+      const baseT = base.trailing_rebound ?? 50;
+      const baseW = base.cazador_weekend ?? 20;
+      const baseD = base.smart_dca ?? 30;
+      const baseG = base.micro_grid ?? 0;
 
       const tBadge = document.getElementById("alloc-trailing-badge");
       const dBadge = document.getElementById("alloc-dca-badge");
@@ -397,7 +402,13 @@
       const gAmt = document.getElementById("alloc-grid-amount");
       const wAmt = document.getElementById("alloc-weekend-amount");
 
-      if (tBadge) tBadge.textContent = aT + "% Asignado";
+      if (tBadge) {
+        if (!isWeekendMode && baseW > 0) {
+          tBadge.textContent = aT + "% Activo (" + baseT + "% base + " + baseW + "% auto-transferido)";
+        } else {
+          tBadge.textContent = aT + "% Asignado";
+        }
+      }
       if (dBadge) dBadge.textContent = aD + "% Asignado";
       if (gBadge) gBadge.textContent = aG + "% Asignado";
       if (wBadge) {
@@ -432,10 +443,10 @@
         const sG = document.getElementById("slider-grid");
         const sW = document.getElementById("slider-weekend");
 
-        if (sT) { sT.value = aT; document.getElementById("slider-trailing-val").textContent = aT + "%"; }
-        if (sD) { sD.value = aD; document.getElementById("slider-dca-val").textContent = aD + "%"; }
-        if (sG) { sG.value = aG; document.getElementById("slider-grid-val").textContent = aG + "%"; }
-        if (sW) { sW.value = aW; document.getElementById("slider-weekend-val").textContent = aW + "%"; }
+        if (sT) { sT.value = baseT; document.getElementById("slider-trailing-val").textContent = baseT + "%"; }
+        if (sD) { sD.value = baseD; document.getElementById("slider-dca-val").textContent = baseD + "%"; }
+        if (sG) { sG.value = baseG; document.getElementById("slider-grid-val").textContent = baseG + "%"; }
+        if (sW) { sW.value = baseW; document.getElementById("slider-weekend-val").textContent = baseW + "%"; }
         updateBudgetSum();
       }
       if (tAuto && !tAuto.matches(":focus")) {

@@ -417,12 +417,30 @@ export class DashboardServer {
               autoPilot: true,
               approvalTimeoutSec: 180
             };
-            controls.allocations = {
+            controls.baseAllocations = {
               trailing_rebound: t,
               smart_dca: d,
               micro_grid: g,
               cazador_weekend: w
             };
+            const isW = this.isWeekendMode();
+            if (!isW) {
+              controls.allocations = {
+                trailing_rebound: t + w,
+                smart_dca: d,
+                micro_grid: g,
+                cazador_weekend: 0
+              };
+              controls.strategies.cazador_weekend = false;
+            } else {
+              controls.allocations = {
+                trailing_rebound: t,
+                smart_dca: d,
+                micro_grid: g,
+                cazador_weekend: w
+              };
+              controls.strategies.cazador_weekend = true;
+            }
             controls.updatedAt = Date.now();
             fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
             res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });

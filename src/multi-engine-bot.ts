@@ -41,6 +41,7 @@ interface BuyWatch {
   armedTime: number;
   rsi: number;
   dropPct: number;
+  strategy?: "trailing_rebound" | "cazador_weekend";
 }
 
 interface ActivePosition {
@@ -53,6 +54,7 @@ interface ActivePosition {
   buyTime: number;
   lastDcaTime?: number;
   dcaCount?: number;
+  strategy?: "trailing_rebound" | "smart_dca" | "micro_grid" | "cazador_weekend";
 }
 
 export interface StrategyControls {
@@ -63,6 +65,12 @@ export interface StrategyControls {
     cazador_weekend: boolean;
   };
   allocations: {
+    trailing_rebound: number;
+    smart_dca: number;
+    micro_grid: number;
+    cazador_weekend: number;
+  };
+  baseAllocations?: {
     trailing_rebound: number;
     smart_dca: number;
     micro_grid: number;
@@ -95,6 +103,12 @@ export class TrailingMasterBot {
       cazador_weekend: true
     },
     allocations: {
+      trailing_rebound: 70,
+      smart_dca: 30,
+      micro_grid: 0,
+      cazador_weekend: 0
+    },
+    baseAllocations: {
       trailing_rebound: 50,
       smart_dca: 30,
       micro_grid: 0,
@@ -298,10 +312,15 @@ export class TrailingMasterBot {
         } else if (this.controls.strategies.cazador_weekend === undefined) {
           this.controls.strategies.cazador_weekend = this.isWeekendWindow();
         }
+        if (!this.controls.baseAllocations) {
+          this.controls.baseAllocations = { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
+        }
         if (!this.controls.allocations) {
-          this.controls.allocations = { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
-        } else if (this.controls.allocations.cazador_weekend === undefined) {
-          this.controls.allocations.cazador_weekend = 20;
+          const isW = this.isWeekendWindow();
+          const baseW = this.controls.baseAllocations.cazador_weekend ?? 20;
+          this.controls.allocations = isW
+            ? { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: baseW }
+            : { trailing_rebound: 50 + baseW, smart_dca: 30, micro_grid: 0, cazador_weekend: 0 };
         }
         this.autoPilot = this.controls.autoPilot;
       }
@@ -338,6 +357,31 @@ export class TrailingMasterBot {
         fs.unlinkSync(file);
       }
     } catch(e: any) {}
+  }
+
+  private async onWeekendTradeCompleted(symbol: string) {
+    try {
+      console.log("🏖️ [CAZADOR WEEKEND] Posición de fin de semana en " + symbol + " vendida con éxito. Reasignando presupuesto inteligente a Cazador Trailing...");
+      this.controls.strategies.cazador_weekend = false;
+
+      const baseW = this.controls.baseAllocations?.cazador_weekend ?? 20;
+      const currentW = this.controls.allocations.cazador_weekend ?? 0;
+      const transferAmount = currentW > 0 ? currentW : baseW;
+
+      this.controls.allocations.trailing_rebound = (this.controls.allocations.trailing_rebound || 50) + transferAmount;
+      this.controls.allocations.cazador_weekend = 0;
+      this.saveStrategyControls();
+
+      await this.notifier.send(
+        "🏖️ <b>[CAZADOR WEEKEND: OPERACIÓN VENDIDA CON ÉXITO]</b> 🎉\n\n" +
+        "• La posición en <b>" + symbol + "</b> ha cerrado en la cima con ganancias.\n" +
+        "• Como la operación de fin de semana ya fue completada, el switch de Cazador Weekend se ha <b>desactivado</b> automáticamente.\n" +
+        "• 💼 <b>Presupuesto inteligente:</b> La cuota del <b>" + transferAmount + "%</b> se transfirió automáticamente a <b>🏹 Cazador Trailing</b> (ahora al <b>" + this.controls.allocations.trailing_rebound + "%</b>) para continuar operando durante la semana.\n" +
+        "• ⏰ Se reactivará y recuperará su presupuesto el próximo viernes a las 17:00 COT."
+      );
+    } catch(e: any) {
+      console.error("Error en onWeekendTradeCompleted:", e.message);
+    }
   }
 
   private async checkOpportunityActionFile() {
@@ -466,7 +510,7 @@ export class TrailingMasterBot {
     } else if (opp.strategy === "micro_grid") {
       return await this.executeSmartBuy(opp.symbol, opp.amount, "Micro-Grid Rango Lateral");
     } else if (opp.strategy === "cazador_weekend") {
-      return await this.executeSmartBuy(opp.symbol, opp.amount, "Cazador Weekend (Rebote Fin de Semana)");
+      return await this.executeSmartBuy(opp.symbol, opp.amount, "Cazador Weekend (Rebote Fin de Semana)", "cazador_weekend");
     }
     return false;
   }
@@ -735,8 +779,12 @@ export class TrailingMasterBot {
             const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap);
             // Solo se elimina la posición si Binance confirmó la venta
             if (sold) {
+              const strat = pos.strategy;
               this.activeTrailingPositions.delete(symbol);
               this.saveTrailingPositions();
+              if (strat === "cazador_weekend") {
+                await this.onWeekendTradeCompleted(symbol);
+              }
             }
           }
         }
@@ -874,7 +922,12 @@ export class TrailingMasterBot {
   /**
    * Compra una moneda e inicia el rastreo con Trailing Take Profit
    */
-  async executeSmartBuy(symbol: string, usdtAmount: number, source: string): Promise<boolean> {
+  async executeSmartBuy(
+    symbol: string,
+    usdtAmount: number,
+    source: string,
+    strategy: "trailing_rebound" | "smart_dca" | "micro_grid" | "cazador_weekend" = "trailing_rebound"
+  ): Promise<boolean> {
     try {
       const investStr = (usdtAmount - 0.15).toFixed(2);
       console.log(`🚀 [${source}] Ejecutando compra de ${investStr} USDT en ${symbol} con Trailing Stop...`);
@@ -904,7 +957,8 @@ export class TrailingMasterBot {
         investedUsdt: spent,
         highestPrice: buyPrice,
         activated: false,
-        buyTime: Date.now()
+        buyTime: Date.now(),
+        strategy
       });
       this.saveTrailingPositions();
 
@@ -1010,8 +1064,12 @@ export class TrailingMasterBot {
             amountToUse = Math.floor((usdt / 2) * 100) / 100;
           }
           const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
+          const strat = w.strategy || "trailing_rebound";
+          const sourceDesc = strat === "cazador_weekend"
+            ? `Cazador Weekend (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato)`
+            : `Trailing Buy (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato que al armar)`;
           console.log(`✅ Rebote confirmado en ${sym}: piso ${w.lowestPrice} → ${cur} (+${bounce.toFixed(2)}%). Comprando ${amountToUse} USDT...`);
-          const ok = await this.executeSmartBuy(sym, amountToUse, `Trailing Buy (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato que al armar)`);
+          const ok = await this.executeSmartBuy(sym, amountToUse, sourceDesc, strat);
           if (ok) {
             this.buyWatches.delete(sym);
             this.saveBuyWatches();
@@ -1092,16 +1150,20 @@ export class TrailingMasterBot {
         const acc = await this.client.account({ recvWindow: 60000 });
         const freeUsdt = parseFloat(acc.data.balances.find((b: any) => b.asset === "USDT")?.free || "0");
         const a = this.controls.allocations;
+        const base = this.controls.baseAllocations || { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
+        const isW = this.isWeekendWindow();
 
         const tUsdt = (freeUsdt * ((a.trailing_rebound || 0) / 100)).toFixed(2);
         const dUsdt = (freeUsdt * ((a.smart_dca || 0) / 100)).toFixed(2);
         const gUsdt = (freeUsdt * ((a.micro_grid || 0) / 100)).toFixed(2);
         const wUsdt = (freeUsdt * ((a.cazador_weekend || 0) / 100)).toFixed(2);
 
-        let msg = `💼 <b>PRESUPUESTO ASIGNADO POR ESTRATEGIA</b> 📊\n\n`;
-        msg += `• 💼 <b>USDT Líquido Disponible:</b> ${freeUsdt.toFixed(2)} USDT\n\n`;
+        let msg = `💼 <b>PRESUPUESTO INTELIGENTE ASIGNADO</b> 📊\n\n`;
+        msg += `• 💼 <b>USDT Líquido Disponible:</b> ${freeUsdt.toFixed(2)} USDT\n`;
+        msg += `• 🔄 <b>Régimen actual:</b> ${isW ? "🟢 Fin de Semana (Cazador Weekend Activo)" : "⚪ Días Hábiles (Cuota de Weekend absorbida por Trailing)"}\n\n`;
 
         msg += `🏹 <b>1. Cazador Trailing:</b> <b>${a.trailing_rebound}%</b> (~${tUsdt} USDT)\n` +
+               `   ${!isW ? `<i>(Base: ${base.trailing_rebound}% + ${base.cazador_weekend}% auto-transferido de Weekend)</i>\n` : ""}` +
                `   Estado: ${this.controls.strategies.trailing_rebound ? "🟢 ACTIVO" : "🔴 PAUSADO"}\n\n`;
 
         msg += `🛡️ <b>2. Smart DCA:</b> <b>${a.smart_dca}%</b> (~${dUsdt} USDT)\n` +
@@ -1110,10 +1172,10 @@ export class TrailingMasterBot {
         msg += `🌐 <b>3. Micro-Grid:</b> <b>${a.micro_grid}%</b> (~${gUsdt} USDT)\n` +
                `   Estado: ${this.controls.strategies.micro_grid ? "🟢 ACTIVO" : "🔴 PAUSADO"}\n\n`;
 
-        msg += `🏖️ <b>4. Cazador Weekend:</b> <b>${a.cazador_weekend ?? 20}%</b> (~${wUsdt} USDT)\n` +
-               `   Estado: ${this.controls.strategies.cazador_weekend ? "🟢 ACTIVO" : "🔴 PAUSADO"}\n\n`;
+        msg += `🏖️ <b>4. Cazador Weekend:</b> <b>${a.cazador_weekend}% activo</b> (Base: ${base.cazador_weekend}%)\n` +
+               `   Estado: ${isW && this.controls.strategies.cazador_weekend ? "🟢 ACTIVO EN VENTANA" : "⚪ EN ESPERA (Se reactiva Viernes 17:00 COT)"}\n\n`;
 
-        msg += `🎛️ <b>Para modificar porcentajes:</b>\n` +
+        msg += `🎛️ <b>Para modificar porcentajes base:</b>\n` +
                `Escribe: <code>/asignar &lt;trailing&gt; &lt;dca&gt; &lt;grid&gt; &lt;weekend&gt;</code>\n` +
                `Ejemplo: <code>/asignar 50 30 0 20</code> (debe sumar 100).`;
 
@@ -1138,20 +1200,39 @@ export class TrailingMasterBot {
                  `(50% Trailing, 30% Smart DCA, 0% Micro-Grid, 20% Cazador Weekend)`;
         }
 
-        this.controls.allocations = {
+        this.controls.baseAllocations = {
           trailing_rebound: t,
           smart_dca: d,
           micro_grid: g,
           cazador_weekend: w
         };
+
+        const isW = this.isWeekendWindow();
+        if (!isW) {
+          this.controls.allocations = {
+            trailing_rebound: t + w,
+            smart_dca: d,
+            micro_grid: g,
+            cazador_weekend: 0
+          };
+          this.controls.strategies.cazador_weekend = false;
+        } else {
+          this.controls.allocations = {
+            trailing_rebound: t,
+            smart_dca: d,
+            micro_grid: g,
+            cazador_weekend: w
+          };
+          this.controls.strategies.cazador_weekend = true;
+        }
         this.saveStrategyControls();
 
-        return `✅ <b>¡PRESUPUESTO ACTUALIZADO!</b> 🎯\n\n` +
-               `• 🏹 <b>Cazador Trailing:</b> <b>${t}%</b>\n` +
+        return `✅ <b>¡PRESUPUESTO AUTO-GRADUADO GUARDADO!</b> 🎯\n\n` +
+               `• 🏹 <b>Cazador Trailing:</b> ${t}% base ${!isW ? `(👉 <b>${t + w}% ACTIVO</b> entre semana)` : ""}\n` +
                `• 🛡️ <b>Smart DCA:</b> <b>${d}%</b>\n` +
                `• 🌐 <b>Micro-Grid:</b> <b>${g}%</b>\n` +
-               `• 🏖️ <b>Cazador Weekend:</b> <b>${w}%</b>\n\n` +
-               `💾 Guardado en disco. El bot respetará estas cuotas para las próximas operaciones.`;
+               `• 🏖️ <b>Cazador Weekend:</b> ${w}% base ${!isW ? `(👉 <i>0% ahora: se apartará el viernes a las 17:00 COT</i>)` : `(👉 <b>${w}% ACTIVO</b>)`}\n\n` +
+               `💾 <i>Presupuesto inteligente activo: En días hábiles todo el capital trabaja en Trailing, y el fin de semana se recupera automáticamente para cazar la caída más oportuna.</i>`;
       }
             if (cmd === "/toggle_trailing" || cmd === "toggle_trailing") {
         this.controls.strategies.trailing_rebound = !this.controls.strategies.trailing_rebound;
@@ -1566,7 +1647,8 @@ export class TrailingMasterBot {
       lowestPrice: best.curPrice,
       armedTime: Date.now(),
       rsi: best.rsi,
-      dropPct: best.dropPct
+      dropPct: best.dropPct,
+      strategy: "cazador_weekend"
     });
     this.saveBuyWatches();
 
@@ -1597,38 +1679,54 @@ export class TrailingMasterBot {
       const isWeekend = this.isWeekendWindow();
       if (this.lastWeekendWindowState === null) {
         this.lastWeekendWindowState = isWeekend;
-        if (!isWeekend && this.controls.strategies.cazador_weekend) {
-          console.log("🏖️ [CAZADOR WEEKEND] Fuera de fin de semana (Lunes). Auto-desactivando switch.");
+        if (!isWeekend && (this.controls.strategies.cazador_weekend || this.controls.allocations.cazador_weekend > 0)) {
+          console.log("🏖️ [CAZADOR WEEKEND] Fuera de fin de semana (Lunes). Auto-desactivando switch y transfiriendo cuota a Trailing.");
           this.controls.strategies.cazador_weekend = false;
+          const wAlloc = this.controls.allocations.cazador_weekend || 0;
+          if (wAlloc > 0) {
+            this.controls.allocations.trailing_rebound = (this.controls.allocations.trailing_rebound || 50) + wAlloc;
+            this.controls.allocations.cazador_weekend = 0;
+          }
           this.saveStrategyControls();
         }
       } else if (this.lastWeekendWindowState !== isWeekend) {
         this.lastWeekendWindowState = isWeekend;
         if (!isWeekend) {
-          if (this.controls.strategies.cazador_weekend) {
-            console.log("🏖️ [CAZADOR WEEKEND] Ventana de fin de semana finalizada. Auto-desactivando switch.");
-            this.controls.strategies.cazador_weekend = false;
-            this.saveStrategyControls();
-            await this.notifier.send(
-              "🏖️ <b>[CAZADOR WEEKEND: AUTO-DESACTIVADO]</b> ⏸️\n\n" +
-              "• La ventana de compras de fin de semana ha finalizado (Domingo 18:00 COT).\n" +
-              "• El switch se ha <b>auto-desactivado</b> para no hacer compras en días de semana.\n" +
-              "• 🚀 <b>Ventas:</b> Posiciones abiertas siguen rastreando el pico máximo con Trailing Take Profit.\n" +
-              "• ⏰ Se reactivará automáticamente el próximo viernes a las 17:00 COT."
-            );
+          console.log("🏖️ [CAZADOR WEEKEND] Ventana de fin de semana finalizada. Auto-desactivando switch y devolviendo cuota a Trailing.");
+          this.controls.strategies.cazador_weekend = false;
+          const wAlloc = this.controls.allocations.cazador_weekend || 0;
+          if (wAlloc > 0) {
+            this.controls.allocations.trailing_rebound = (this.controls.allocations.trailing_rebound || 50) + wAlloc;
+            this.controls.allocations.cazador_weekend = 0;
           }
+          this.saveStrategyControls();
+          await this.notifier.send(
+            "🏖️ <b>[CAZADOR WEEKEND: AUTO-DESACTIVADO]</b> ⏸️\n\n" +
+            "• La ventana de compras de fin de semana ha finalizado (Domingo 18:00 COT).\n" +
+            "• El switch se ha <b>auto-desactivado</b> para no hacer compras en días de semana.\n" +
+            `• 💼 <b>Presupuesto inteligente:</b> La cuota (${wAlloc}%) se transfirió automáticamente a <b>🏹 Cazador Trailing</b> (ahora al ${this.controls.allocations.trailing_rebound}%) para operar al 100% durante la semana.\n` +
+            "• 🚀 <b>Ventas:</b> Posiciones abiertas siguen rastreando el pico máximo con Trailing Take Profit.\n" +
+            "• ⏰ Se reactivará automáticamente el próximo viernes a las 17:00 COT."
+          );
         } else {
-          if (!this.controls.strategies.cazador_weekend) {
-            console.log("🏖️ [CAZADOR WEEKEND] Ventana de fin de semana iniciada. Auto-activando switch.");
-            this.controls.strategies.cazador_weekend = true;
-            this.saveStrategyControls();
-            await this.notifier.send(
-              "🏖️ <b>[CAZADOR WEEKEND: AUTO-ACTIVADO]</b> 🟢\n\n" +
-              "• ¡Ventana de fin de semana abierta (Viernes 17:00 COT)!\n" +
-              "• El switch se ha <b>auto-activado</b> para cazar caídas y sobreventas con Trailing Buy.\n" +
-              "• 🎯 Monitoreando la Watchlist..."
-            );
+          console.log("🏖️ [CAZADOR WEEKEND] Ventana de fin de semana iniciada. Auto-activando switch y recuperando presupuesto.");
+          this.controls.strategies.cazador_weekend = true;
+
+          const baseW = this.controls.baseAllocations?.cazador_weekend ?? 20;
+          if (this.controls.allocations.cazador_weekend < baseW) {
+            const diff = baseW - this.controls.allocations.cazador_weekend;
+            const takeFromTrailing = Math.min(diff, Math.max(0, (this.controls.allocations.trailing_rebound || 50) - 20));
+            this.controls.allocations.trailing_rebound -= takeFromTrailing;
+            this.controls.allocations.cazador_weekend += takeFromTrailing;
           }
+          this.saveStrategyControls();
+
+          await this.notifier.send(
+            "🏖️ <b>[CAZADOR WEEKEND: AUTO-ACTIVADO]</b> 🟢\n\n" +
+            "• ¡Ventana de fin de semana abierta (Viernes 17:00 COT)!\n" +
+            `• 💼 <b>Presupuesto recuperado:</b> Se apartó el <b>${this.controls.allocations.cazador_weekend}%</b> para cazar la mejor caída del fin de semana (Trailing quedó en ${this.controls.allocations.trailing_rebound}%).\n` +
+            "• 📡 Escaneando la Watchlist en busca de sobreventas y suelos con Trailing Buy..."
+          );
         }
       }
 
