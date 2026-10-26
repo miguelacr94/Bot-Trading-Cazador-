@@ -989,7 +989,7 @@ export class TrailingMasterBot {
     async handleTelegramCommand(rawCmd) {
         try {
             const parts = rawCmd.trim().split(/\s+/);
-            const cmd = parts[0].toLowerCase();
+            const cmd = parts[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const arg1 = parts[1]?.toUpperCase();
             const arg2 = parts[2];
             if (cmd === "/menu" || cmd === "menu" || cmd === "/start") {
