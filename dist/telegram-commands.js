@@ -20,8 +20,13 @@ export class TelegramCommands {
             // Registrar menú de comandos en Telegram
             const commands = [
                 { command: "menu", description: "📋 Lista completa de comandos" },
-                { command: "estrategias", description: "⚙️ Ver y alternar motores activos (Trailing, DCA, Grid)" },
-                { command: "presupuesto", description: "💼 Ver y modificar presupuesto por estrategia (% y $)" },
+                { command: "regimen", description: "🧭 Diagnóstico de volatilidad y Día Quieto" },
+                { command: "estrategias", description: "⚙️ Ver y alternar motores activos (Trailing, DCA, Grid, Weekend)" },
+                { command: "presupuesto", description: "💼 Ver y modificar presupuesto auto-graduado" },
+                { command: "weekend", description: "🏖️ Diagnóstico Cazador Weekend" },
+                { command: "toggle_weekend", description: "🏖️ Switch Cazador Weekend (Vie-Dom)" },
+                { command: "toggle_grid", description: "🌐 Switch Micro-Grid (Rango Lateral)" },
+                { command: "aprobar_grid", description: "🌐 Activar Micro-Grid en Día Quieto" },
                 { command: "aprobar", description: "✅ Aprobar oportunidad recomendada pendiente" },
                 { command: "ignorar", description: "❌ Descartar oportunidad pendiente" },
                 { command: "informe", description: "📑 Diagnóstico completo en tiempo real" },
