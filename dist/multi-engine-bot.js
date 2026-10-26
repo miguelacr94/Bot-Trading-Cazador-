@@ -64,6 +64,9 @@ export class TrailingMasterBot {
     minUsdtToTrade = 10;
     cycleCount = 0;
     lastWeekendWindowState = null;
+    lastRegimeCheckTime = 0;
+    pendingRegimeSwitch = null;
+    lastDetectedRegime = null;
     /**
      * Margen de retroceso (Callback) adaptado a la volatilidad de cada par.
      */
@@ -691,8 +694,9 @@ export class TrailingMasterBot {
                 if (pos.activated) {
                     const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
                     const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
-                    const callback = this.getCallbackPct(symbol);
-                    const hitCallback = dropFromPeak >= callback && gainPct >= 0.55;
+                    const callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol);
+                    const minGain = pos.strategy === "micro_grid" ? 0.35 : 0.55;
+                    const hitCallback = dropFromPeak >= callback && gainPct >= minGain;
                     if (hitCallback || hitHardCap) {
                         console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a $${curPrice} (Pico: $${pos.highestPrice})`);
                         const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap);
@@ -990,6 +994,8 @@ export class TrailingMasterBot {
             if (cmd === "/menu" || cmd === "menu" || cmd === "/start") {
                 return `📱 <b>CENTRO DE COMANDOS MULTI-ESTRATEGIA SPOT</b>\n\n` +
                     `• /estrategias - ⚙️ Panel y switches de estrategias (Trailing, DCA, Grid, Weekend)\n` +
+                    `• /regimen - 🧭 Diagnóstico de volatilidad y Día Quieto\n` +
+                    `• /aprobar_grid | /ignorar_grid - 🌐 Control de Micro-Grid\n` +
                     `• /toggle_weekend - 🏖️ Switch Cazador Weekend (Vie-Dom)\n` +
                     `• /weekend - 🏖️ Diagnóstico y estado de Cazador Weekend\n` +
                     `• /aprobar - ✅ Aprobar oportunidad recomendada pendiente\n` +
@@ -1122,8 +1128,37 @@ export class TrailingMasterBot {
             }
             if (cmd === "/toggle_grid" || cmd === "toggle_grid") {
                 this.controls.strategies.micro_grid = !this.controls.strategies.micro_grid;
-                this.saveStrategyControls();
-                return `🌐 <b>Micro-Grid:</b> ${this.controls.strategies.micro_grid ? "🟢 ACTIVADO" : "🔴 PAUSADO"}.`;
+                if (this.controls.strategies.micro_grid) {
+                    await this.activateMicroGrid(false);
+                    return `🌐 <b>Micro-Grid:</b> 🟢 ACTIVADO. Presupuesto reasignado para operar canales laterales.`;
+                }
+                else {
+                    await this.deactivateMicroGrid();
+                    return `🌐 <b>Micro-Grid:</b> 🔴 PAUSADO. Presupuesto devuelto a Cazador Trailing.`;
+                }
+            }
+            if (cmd === "/aprobar_grid" || cmd === "aprobar_grid" || cmd === "/activar_grid") {
+                this.pendingRegimeSwitch = null;
+                await this.activateMicroGrid(false);
+                return `🌐 <b>Micro-Grid ACTIVADO por ti.</b> Presupuesto reasignado para operar en canales laterales planos.`;
+            }
+            if (cmd === "/ignorar_grid" || cmd === "ignorar_grid") {
+                this.pendingRegimeSwitch = null;
+                return `❌ Sugerencia de Micro-Grid descartada. El bot permanecerá al 100% en Cazador Trailing.`;
+            }
+            if (cmd === "/regimen" || cmd === "regimen") {
+                const btc24 = await this.client.ticker24hr("BTCUSDT");
+                const high = parseFloat(btc24.data.highPrice);
+                const low = parseFloat(btc24.data.lowPrice);
+                const range24h = ((high - low) / low) * 100;
+                const isQuiet = range24h < 2.2;
+                let msg = `📡 <b>DIAGNÓSTICO DE RÉGIMEN DE MERCADO</b> 🧭\n\n`;
+                msg += `• <b>Estado Actual:</b> ${isQuiet ? "💤 <b>DÍA QUIETO (Mercado Lateral Plano)</b>" : "🚀 <b>MERCADO ACTIVO (Volatilidad Direccional)</b>"}\n`;
+                msg += `• <b>Rango 24h Bitcoin:</b> <b>${range24h.toFixed(2)}%</b> (${low.toFixed(0)} - ${high.toFixed(0)})\n`;
+                msg += `• <b>Estrategia Prioritaria:</b> ${this.controls.strategies.micro_grid ? "🌐 <b>Micro-Grid (Malla Lateral Activa)</b>" : "🏹 <b>Cazador Trailing (Activo)</b>"}\n`;
+                msg += `• 🤖 <b>Auto-Detección Centinela:</b> 🟢 ACTIVA (Conmuta automáticamente con aviso interactivo)\n\n`;
+                msg += `👉 /toggle_grid — <i>Activar o pausar Micro-Grid manualmente</i>`;
+                return msg;
             }
             if (cmd === "/toggle_weekend" || cmd === "toggle_weekend") {
                 this.controls.strategies.cazador_weekend = !this.controls.strategies.cazador_weekend;
@@ -1441,6 +1476,147 @@ export class TrailingMasterBot {
      * Evalúa las caídas en la watchlist, ranquea por score de sobreventa y caza el piso más bajo
      * para vender en el rebote máximo (domingo noche, lunes o el pico más alto con Trailing Take Profit).
      */
+    /**
+     * DETECCIÓN AUTOMÁTICA DE DÍAS QUIETOS (MERCADO LATERAL)
+     * Evalúa la compresión de volatilidad de Bitcoin en 24h.
+     * Si es < 2.2%, notifica por Telegram y auto-activa Micro-Grid tras 3 minutos si no hay respuesta.
+     * Si sube a >= 2.5%, auto-desactiva Micro-Grid y devuelve el presupuesto a Cazador Trailing.
+     */
+    async checkMarketRegime() {
+        if (Date.now() - this.lastRegimeCheckTime < 180000)
+            return; // Chequear cada 3 minutos
+        this.lastRegimeCheckTime = Date.now();
+        try {
+            const btc24 = await this.client.ticker24hr("BTCUSDT");
+            const high = parseFloat(btc24.data.highPrice);
+            const low = parseFloat(btc24.data.lowPrice);
+            const range24h = ((high - low) / low) * 100;
+            const isQuiet = range24h < 2.2;
+            const currentRegime = isQuiet ? "QUIET" : "TRENDING";
+            if (this.lastDetectedRegime === null) {
+                this.lastDetectedRegime = currentRegime;
+            }
+            // A) DÍA QUIETO DETECTADO: Activar Micro-Grid si está apagado y no hay sugerencia pendiente
+            if (isQuiet && !this.controls.strategies.micro_grid && !this.pendingRegimeSwitch) {
+                this.pendingRegimeSwitch = {
+                    type: "activate_grid",
+                    reason: `Rango estrecho en Bitcoin de ${range24h.toFixed(2)}% (${low.toFixed(0)} - ${high.toFixed(0)})`,
+                    btcRange24h: range24h,
+                    createdAt: Date.now(),
+                    expiresAt: Date.now() + 180000 // 3 min
+                };
+                const alertMsg = `💤 <b>[MERCADO LATERAL / DÍA QUIETO DETECTADO]</b> 🌐\n\n` +
+                    `• La volatilidad de 24h en Bitcoin es de apenas <b>${range24h.toFixed(2)}%</b> (${low.toFixed(0)} - ${high.toFixed(0)}).\n` +
+                    `• 💡 <b>Recomendación del Centinela:</b> Activar <b>🌐 Micro-Grid</b> (Malla Lateral) con <b>30%</b> del presupuesto para cosechar micro-rebotes (+0.45% a +0.60%) mientras el mercado está quieto.\n\n` +
+                    `👉 /aprobar_grid — <i>Activar Micro-Grid ahora</i>\n` +
+                    `👉 /ignorar_grid — <i>Permanecer en Cazador Trailing</i>\n\n` +
+                    `🤖 <i>${this.controls.autoPilot ? "Modo Autónomo ACTIVO: Si no respondes en 3 minutos, se activará automáticamente." : "Modo Manual: Esperando tu confirmación."}</i>`;
+                await this.notifier.send(alertMsg);
+                console.log(alertMsg.replace(/<[^>]*>/g, ""));
+            }
+            // B) FIN DE DÍA QUIETO / VOLATILIDAD REACTIVADA: Si el mercado despierta (range >= 2.5%) y Micro-Grid está activo
+            if (!isQuiet && range24h >= 2.5 && this.controls.strategies.micro_grid) {
+                await this.deactivateMicroGrid(range24h);
+            }
+            this.lastDetectedRegime = currentRegime;
+        }
+        catch (e) {
+            console.error("Error en checkMarketRegime:", e.message);
+        }
+    }
+    async checkRegimeSwitchTimeout() {
+        if (!this.pendingRegimeSwitch)
+            return;
+        if (Date.now() >= this.pendingRegimeSwitch.expiresAt) {
+            const sw = this.pendingRegimeSwitch;
+            this.pendingRegimeSwitch = null;
+            if (this.controls.autoPilot) {
+                console.log("⚡ [AUTO-PILOTO] Tiempo de 3 min agotado. Auto-activando Micro-Grid por Día Quieto...");
+                await this.activateMicroGrid(true, sw.btcRange24h);
+            }
+            else {
+                console.log("⌛ [MODO MANUAL] Tiempo agotado. Sugerencia de Micro-Grid descartada.");
+                await this.notifier.send("⌛ <i>Tiempo de espera agotado. Activación de Micro-Grid descartada (Modo Manual).</i>");
+            }
+        }
+    }
+    async activateMicroGrid(auto = false, btcRange24h) {
+        this.controls.strategies.micro_grid = true;
+        // Apartar 30% para micro_grid desde trailing_rebound
+        if ((this.controls.allocations.micro_grid || 0) < 30) {
+            const needed = 30 - (this.controls.allocations.micro_grid || 0);
+            const takeFromTrailing = Math.min(needed, Math.max(0, (this.controls.allocations.trailing_rebound || 50) - 20));
+            this.controls.allocations.trailing_rebound -= takeFromTrailing;
+            this.controls.allocations.micro_grid = (this.controls.allocations.micro_grid || 0) + takeFromTrailing;
+        }
+        this.saveStrategyControls();
+        const rangeStr = btcRange24h ? ` (BTC ${btcRange24h.toFixed(2)}% en 24h)` : "";
+        await this.notifier.send(`🌐 <b>[MICRO-GRID ACTIVADO ${auto ? "AUTOMÁTICAMENTE (3 MIN)" : "POR COMANDO"}]</b> ✅\n\n` +
+            `• <b>Régimen:</b> Día Quieto / Rango Lateral${rangeStr}.\n` +
+            `• <b>Misión:</b> Cosechar micro-rebotes rápidos en canales laterales (+0.45% a +0.60%).\n` +
+            `• 💼 <b>Presupuesto reasignado:</b> Micro-Grid <b>${this.controls.allocations.micro_grid}%</b> | Cazador Trailing <b>${this.controls.allocations.trailing_rebound}%</b> | Smart DCA <b>${this.controls.allocations.smart_dca}%</b>.\n` +
+            `• 🔄 Cuando el mercado vuelva a activarse con volatilidad (>=2.5%), se auto-desactivará y devolverá el 100% a Cazador Trailing.`);
+    }
+    async deactivateMicroGrid(range24h) {
+        this.controls.strategies.micro_grid = false;
+        // Devolver presupuesto de micro_grid a trailing_rebound
+        const gAlloc = this.controls.allocations.micro_grid || 0;
+        if (gAlloc > 0) {
+            this.controls.allocations.trailing_rebound = (this.controls.allocations.trailing_rebound || 50) + gAlloc;
+            this.controls.allocations.micro_grid = 0;
+        }
+        this.saveStrategyControls();
+        const rangeStr = range24h ? ` (BTC ${range24h.toFixed(2)}% en 24h)` : "";
+        await this.notifier.send(`🚀 <b>[VOLATILIDAD REACTIVADA: FIN DE DÍA QUIETO]</b> 🏹\n\n` +
+            `• El mercado ha despertado con volumen${rangeStr}.\n` +
+            `• <b>Micro-Grid</b> se ha pausado automáticamente.\n` +
+            `• 💼 <b>Presupuesto devuelto:</b> La cuota se transfirió al 100% a <b>🏹 Cazador Trailing</b> (ahora al <b>${this.controls.allocations.trailing_rebound}%</b>) para cazar tendencias y grandes olas.\n` +
+            `• 🎯 Listo para operar rebotes direccionales.`);
+    }
+    /**
+     * ESCÁNER MICRO-GRID: Opera compras rápidas en canales laterales estrechos durante días quietos.
+     */
+    async evaluateMicroGrid(usdt, activeSymbols) {
+        if (!this.controls.strategies.micro_grid)
+            return false;
+        if (this.pendingOpportunity)
+            return false;
+        if (usdt < this.minUsdtToTrade)
+            return false;
+        for (const sym of WATCHLIST) {
+            try {
+                if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
+                    continue;
+                }
+                const klinesRes = await this.client.klines(sym, "15m", { limit: 24 });
+                const data = klinesRes.data;
+                const closes = data.map((k) => parseFloat(k[4]));
+                const highs = data.map((k) => parseFloat(k[2]));
+                const lows = data.map((k) => parseFloat(k[3]));
+                const curPrice = closes[closes.length - 1];
+                const min6h = Math.min(...lows);
+                const max6h = Math.max(...highs);
+                const channelRangePct = ((max6h - min6h) / min6h) * 100;
+                // Canal lateral plano ideal: rango entre 0.8% y 2.5%
+                if (channelRangePct >= 0.8 && channelRangePct <= 2.5) {
+                    const positionInChannel = (curPrice - min6h) / (max6h - min6h);
+                    const rsi = this.calculateRSI(closes, 14);
+                    // Si el precio está en el 35% inferior del canal y RSI neutro-bajo (36-52): ¡Compra Micro-Grid!
+                    if (positionInChannel <= 0.35 && rsi >= 36 && rsi <= 52) {
+                        let amountToUse = Math.min(usdt, 50);
+                        if (usdt >= 80)
+                            amountToUse = Math.min(usdt * 0.4, 40);
+                        console.log(`🌐 [MICRO-GRID] Entrada en canal lateral en ${sym}: precio ${curPrice} cerca de base ${min6h} (Canal ${channelRangePct.toFixed(2)}% | RSI ${rsi.toFixed(1)})`);
+                        const ok = await this.executeSmartBuy(sym, amountToUse, `Micro-Grid Canal Lateral (${channelRangePct.toFixed(2)}%)`, "micro_grid");
+                        if (ok)
+                            return true;
+                    }
+                }
+            }
+            catch (e) { }
+        }
+        return false;
+    }
     async evaluateCazadorWeekend(usdt, activeSymbols) {
         if (!this.controls.strategies.cazador_weekend || !this.isWeekendWindow())
             return false;
@@ -1561,6 +1737,8 @@ export class TrailingMasterBot {
             }
             await this.checkOpportunityActionFile();
             await this.checkOpportunityTimeout();
+            await this.checkMarketRegime();
+            await this.checkRegimeSwitchTimeout();
             // Auto-sincronizar periódicamente posiciones de Binance
             this.cycleCount = (this.cycleCount || 0) + 1;
             if (this.cycleCount % 6 === 1) {
@@ -1584,8 +1762,13 @@ export class TrailingMasterBot {
                 if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && this.activeTrailingPositions.size < 5) {
                     weekendTriggered = await this.evaluateCazadorWeekend(usdt, activeSymbols);
                 }
-                // C) Si no hay DCA ni Weekend y Trailing Rebound está activo: vigilar caídas y suelos
-                if (!dcaTriggered && !weekendTriggered && this.controls.strategies.trailing_rebound && this.activeTrailingPositions.size < 5) {
+                // C) Si Micro-Grid está activo (en días quietos): operar canales laterales
+                let gridTriggered = false;
+                if (!dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && this.activeTrailingPositions.size < 5) {
+                    gridTriggered = await this.evaluateMicroGrid(usdt, activeSymbols);
+                }
+                // D) Si no hay DCA, Weekend ni Grid y Trailing Rebound está activo: vigilar caídas y suelos
+                if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && this.activeTrailingPositions.size < 5) {
                     await this.scanForDips(activeSymbols);
                     if (this.buyWatches.size > 0) {
                         await this.checkBuyWatches(usdt);
