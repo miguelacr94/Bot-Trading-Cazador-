@@ -18,27 +18,42 @@ export class TelegramCommands {
             return;
         try {
             // Registrar menú de comandos en Telegram
+            // Registrar menú completo de 29 comandos en Telegram
             const commands = [
-                { command: "menu", description: "📋 Lista completa de comandos" },
-                { command: "regimen", description: "🧭 Diagnóstico de volatilidad y Día Quieto" },
-                { command: "estrategias", description: "⚙️ Ver y alternar motores activos (Trailing, DCA, Grid, Weekend)" },
-                { command: "presupuesto", description: "💼 Ver y modificar presupuesto auto-graduado" },
+                // Menú y Estrategias
+                { command: "menu", description: "📋 Centro de comandos completo" },
+                { command: "estrategias", description: "⚙️ Panel y switches de estrategias" },
+                { command: "presupuesto", description: "💼 Presupuesto auto-graduado y saldos" },
+                { command: "asignar", description: "🎯 Configurar % (ej: /asignar 40 25 0 35)" },
+                { command: "regimen", description: "🧭 Diagnóstico volatilidad y Día Quieto" },
                 { command: "weekend", description: "🏖️ Diagnóstico Cazador Weekend" },
-                { command: "toggle_weekend", description: "🏖️ Switch Cazador Weekend (Vie-Dom)" },
-                { command: "toggle_grid", description: "🌐 Switch Micro-Grid (Rango Lateral)" },
-                { command: "aprobar_grid", description: "🌐 Activar Micro-Grid en Día Quieto" },
-                { command: "aprobar", description: "✅ Aprobar oportunidad recomendada pendiente" },
-                { command: "ignorar", description: "❌ Descartar oportunidad pendiente" },
-                { command: "informe", description: "📑 Diagnóstico completo en tiempo real" },
-                { command: "trailing", description: "🏹 Posiciones activas rastreando el pico" },
-                { command: "cazando", description: "🔻 Trailing Buy: monedas cazando el piso" },
+                { command: "informe", description: "📑 Diagnóstico en tiempo real y PnL" },
+                { command: "trailing", description: "🏹 Posiciones rastreando el pico más alto" },
+                { command: "cazando", description: "🔻 Monedas cazando piso (Trailing Buy)" },
                 { command: "reporte", description: "📈 Ganancias reales acumuladas (Binance)" },
-                { command: "estado", description: "📊 Órdenes activas y precios en Binance" },
-                { command: "radar", description: "📡 Escáner de suelos y RSI en tiempo real" },
+                { command: "estado", description: "📊 Órdenes vivas y precios en Binance" },
+                { command: "radar", description: "📡 Escáner de suelos y RSI en vivo" },
                 { command: "balance", description: "💼 Consultar saldos en Binance Spot" },
+                { command: "motores", description: "⚙️ Parámetros técnicos de los motores" },
+                // Interruptores (Switches)
+                { command: "toggle_trailing", description: "🏹 Activar / Pausar Cazador Trailing" },
+                { command: "toggle_dca", description: "🛡️ Activar / Pausar Smart DCA" },
+                { command: "toggle_grid", description: "🌐 Activar / Pausar Micro-Grid" },
+                { command: "toggle_weekend", description: "🏖️ Activar / Pausar Cazador Weekend" },
+                { command: "toggle_ia", description: "🤖 Activar / Silenciar Gemini Copilot" },
+                // Aprobaciones interactivas
+                { command: "aprobar", description: "✅ Aprobar oportunidad recomendada" },
+                { command: "ignorar", description: "❌ Descartar oportunidad de compra" },
+                { command: "aprobar_grid", description: "🌐 Activar Micro-Grid en Día Quieto" },
+                { command: "ignorar_grid", description: "❌ Descartar activación Micro-Grid" },
+                // Modos y Control
                 { command: "modo", description: "🤖 Ver o cambiar modo (/modo auto | manual)" },
                 { command: "pausa", description: "⏸️ Pausar compras automáticas" },
-                { command: "reanudar", description: "▶️ Reanudar compras automáticas" }
+                { command: "reanudar", description: "▶️ Reanudar compras automáticas" },
+                // Operaciones manuales e IA
+                { command: "comprar", description: "🛒 Compra manual (ej: /comprar eth)" },
+                { command: "vender", description: "💰 Venta manual a mercado (ej: /vender sol)" },
+                { command: "ai", description: "🧠 Consultar a Gemini AI (ej: /ai mercado)" }
             ];
             await fetch(this.api("setMyCommands"), {
                 method: "POST",

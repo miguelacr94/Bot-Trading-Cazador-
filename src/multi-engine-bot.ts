@@ -1102,26 +1102,47 @@ export class TrailingMasterBot {
       const arg1 = parts[1]?.toUpperCase();
       const arg2 = parts[2];
 
-      if (cmd === "/menu" || cmd === "menu" || cmd === "/start") {
-        return `📱 <b>CENTRO DE COMANDOS MULTI-ESTRATEGIA SPOT</b>\n\n` +
-          `• /estrategias - ⚙️ Panel y switches de estrategias (Trailing, DCA, Grid, Weekend)\n` +
-          `• /regimen - 🧭 Diagnóstico de volatilidad y Día Quieto\n` +
-          `• /toggle_ia - 🤖 Silenciar o activar respuestas de Gemini AI\n` +
-          `• /aprobar_grid | /ignorar_grid - 🌐 Control de Micro-Grid\n` +
-          `• /toggle_weekend - 🏖️ Switch Cazador Weekend (Vie-Dom)\n` +
-          `• /weekend - 🏖️ Diagnóstico y estado de Cazador Weekend\n` +
-          `• /aprobar - ✅ Aprobar oportunidad recomendada pendiente\n` +
-          `• /ignorar - ❌ Descartar oportunidad recomendada\n` +
-          `• /informe - 📑 Diagnóstico completo en tiempo real\n` +
-          `• /trailing - 🏹 Posiciones activas rastreando el pico\n` +
-          `• /cazando - 🔻 Trailing Buy: monedas cazando el piso\n` +
-          `• /reporte - 📈 Ganancias reales acumuladas (Binance)\n` +
-          `• /estado - 📊 Órdenes vivas y precios en Binance\n` +
-          `• /radar - 📡 Escáner de suelos en tiempo real\n` +
-          `• /balance - 💼 Saldos libres y en Earn en Binance\n` +
-          `• /modo auto | /modo manual - 🤖 Piloto autónomo o manual\n` +
-          `• /pausa y /reanudar - ⏸️ Pausar o reanudar compras\n\n` +
-          `💡 <i>Toca cualquiera de los enlaces azules para ejecutar.</i>`;
+            if (cmd === "/menu" || cmd === "menu" || cmd === "/start") {
+        return `📱 <b>CENTRO DE CONTROL MULTI-ESTRATEGIA SPOT</b> 🕹️\n\n` +
+          `<b>⚙️ MOTORES Y ESTRATEGIAS:</b>\n` +
+          `• /estrategias — <i>Panel general y switches de motores</i>\n` +
+          `• /presupuesto — <i>Distribución y USDT por estrategia</i>\n` +
+          `• /asignar — <i>Configurar % (ej: /asignar 40 25 0 35)</i>\n` +
+          `• /regimen — <i>Diagnóstico de volatilidad y Día Quieto</i>\n` +
+          `• /weekend — <i>Estado y radar de Cazador Weekend</i>\n` +
+          `• /motores — <i>Parámetros técnicos de Trailing Buy/Sell</i>\n\n` +
+
+          `<b>🔀 INTERRUPTORES (ON / OFF):</b>\n` +
+          `• /toggle_trailing — <i>Switch Cazador Trailing</i>\n` +
+          `• /toggle_dca — <i>Switch Smart DCA (Seguridad)</i>\n` +
+          `• /toggle_grid — <i>Switch Micro-Grid (Rango Lateral)</i>\n` +
+          `• /toggle_weekend — <i>Switch Cazador Weekend (Vie-Dom)</i>\n` +
+          `• /toggle_ia — <i>Silenciar o activar respuestas de Gemini AI</i>\n\n` +
+
+          `<b>⚡ APROBACIONES INTERACTIVAS:</b>\n` +
+          `• /aprobar — <i>Aprobar compra sugerida pendiente</i>\n` +
+          `• /ignorar — <i>Descartar oportunidad sugerida</i>\n` +
+          `• /aprobar_grid — <i>Activar Micro-Grid en Día Quieto</i>\n` +
+          `• /ignorar_grid — <i>Descartar Micro-Grid y seguir en Trailing</i>\n\n` +
+
+          `<b>📊 DIAGNÓSTICO Y MERCADO EN VIVO:</b>\n` +
+          `• /informe — <i>Diagnóstico completo en tiempo real y PnL</i>\n` +
+          `• /trailing — <i>Posiciones vivas rastreando el pico</i>\n` +
+          `• /cazando — <i>Monedas acechando el piso (Trailing Buy)</i>\n` +
+          `• /radar — <i>Escáner de suelos y RSI en tiempo real</i>\n` +
+          `• /estado — <i>Órdenes vivas y precios meta en Binance</i>\n` +
+          `• /balance — <i>Saldos libres en Binance Spot</i>\n` +
+          `• /reporte — <i>Ganancias reales acumuladas netas (USDT/COP)</i>\n\n` +
+
+          `<b>🤖 MODOS Y OPERACIONES:</b>\n` +
+          `• /modo auto — <i>Activar piloto automático autónomo</i>\n` +
+          `• /modo manual — <i>Modo manual asistido (confirmación previa)</i>\n` +
+          `• /pausa — <i>Pausar todas las compras automáticas</i>\n` +
+          `• /reanudar — <i>Reanudar compras automáticas</i>\n` +
+          `• /comprar &lt;MONEDA&gt; — <i>Comprar con Trailing Take Profit</i>\n` +
+          `• /vender &lt;MONEDA&gt; — <i>Vender posición al mercado</i>\n` +
+          `• /ai &lt;PREGUNTA&gt; — <i>Consultar al copiloto Gemini AI</i>\n\n` +
+          `💡 <i>Toca cualquiera de los enlaces azules para ejecutar al instante.</i>`;
       }
 
       if (cmd === "/estrategias" || cmd === "estrategias") {
