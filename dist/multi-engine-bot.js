@@ -1876,12 +1876,44 @@ export class TrailingMasterBot {
             return; // Cada 3 minutos
         this.lastTimeframeAdvisorTime = Date.now();
         try {
-            const btc24 = await this.client.ticker24hr("BTCUSDT");
-            const high = parseFloat(btc24.data.highPrice);
-            const low = parseFloat(btc24.data.lowPrice);
-            const range24h = ((high - low) / low) * 100;
+            // 🧠 CENTINELA MULTI-ACTIVO: Escaneo simultáneo de todo el mercado (Macro + Clásicas + Memes)
+            const tickersRes = await this.client.ticker24hr();
+            const tickerMap = new Map();
+            tickersRes.data.forEach((t) => tickerMap.set(t.symbol, t));
+            const btc = tickerMap.get("BTCUSDT") || { highPrice: "1", lowPrice: "1", lastPrice: "1", priceChangePercent: "0" };
+            const btcHigh = parseFloat(btc.highPrice);
+            const btcLow = parseFloat(btc.lowPrice);
+            const btcRange = ((btcHigh - btcLow) / btcLow) * 100;
+            const range24h = btcRange;
             const isWeekend = this.isWeekendWindow();
             const session = this.getCurrentMarketSession();
+            // Volatilidad promedio de Monedas Clásicas (ETH, SOL, AVAX, etc.)
+            let coreSum = 0, coreCount = 0;
+            for (const s of CORE_WATCHLIST) {
+                const t = tickerMap.get(s);
+                if (t) {
+                    const h = parseFloat(t.highPrice), l = parseFloat(t.lowPrice);
+                    coreSum += ((h - l) / l) * 100;
+                    coreCount++;
+                }
+            }
+            const coreAvgRange = coreCount > 0 ? (coreSum / coreCount) : btcRange;
+            // Volatilidad promedio de Canasta Memecoins (PEPE, DOGE, BONK, etc.)
+            let memeSum = 0, memeCount = 0;
+            let hottestMeme = { symbol: "PEPE", range: 0 };
+            for (const s of MEME_WATCHLIST) {
+                const t = tickerMap.get(s);
+                if (t) {
+                    const h = parseFloat(t.highPrice), l = parseFloat(t.lowPrice);
+                    const r = ((h - l) / l) * 100;
+                    memeSum += r;
+                    memeCount++;
+                    if (r > hottestMeme.range) {
+                        hottestMeme = { symbol: s.replace("USDT", ""), range: r };
+                    }
+                }
+            }
+            const memeAvgRange = memeCount > 0 ? (memeSum / memeCount) : 0;
             if (!this.controls.suggestions) {
                 this.controls.suggestions = {};
             }
@@ -1902,38 +1934,42 @@ export class TrailingMasterBot {
             let trReason = "";
             let trCriterios = [];
             let trWhy = "";
-            if (range24h >= 4.0) {
+            if (btcRange >= 4.0 || memeAvgRange >= 6.5) {
                 trTf = "15m";
                 trSl = 3.5;
-                trReason = `Volatilidad alta en Bitcoin (${range24h.toFixed(1)}%). Sesión ${session}.`;
+                trReason = `Alta velocidad detectada (BTC ${btcRange.toFixed(1)}%, Memes ${memeAvgRange.toFixed(1)}%). Sesión ${session}.`;
                 trCriterios = [
-                    `Rango 24h Bitcoin: ${range24h.toFixed(2)}% (Alta velocidad y momentum)`,
+                    `Rango Bitcoin: ${btcRange.toFixed(2)}% (Fuerza direccional)`,
+                    `Rango Memecoins: ${memeAvgRange.toFixed(2)}% (Líder ${hottestMeme.symbol} con ${hottestMeme.range.toFixed(1)}%)`,
                     `Sesión: ${session}`,
-                    "Flujo de órdenes agresivo con rompimientos frecuentes"
+                    "Flujo de órdenes dinámico con ciclos de rebote veloces"
                 ];
-                trWhy = "Con el mercado acelerado, las ondas completas tardan menos en madurar. Bajar el radar a 15m permite cazar rebotes de +1.5% a +2.5% varias veces al día. Se calibra Stop-Loss en -3.5% para proteger contra giros falsos.";
+                trWhy = `Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m permite capturar rebotes rápidos (+1.2% a +2.0%) varias veces al día sin dejar capital atrapado.`;
             }
-            else if (range24h >= 2.0) {
+            else if (btcRange >= 2.0) {
                 trTf = "1h";
                 trSl = 4.0;
-                trReason = `Volatilidad estándar equilibrada (${range24h.toFixed(1)}%). Sesión ${session}.`;
+                trReason = `Volatilidad equilibrada (BTC ${btcRange.toFixed(1)}%, Clásicas ${coreAvgRange.toFixed(1)}%). Sesión ${session}.`;
                 trCriterios = [
-                    `Rango 24h Bitcoin: ${range24h.toFixed(2)}% (Oscilación limpia)`,
+                    `Rango Bitcoin: ${btcRange.toFixed(2)}% (Oscilación limpia)`,
+                    `Promedio Clásicas: ${coreAvgRange.toFixed(2)}%`,
+                    `Canasta Memes: ${memeAvgRange.toFixed(2)}% (Líder ${hottestMeme.symbol})`,
                     `Sesión: ${session}`,
-                    "Estructura de ondas de 1H con soporte y resistencia definidos"
+                    "Estructura de ondas de 1H con soporte y resistencia claros"
                 ];
-                trWhy = "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario y te posiciona para capturar el movimiento entero de +2.0% a +3.5%. El Stop-Loss en -4.0% le da el espacio exacto al activo para respirar sin sacarte antes del rebote.";
+                trWhy = "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario y posiciona al bot para capturar movimientos enteros de +1.5% a +3.0%. El stop-loss se calibra en -4.0% para dar espacio al activo sin salidas falsas.";
             }
             else {
                 trTf = "1h";
                 trSl = 4.0;
-                trReason = `Mercado lateral / Compresión de rango (${range24h.toFixed(1)}%). Sesión ${session}.`;
+                trReason = `BTC comprimido (${btcRange.toFixed(1)}%), pero Memes activas (${memeAvgRange.toFixed(1)}%). Sesión ${session}.`;
                 trCriterios = [
-                    `Rango 24h Bitcoin comprimido: ${range24h.toFixed(2)}% (< 2.0%)`,
+                    `Rango Macro Bitcoin: ${btcRange.toFixed(2)}% (Calma y absorción institucional)`,
+                    `Rango Canasta Memecoins: ${memeAvgRange.toFixed(2)}% (Líder: ${hottestMeme.symbol} ${hottestMeme.range.toFixed(1)}%)`,
                     `Sesión: ${session}`,
-                    "Radar en 1H para filtrar falso ruido y trampas de mercado lateral"
+                    "Estrategia Híbrida: 1H para filtrar ruido en clásicas y Trailing Buy ágil en Memecoins"
                 ];
-                trWhy = "En baja volatilidad y canales estrechos, operar en velas cortas (15m) genera falsos quiebres y compras en techos locales. Mantener el radar en 1H protege el capital esperando una expansión con volumen institucional real.";
+                trWhy = `En días donde Bitcoin se mueve en canales planos (< 2.0%), la liquidez institucional descansa en las monedas grandes pero la especulación se concentra en memecoins (${hottestMeme.symbol}). Mantener 1H en clásicas protege el capital contra trampas, mientras el escáner de velas aprovecha los rebotes en la canasta meme.`;
             }
             const isTrCurrent = currentSettings.trailing_rebound?.timeframe === trTf;
             const isTrRejected = !!(this.controls.rejectedSuggestions.trailing_rebound && this.controls.rejectedSuggestions.trailing_rebound > now);
@@ -1944,7 +1980,7 @@ export class TrailingMasterBot {
                 criterios: trCriterios,
                 porQue: trWhy,
                 session,
-                btcRange24h: range24h,
+                btcRange24h: btcRange,
                 updatedAt: now,
                 expiresAt: now + 3600000,
                 isCurrent: isTrCurrent,
@@ -1964,7 +2000,7 @@ export class TrailingMasterBot {
                 ],
                 porQue: "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
                 session,
-                btcRange24h: range24h,
+                btcRange24h: btcRange,
                 updatedAt: now,
                 expiresAt: now + 3600000,
                 isCurrent: isDcaCurrent,
@@ -1973,19 +2009,19 @@ export class TrailingMasterBot {
             // 3. Sugerencia Micro-Grid (Rango Lateral Plano)
             const isGridCurrent = currentSettings.micro_grid?.timeframe === "15m";
             const isGridRejected = !!(this.controls.rejectedSuggestions.micro_grid && this.controls.rejectedSuggestions.micro_grid > now);
-            if (range24h < 2.2) {
+            if (btcRange < 2.2) {
                 this.controls.suggestions.micro_grid = {
                     timeframe: "15m",
                     stopLossPct: 2.0,
-                    reason: `Día quieto confirmado en Bitcoin (${range24h.toFixed(1)}%). Malla activa.`,
+                    reason: `Día quieto confirmado en Bitcoin (${btcRange.toFixed(1)}%). Malla activa.`,
                     criterios: [
-                        `Compresión de volatilidad extrema: ${range24h.toFixed(2)}% (< 2.2%)`,
+                        `Compresión de volatilidad extrema en Bitcoin: ${btcRange.toFixed(2)}% (< 2.2%)`,
                         "Mercado sin dirección de tendencia (lateral plano)",
                         "Micro-oscilaciones constantes en canales de ±0.5%"
                     ],
                     porQue: "En días planos donde no hay tendencias grandes, la única forma de generar dólares es con una rejilla de micro-rebotes (+0.45% a +0.60%) en 15m. El Stop-Loss estricto de -2.0% es obligatorio: si el precio rompe el canal hacia abajo, la estrategia debe cortar de inmediato para no quedar atrapada en una caída direccional.",
                     session,
-                    btcRange24h: range24h,
+                    btcRange24h: btcRange,
                     updatedAt: now,
                     expiresAt: now + 3600000,
                     isCurrent: isGridCurrent,
@@ -1996,14 +2032,14 @@ export class TrailingMasterBot {
                 this.controls.suggestions.micro_grid = {
                     timeframe: "15m",
                     stopLossPct: 2.0,
-                    reason: `Mercado direccional activo (${range24h.toFixed(1)}%). Conviene cautela.`,
+                    reason: `Mercado direccional activo (${btcRange.toFixed(1)}%). Conviene cautela.`,
                     criterios: [
-                        `Rango 24h: ${range24h.toFixed(2)}% (Mercado con dirección)`,
+                        `Rango Bitcoin: ${btcRange.toFixed(2)}% (Mercado con dirección)`,
                         "Poco favorable para mallas fijas sin tendencia"
                     ],
                     porQue: "Cuando el mercado tiene movimiento direccional, las estrategias de rejilla corren riesgo de quedar con compras atrapadas. Se sugiere mantener el presupuesto de Micro-Grid en 0% o con Stop-Loss estricto de -2.0% mientras el Trailing Hunter hace el trabajo pesado.",
                     session,
-                    btcRange24h: range24h,
+                    btcRange24h: btcRange,
                     updatedAt: now,
                     expiresAt: now + 3600000,
                     isCurrent: isGridCurrent,
@@ -2025,7 +2061,7 @@ export class TrailingMasterBot {
                     ],
                     porQue: "Durante el fin de semana el dinero institucional descansa y los creadores de mercado suelen empujar el precio a la baja para cazar stop-losses. Se calibra en 1H con Stop-Loss tolerante de -5.0% para no ser expulsado por un mechazo, esperando la recuperación de compras cuando reabre CME el domingo por la noche.",
                     session,
-                    btcRange24h: range24h,
+                    btcRange24h: btcRange,
                     updatedAt: now,
                     expiresAt: now + 3600000,
                     isCurrent: isWeekendCurrent,
@@ -2043,7 +2079,7 @@ export class TrailingMasterBot {
                     ],
                     porQue: "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
                     session,
-                    btcRange24h: range24h,
+                    btcRange24h: btcRange,
                     updatedAt: now,
                     expiresAt: now + 3600000,
                     isCurrent: isWeekendCurrent,
