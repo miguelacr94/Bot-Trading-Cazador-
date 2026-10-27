@@ -1692,6 +1692,129 @@
       cursor: pointer;
     }
 
+  
+    /* Modo Compacto y Acordeones Desplegables */
+    .btn-compact-mode {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: var(--text-dim);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+    .btn-compact-mode:hover {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: #38BDF8;
+      color: #38BDF8;
+    }
+    .btn-compact-mode.active {
+      background: rgba(56, 189, 248, 0.22);
+      border-color: #38BDF8;
+      color: #38BDF8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+    }
+
+    .btn-card-toggle {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-dim);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s ease;
+    }
+    .btn-card-toggle:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+    .btn-card-toggle.open {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: #38BDF8;
+      color: #38BDF8;
+    }
+
+    .strategy-card-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Colapsables suaves */
+    .strategy-details-section {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+    }
+    .compact-mode .strategy-details-section:not(.open) {
+      display: none !important;
+    }
+
+    .sugg-expandable {
+      display: none;
+      margin-top: 8px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.08);
+      padding-top: 8px;
+      animation: fadeIn 0.2s ease;
+    }
+    .sugg-expandable.open {
+      display: block !important;
+    }
+
+    .btn-toggle-sugg {
+      background: none;
+      border: none;
+      color: #94A3B8;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-toggle-sugg:hover {
+      color: #38BDF8;
+      background: rgba(56, 189, 248, 0.1);
+    }
+    .btn-toggle-sugg.open {
+      color: #38BDF8;
+    }
+
+    /* Compact UI polish para tarjetas */
+    .compact-mode .strategy-item {
+      padding: 14px 16px;
+      gap: 10px;
+    }
+    .compact-mode .strat-sugg-box {
+      padding: 10px 12px;
+      gap: 8px;
+    }
+    .compact-mode .strat-ctrl-row {
+      margin-bottom: 2px;
+    }
+    .compact-mode .position-card {
+      padding: 16px 18px;
+    }
+    .compact-mode .price-row {
+      padding: 8px 10px;
+      margin-bottom: 12px;
+    }
+    .compact-mode .progress-wrapper {
+      margin-bottom: 12px;
+    }
+
   </style>
 </head>
 <body>
@@ -1759,6 +1882,7 @@
           <span id="budget-sum-badge">Total: 100%</span>
         </div>
         <div class="hub-header-right">
+          <button id="btn-toggle-compact-view" class="btn-compact-mode">📦 Vista Compacta</button>
           <button id="btn-save-alloc" class="btn-save-alloc">💾 Guardar Presupuesto</button>
           <div class="hub-mode-toggle">
             <span class="hub-mode-label" id="mode-label">🟢 Piloto Automático</span>
@@ -1787,9 +1911,13 @@
               <div class="strategy-name">🏹 1. Cazador Trailing</div>
             </div>
             <label class="switch">
-              <input type="checkbox" id="toggle-trailing" checked>
-              <span class="slider"></span>
-            </label>
+              <div class="strategy-card-header-actions">
+              <button class="btn-card-toggle" data-target="details-trailing" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <label class="switch">
+                <input type="checkbox" id="toggle-trailing" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
 
           <div class="strategy-details-section">
@@ -1815,7 +1943,6 @@
               </div>
             </div>
             <div class="strat-ctrl-row">
-                          <div class="strat-ctrl-row">
               <span class="strat-ctrl-label">🎯 Callback Base:</span>
               <div class="mini-sl-group">
                 <input type="range" class="mini-cb-slider" id="slider-cb-trailing" min="0.15" max="1.0" step="0.05" value="0.35">
@@ -1852,18 +1979,21 @@
           <div class="strat-sugg-box" id="sugg-box-trailing">
             <div class="strat-sugg-header">
               <div class="strat-sugg-header-left">
-                <span>🧠 Sugerencia Inteligente Centinela:</span>
+                <span>🧠 Centinela:</span>
+                <span class="sugg-status-tag" id="sugg-tag-trailing"></span>
               </div>
-              <span class="sugg-status-tag" id="sugg-tag-trailing"></span>
+              <button class="btn-toggle-sugg" data-target="sugg-expand-trailing" type="button">🔍 Fundamentos ▾</button>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-trailing">
               Cargando análisis en tiempo real…
             </div>
-            <div class="strat-sugg-criteria" id="sugg-criteria-trailing">
-              <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
-            </div>
-            <div class="strat-sugg-why" id="sugg-why-trailing">
-              <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+            <div class="sugg-expandable" id="sugg-expand-trailing">
+              <div class="strat-sugg-criteria" id="sugg-criteria-trailing">
+                <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
+              </div>
+              <div class="strat-sugg-why" id="sugg-why-trailing">
+                <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+              </div>
             </div>
             <div class="strat-sugg-actions" id="sugg-actions-trailing">
               <button class="btn-apply-sugg" data-strat="trailing_rebound" id="btn-apply-trailing">⚡ Aplicar Sugerencia</button>
@@ -1884,9 +2014,13 @@
               <div class="strategy-name">🛡️ 2. Smart DCA (Seguridad)</div>
             </div>
             <label class="switch">
-              <input type="checkbox" id="toggle-dca" checked>
-              <span class="slider"></span>
-            </label>
+              <div class="strategy-card-header-actions">
+              <button class="btn-card-toggle" data-target="details-dca" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <label class="switch">
+                <input type="checkbox" id="toggle-dca" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
 
           <div class="strategy-details-section">
@@ -1941,18 +2075,21 @@
           <div class="strat-sugg-box" id="sugg-box-dca">
             <div class="strat-sugg-header">
               <div class="strat-sugg-header-left">
-                <span>🧠 Sugerencia Inteligente Centinela:</span>
+                <span>🧠 Centinela:</span>
+                <span class="sugg-status-tag" id="sugg-tag-dca"></span>
               </div>
-              <span class="sugg-status-tag" id="sugg-tag-dca"></span>
+              <button class="btn-toggle-sugg" data-target="sugg-expand-dca" type="button">🔍 Fundamentos ▾</button>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-dca">
               Cargando análisis en tiempo real…
             </div>
-            <div class="strat-sugg-criteria" id="sugg-criteria-dca">
-              <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
-            </div>
-            <div class="strat-sugg-why" id="sugg-why-dca">
-              <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+            <div class="sugg-expandable" id="sugg-expand-dca">
+              <div class="strat-sugg-criteria" id="sugg-criteria-dca">
+                <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
+              </div>
+              <div class="strat-sugg-why" id="sugg-why-dca">
+                <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+              </div>
             </div>
             <div class="strat-sugg-actions" id="sugg-actions-dca">
               <button class="btn-apply-sugg" data-strat="smart_dca" id="btn-apply-dca">⚡ Aplicar Sugerencia</button>
@@ -2030,18 +2167,21 @@
           <div class="strat-sugg-box" id="sugg-box-grid">
             <div class="strat-sugg-header">
               <div class="strat-sugg-header-left">
-                <span>🧠 Sugerencia Inteligente Centinela:</span>
+                <span>🧠 Centinela:</span>
+                <span class="sugg-status-tag" id="sugg-tag-grid"></span>
               </div>
-              <span class="sugg-status-tag" id="sugg-tag-grid"></span>
+              <button class="btn-toggle-sugg" data-target="sugg-expand-grid" type="button">🔍 Fundamentos ▾</button>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-grid">
               Cargando análisis en tiempo real…
             </div>
-            <div class="strat-sugg-criteria" id="sugg-criteria-grid">
-              <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
-            </div>
-            <div class="strat-sugg-why" id="sugg-why-grid">
-              <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+            <div class="sugg-expandable" id="sugg-expand-grid">
+              <div class="strat-sugg-criteria" id="sugg-criteria-grid">
+                <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
+              </div>
+              <div class="strat-sugg-why" id="sugg-why-grid">
+                <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+              </div>
             </div>
             <div class="strat-sugg-actions" id="sugg-actions-grid">
               <button class="btn-apply-sugg" data-strat="micro_grid" id="btn-apply-grid">⚡ Aplicar Sugerencia</button>
@@ -2119,18 +2259,21 @@
           <div class="strat-sugg-box" id="sugg-box-weekend">
             <div class="strat-sugg-header">
               <div class="strat-sugg-header-left">
-                <span>🧠 Sugerencia Inteligente Centinela:</span>
+                <span>🧠 Centinela:</span>
+                <span class="sugg-status-tag" id="sugg-tag-weekend"></span>
               </div>
-              <span class="sugg-status-tag" id="sugg-tag-weekend"></span>
+              <button class="btn-toggle-sugg" data-target="sugg-expand-weekend" type="button">🔍 Fundamentos ▾</button>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-weekend">
               Cargando análisis en tiempo real…
             </div>
-            <div class="strat-sugg-criteria" id="sugg-criteria-weekend">
-              <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
-            </div>
-            <div class="strat-sugg-why" id="sugg-why-weekend">
-              <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+            <div class="sugg-expandable" id="sugg-expand-weekend">
+              <div class="strat-sugg-criteria" id="sugg-criteria-weekend">
+                <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
+              </div>
+              <div class="strat-sugg-why" id="sugg-why-weekend">
+                <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+              </div>
             </div>
             <div class="strat-sugg-actions" id="sugg-actions-weekend">
               <button class="btn-apply-sugg" data-strat="cazador_weekend" id="btn-apply-weekend">⚡ Aplicar Sugerencia</button>

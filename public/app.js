@@ -1037,6 +1037,84 @@
 
     document.getElementById("btn-opp-approve")?.addEventListener("click", () => handleOpportunityAction("approve"));
     document.getElementById("btn-opp-ignore")?.addEventListener("click", () => handleOpportunityAction("ignore"));
+
+  // ---------- Control de Modo Compacto & Acordeones ----------
+  function initCompactUI() {
+    const compactBtn = document.getElementById("btn-toggle-compact-view");
+    const container = document.body;
+
+    // Cargar preferencia guardada (por defecto modo compacto = true para máxima limpieza visual)
+    const savedCompact = localStorage.getItem("dashboard_compact_mode");
+    const isCompact = savedCompact !== "false";
+    if (isCompact) {
+      container.classList.add("compact-mode");
+      if (compactBtn) {
+        compactBtn.classList.add("active");
+        compactBtn.innerHTML = "📦 Modo Compacto: <b>ACTIVO</b>";
+      }
+    } else {
+      container.classList.remove("compact-mode");
+      if (compactBtn) {
+        compactBtn.classList.remove("active");
+        compactBtn.innerHTML = "📖 Vista Detallada";
+      }
+    }
+
+    compactBtn?.addEventListener("click", () => {
+      const active = container.classList.toggle("compact-mode");
+      localStorage.setItem("dashboard_compact_mode", active ? "true" : "false");
+      if (active) {
+        compactBtn.classList.add("active");
+        compactBtn.innerHTML = "📦 Modo Compacto: <b>ACTIVO</b>";
+        document.querySelectorAll(".strategy-details-section.open").forEach(el => el.classList.remove("open"));
+        document.querySelectorAll(".btn-card-toggle.open").forEach(btn => {
+          btn.classList.remove("open");
+          btn.innerHTML = "ℹ️ Info ▾";
+        });
+        document.querySelectorAll(".sugg-expandable.open").forEach(el => el.classList.remove("open"));
+        document.querySelectorAll(".btn-toggle-sugg.open").forEach(btn => {
+          btn.classList.remove("open");
+          btn.innerHTML = "🔍 Fundamentos ▾";
+        });
+      } else {
+        compactBtn.classList.remove("active");
+        compactBtn.innerHTML = "📖 Vista Detallada";
+        document.querySelectorAll(".strategy-details-section").forEach(el => el.classList.add("open"));
+        document.querySelectorAll(".btn-card-toggle").forEach(btn => {
+          btn.classList.add("open");
+          btn.innerHTML = "ℹ️ Ocultar ▴";
+        });
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      const cardBtn = e.target.closest(".btn-card-toggle");
+      if (cardBtn) {
+        const card = cardBtn.closest(".strategy-item");
+        const details = card?.querySelector(".strategy-details-section");
+        if (details) {
+          const isOpen = details.classList.toggle("open");
+          cardBtn.classList.toggle("open", isOpen);
+          cardBtn.innerHTML = isOpen ? "ℹ️ Ocultar ▴" : "ℹ️ Info ▾";
+        }
+        return;
+      }
+
+      const suggBtn = e.target.closest(".btn-toggle-sugg");
+      if (suggBtn) {
+        const suggBox = suggBtn.closest(".strat-sugg-box");
+        const expandable = suggBox?.querySelector(".sugg-expandable");
+        if (expandable) {
+          const isOpen = expandable.classList.toggle("open");
+          suggBtn.classList.toggle("open", isOpen);
+          suggBtn.innerHTML = isOpen ? "🔍 Fundamentos ▴" : "🔍 Fundamentos ▾";
+        }
+        return;
+      }
+    });
+  }
+
+    initCompactUI();
   }, 1000);
 
   async function tick() {
