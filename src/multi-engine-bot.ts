@@ -13,8 +13,10 @@ dotenv.config();
 // Tasa de referencia COP por USDT (P2P Colombia aprox.)
 const COP_PER_USDT = 4200;
 
-// WATCHLIST oficial: proyectos de alta liquidez y solidez (PEPE retirado de nuevas compras)
-const WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "PEPEUSDT"];
+// WATCHLISTS SEPARADAS: CLÁSICAS Y CANASTA MEMECOINS TIER-1
+export const CORE_WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT"];
+export const MEME_WATCHLIST = ["PEPEUSDT", "DOGEUSDT", "BONKUSDT", "SHIBUSDT", "WIFUSDT"];
+export const WATCHLIST = [...CORE_WATCHLIST, ...MEME_WATCHLIST];
 
 // Formateador dinámico de precios para soportar micro-ticks y monedas estándar (ETH/SOL/BTC)
 function fmtPrice(p: number): string {
@@ -240,7 +242,7 @@ export class TrailingMasterBot {
 
   public getCallbackPct(symbol: string): number {
     // Callbacks optimizados y estrictos para capturar picos reales sin regalar ganancias al retroceder
-    if (symbol.includes("PEPE")) return 0.25; // Ajustado de 0.55% a 0.25% para asegurar el pico
+    if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE")) return 0.25; // Memecoins: 0.25% para asegurar el pico
     if (symbol.includes("AVAX")) return 0.25; // Ajustado de 0.45% a 0.25%
     return 0.20; // Monedas mayores estándar (ETH, SOL, BTC, etc.)
   }
@@ -1095,7 +1097,22 @@ export class TrailingMasterBot {
    */
   async scanForDips(activeSymbols: Set<string>): Promise<void> {
     const tf = this.controls.strategySettings?.trailing_rebound?.timeframe || this.controls.timeframe || "1h";
+
+    // Contar cuántas memecoins tenemos activas (posiciones o vigilancias armadas)
+    let activeMemeCount = 0;
+    for (const [sym] of this.activeTrailingPositions.entries()) {
+      if (MEME_WATCHLIST.includes(sym)) activeMemeCount++;
+    }
+    for (const [sym] of this.buyWatches.entries()) {
+      if (MEME_WATCHLIST.includes(sym)) activeMemeCount++;
+    }
+
     for (const sym of WATCHLIST) {
+      const isMeme = MEME_WATCHLIST.includes(sym);
+      // REGLA DE ORO DE RIESGO: Máximo 1 memecoin activa a la vez
+      if (isMeme && activeMemeCount >= 1) {
+        continue;
+      }
       try {
         const lastSold = this.recentlySoldSymbols.get(sym);
         if (lastSold && (Date.now() - lastSold) < 20 * 60 * 1000) {
@@ -1125,6 +1142,7 @@ export class TrailingMasterBot {
         if (isDip) {
           this.buyWatches.set(sym, { symbol: sym, armedPrice: curPrice, lowestPrice: curPrice, armedTime: Date.now(), rsi, dropPct });
           this.saveBuyWatches();
+          if (isMeme) activeMemeCount++;
           const trigger = curPrice * (1 + TRAILING_BUY_BOUNCE_PCT / 100);
           console.log(`🎯 Trailing Buy ARMADO en ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Caída ${dropPct.toFixed(2)}%)`);
           await this.notifier.send(
@@ -1176,6 +1194,10 @@ export class TrailingMasterBot {
           } else if (usdt >= 50 && this.activeTrailingPositions.size === 0) {
             amountToUse = Math.floor((usdt / 2) * 100) / 100;
           }
+          // LÍMITE DE RIESGO MEMECOINS: Tope máximo de $50 USDT (máx 30% del portafolio)
+          if (MEME_WATCHLIST.includes(sym)) {
+            amountToUse = Math.min(amountToUse, 50);
+          }
           const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
           const strat = w.strategy || "trailing_rebound";
           const sourceDesc = strat === "cazador_weekend"
@@ -1211,6 +1233,7 @@ export class TrailingMasterBot {
           `• /asignar — <i>Configurar % (ej: /asignar 40 25 0 35)</i>\n` +
           `• /regimen — <i>Diagnóstico de volatilidad y Día Quieto</i>\n` +
           `• /weekend — <i>Estado y radar de Cazador Weekend</i>\n` +
+          `• /memes — <i>Canasta y radar de Memecoins (Top 5)</i>\n` +
           `• /motores — <i>Parámetros técnicos de Trailing Buy/Sell</i>\n\n` +
 
           `<b>🛡️ GESTIÓN DE RIESGO Y RADAR:</b>\n` +
@@ -1789,7 +1812,8 @@ export class TrailingMasterBot {
               status = " ⚪ [Neutro]";
             }
 
-            report += `• <b>${sym}:</b> $${price} | RSI: <b>${rsi.toFixed(1)}</b>${status}\n`;
+            const isMeme = MEME_WATCHLIST.includes(sym);
+            report += `• <b>${isMeme ? "🐕 " : "💎 "}${sym}:</b> ${fmtPrice(price)} | RSI: <b>${rsi.toFixed(1)}</b>${status}\n`;
           } catch(e) {}
         }
 
@@ -1799,6 +1823,56 @@ export class TrailingMasterBot {
         report += `🏹 <b>Estrategia:</b> Trailing Buy (+${TRAILING_BUY_BOUNCE_PCT}% desde el piso) + Trailing Take Profit (+0.8% y persigue la subida)\n`;
         return report;
       }
+
+      if (cmd === "/memes" || cmd === "memes") {
+        let activeMeme: string | null = null;
+        for (const [sym, p] of this.activeTrailingPositions.entries()) {
+          if (MEME_WATCHLIST.includes(sym)) {
+            activeMeme = `${sym} (Comprado a ${fmtPrice(p.buyPrice)})`;
+            break;
+          }
+        }
+        let armedMeme: string | null = null;
+        for (const [sym, w] of this.buyWatches.entries()) {
+          if (MEME_WATCHLIST.includes(sym)) {
+            armedMeme = `${sym} (Piso ${fmtPrice(w.lowestPrice)})`;
+            break;
+          }
+        }
+
+        let msg = `🐕 <b>RADAR DE CANASTA MEMECOIN</b> 🚀\n\n`;
+        msg += `• <b>Cupo Memecoin:</b> ${activeMeme ? `🔴 <b>OCUPADO:</b> ${activeMeme}` : (armedMeme ? `🟡 <b>ARMADO:</b> ${armedMeme}` : "🟢 <b>DISPONIBLE (0/1)</b>")}\n`;
+        msg += `• <b>Límite de Inversión:</b> Máx <b>$50 USDT</b> (30% portafolio)\n`;
+        msg += `• <b>Regla de Oro:</b> Máximo 1 sola posición memecoin activa a la vez\n`;
+        msg += `• <b>Callback de salida:</b> <b>0.25%</b> (Caza rápida en la cima)\n\n`;
+        msg += `<b>ESTADO EN VIVO (TOP 5 MEMES):</b>\n`;
+
+        for (const sym of MEME_WATCHLIST) {
+          try {
+            const [t24, k1h] = await Promise.all([
+              this.client.ticker24hr(sym),
+              this.client.klines(sym, "1h", { limit: 25 })
+            ]);
+            const price = parseFloat(t24.data.lastPrice);
+            const chg24 = parseFloat(t24.data.priceChangePercent);
+            const high = parseFloat(t24.data.highPrice);
+            const low = parseFloat(t24.data.lowPrice);
+            const range = ((high - low) / low) * 100;
+            const closes = k1h.data.map((r: any) => parseFloat(r[4]));
+            const rsi = this.calculateRSI(closes, 14);
+
+            let tag = "⚪ Neutro";
+            if (this.activeTrailingPositions.has(sym)) tag = "🏹 En Trailing";
+            else if (this.buyWatches.has(sym)) tag = "🎯 Cazando piso";
+            else if (rsi <= 45) tag = "🟢 Piso favorable";
+
+            msg += `• <b>${sym.replace("USDT", "")}:</b> ${fmtPrice(price)} | 24h: ${chg24 >= 0 ? "+" : ""}${chg24.toFixed(1)}% | Rango: ${range.toFixed(1)}% | RSI: ${rsi.toFixed(0)} [${tag}]\n`;
+          } catch(e) {}
+        }
+        return msg;
+      }
+
+
 
       if (cmd === "/motores" || cmd === "motores") {
         return `⚙️ <b>CONFIGURACIÓN DE MOTORES Y TRAILING</b>\n\n` +

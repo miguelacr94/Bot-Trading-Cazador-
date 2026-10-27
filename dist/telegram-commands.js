@@ -22,6 +22,7 @@ export class TelegramCommands {
             const commands = [
                 // Menú y Estrategias
                 { command: "menu", description: "📋 Centro de comandos completo" },
+                { command: "memes", description: "🐕 Canasta y radar de Memecoins" },
                 { command: "sugerencias", description: "🧠 Sugerencias Centinela (aplicar/rechazar)" },
                 { command: "rechazar", description: "❌ Descartar sugerencia activa" },
                 { command: "estrategias", description: "⚙️ Panel y switches de estrategias" },
