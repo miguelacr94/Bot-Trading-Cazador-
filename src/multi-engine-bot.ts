@@ -58,6 +58,7 @@ interface ActivePosition {
   dcaCount?: number;
   strategy?: "trailing_rebound" | "smart_dca" | "micro_grid" | "cazador_weekend";
   customCallbackPct?: number;
+  customTimeframe?: "15m" | "1h" | "4h" | "1d";
 }
 
 export interface StrategySetting {
@@ -100,6 +101,7 @@ export interface StrategyControls {
     cazador_weekend: number;
   };
   trailingCallbacks?: Record<string, number>;
+  symbolTimeframes?: Record<string, "15m" | "1h" | "4h" | "1d">;
   strategySettings?: {
     trailing_rebound: StrategySetting;
     smart_dca: StrategySetting;
@@ -240,6 +242,51 @@ export class TrailingMasterBot {
     } catch(e: any) {
       console.error("Error suscribiendo a Earn:", e.response?.data?.msg || e.message);
     }
+  }
+
+  
+  /**
+   * Determina la temporalidad óptima recomendada para cada moneda según su naturaleza y volatilidad.
+   */
+  public getSuggestedTimeframe(symbol: string): { timeframe: "15m" | "1h" | "4h"; reason: string } {
+    if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE")) {
+      return {
+        timeframe: "15m",
+        reason: "Alta velocidad de impulsos (15m aprovecha mechas y rebotes sin retraso)"
+      };
+    }
+    if (symbol.includes("BTC") || symbol.includes("ETH")) {
+      return {
+        timeframe: "1h",
+        reason: "Filtro de ruido institucional (1H confirma soportes y volumen real)"
+      };
+    }
+    if (symbol.includes("AVAX") || symbol.includes("SOL") || symbol.includes("LINK")) {
+      return {
+        timeframe: "1h",
+        reason: "Onda de tendencia swing equilibrada"
+      };
+    }
+    return {
+      timeframe: "1h",
+      reason: "Estructura estándar de tendencia"
+    };
+  }
+
+  /**
+   * Obtiene la temporalidad activa para un símbolo (prioridad: posición -> controles -> sugerencia adaptativa)
+   */
+  public getTimeframeForSymbol(symbol: string, pos?: ActivePosition): "15m" | "1h" | "4h" {
+    // 1. Prioridad: Configuración explícita en la posición viva
+    if (pos && pos.customTimeframe) {
+      return pos.customTimeframe as any;
+    }
+    // 2. Prioridad: Override por símbolo en controles
+    if (this.controls.symbolTimeframes && this.controls.symbolTimeframes[symbol]) {
+      return this.controls.symbolTimeframes[symbol] as any;
+    }
+    // 3. Fallback inteligente: Temporalidad sugerida por el Centinela
+    return this.getSuggestedTimeframe(symbol).timeframe;
   }
 
   public getCallbackPct(symbol: string, pos?: ActivePosition): number {
@@ -1140,7 +1187,8 @@ export class TrailingMasterBot {
           continue; // No acumular en la misma moneda ni duplicar vigilancias
         }
 
-        const klinesRes = await this.client.klines(sym, tf, { limit: 35 });
+        const symTf = this.getTimeframeForSymbol(sym);
+        const klinesRes = await this.client.klines(sym, symTf, { limit: 35 });
         const data = klinesRes.data;
         const opens = data.map((k: any) => parseFloat(k[1]));
         const highs = data.map((k: any) => parseFloat(k[2]));
@@ -1540,18 +1588,57 @@ export class TrailingMasterBot {
       }
 
       if (cmd === "/timeframe" || cmd === "timeframe" || cmd === "/tf") {
-        const tf = parts[1]?.toLowerCase();
-        if (tf === "15m" || tf === "1h" || tf === "4h" || tf === "1d") {
-          this.controls.timeframe = tf as any;
+        const rawTarget = parts[1]?.toUpperCase();
+        const rawTf = parts[2]?.toLowerCase() || (["15M", "1H", "4H", "1D"].includes(rawTarget || "") ? parts[1]?.toLowerCase() : null);
+
+        // Caso 1: Asignar a un símbolo específico (ej: /timeframe PEPE 15m)
+        if (rawTarget && rawTf && !["15M", "1H", "4H", "1D"].includes(rawTarget)) {
+          const sym = rawTarget.endsWith("USDT") ? rawTarget : rawTarget + "USDT";
+          const tfVal = (["15m", "1h", "4h", "1d"].includes(rawTf)) ? rawTf as any : "1h";
+
+          if (!this.controls.symbolTimeframes) this.controls.symbolTimeframes = {};
+          this.controls.symbolTimeframes[sym] = tfVal;
+
+          const openPos = this.activeTrailingPositions.get(sym);
+          if (openPos) {
+            openPos.customTimeframe = tfVal;
+            this.saveTrailingPositions();
+          }
           this.saveStrategyControls();
-          return `⏱️ <b>Radar de Temporalidad actualizado:</b> <b>${tf.toUpperCase()}</b>.\nEl bot ahora calibrará sus análisis de ondas con velas de ${tf.toUpperCase()}.`;
+
+          return `⏱️ <b>TEMPORALIDAD ACTUALIZADA</b> ✅\n\n` +
+                 `• <b>Moneda:</b> ${sym}\n` +
+                 `• <b>Nuevo Marco:</b> <b>${tfVal.toUpperCase()}</b>\n` +
+                 `• 🎯 <i>El bot ahora analizará ${sym} exclusivamente en velas de ${tfVal.toUpperCase()}.</i>`;
         }
-        const cur = (this.controls.timeframe || "1h").toUpperCase();
-        return `⏱️ <b>Radar de Temporalidad Actual:</b> <b>${cur}</b>\n\n` +
-               `Opciones disponibles:\n` +
-               `• /timeframe 15m — <i>Micro-ondas rápidas (mercados volátiles)</i>\n` +
-               `• /timeframe 1h — <i>Ondas estándar completas (PREDETERMINADO)</i>\n` +
-               `• /timeframe 4h — <i>Tendencias mayores (mercados lentos/macro)</i>`;
+
+        // Caso 2: Asignar global (ej: /timeframe 15m)
+        if (rawTf && ["15m", "1h", "4h", "1d"].includes(rawTf)) {
+          this.controls.timeframe = rawTf as any;
+          this.saveStrategyControls();
+          return `⏱️ <b>Temporalidad Global actualizada:</b> <b>${rawTf.toUpperCase()}</b>.\nEl valor base por defecto ahora es ${rawTf.toUpperCase()}.`;
+        }
+
+        // Caso 3: Mostrar diagnóstico y tabla de sugerencias por moneda
+        let msg = `⏱️ <b>PANEL DE TEMPORALIDADES DINÁMICAS POR MONEDA</b> 🧭\n\n`;
+        msg += `<i>El Centinela analiza continuamente la velocidad de cada moneda para sugerirte el reloj más viable.</i>\n\n`;
+
+        msg += `📊 <b>MONEDAS ACTIVAS Y SUGERENCIAS DEL CENTINELA:</b>\n`;
+        const checkSymbols = Array.from(new Set([...Array.from(this.activeTrailingPositions.keys()), "PEPEUSDT", "ETHUSDT", "AVAXUSDT"]));
+        for (const sym of checkSymbols) {
+          const curTf = this.getTimeframeForSymbol(sym, this.activeTrailingPositions.get(sym));
+          const sugg = this.getSuggestedTimeframe(sym);
+          const isOpt = curTf === sugg.timeframe ? "🟢 Óptimo" : "🟡 Modificable";
+          msg += `• <b>${sym}:</b> Activo [<b>${curTf.toUpperCase()}</b>] | Sugerido: <b>${sugg.timeframe.toUpperCase()}</b> (${isOpt})\n` +
+                 `  └ <i>${sugg.reason}</i>\n`;
+        }
+
+        msg += `\n⚙️ <b>CÓMO MODIFICARLO POR MONEDA:</b>\n` +
+               `• <code>/timeframe PEPE 15m</code> — Asigna 15m solo a PEPE\n` +
+               `• <code>/timeframe ETH 1h</code> — Asigna 1H solo a ETH\n` +
+               `• <code>/timeframe AVAX 4h</code> — Asigna 4H solo a AVAX\n`;
+
+        return msg;
       }
 
       if (cmd === "/sugerencias" || cmd === "sugerencias" || cmd === "/advisor") {

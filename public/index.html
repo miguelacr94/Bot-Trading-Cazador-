@@ -1815,6 +1815,95 @@
       margin-bottom: 12px;
     }
 
+  
+    /* Widget de Timeframe Dinámico en Tarjeta de Posición */
+    .pos-timeframe-box {
+      margin-top: 8px;
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+    }
+    .pos-tf-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .pos-tf-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .pos-tf-val {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 800;
+      color: #A78BFA;
+    }
+    .pos-tf-sugg {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 6px;
+      padding: 4px 8px;
+      margin-bottom: 8px;
+      font-size: 10px;
+      color: #DDD6FE;
+    }
+    .btn-apply-tf-sugg {
+      background: linear-gradient(135deg, #8B5CF6, #6D28D9);
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 2px 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .btn-apply-tf-sugg:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+    }
+    .pos-tf-pills {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .tf-pill-btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-dim);
+      border-radius: 5px;
+      padding: 3px 0;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+    .tf-pill-btn:hover {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: #A78BFA;
+      color: #fff;
+    }
+    .tf-pill-btn.active {
+      background: rgba(139, 92, 246, 0.25);
+      border-color: #A78BFA;
+      color: #A78BFA;
+      box-shadow: 0 0 8px rgba(139, 92, 246, 0.35);
+    }
+
   </style>
 </head>
 <body>

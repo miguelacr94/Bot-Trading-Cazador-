@@ -131,6 +131,23 @@
         <div class="progress-track"><div class="progress-fill" data-f="fill" style="width:0%"></div></div>
       </div>
 
+      <!-- Control de Marco de Velas (Timeframe) Dinámico -->
+      <div class="pos-timeframe-box">
+        <div class="pos-tf-header">
+          <span class="pos-tf-title">⏱️ Marco de Velas</span>
+          <span class="pos-tf-val" data-f="tfval">--</span>
+        </div>
+        <div class="pos-tf-sugg" data-f="tfsuggbox">
+          <span data-f="tfsuggtext">💡 Viable ahora: --</span>
+          <button class="btn-apply-tf-sugg" data-f="btnapplytf">⚡ Usar Sugerido</button>
+        </div>
+        <div class="pos-tf-pills" data-f="tfpills">
+          <button class="tf-pill-btn" data-v="15m">15m</button>
+          <button class="tf-pill-btn" data-v="1h">1H</button>
+          <button class="tf-pill-btn" data-v="4h">4H</button>
+        </div>
+      </div>
+
       <!-- Control de Respiro Trailing (Callback) Dinámico -->
       <div class="pos-callback-box">
         <div class="pos-callback-header">
@@ -157,6 +174,33 @@
         </div>
       </div>`;
     card.addEventListener("click", async (e) => {
+      const currentP = card._currentPos || p;
+
+      // Click en botones de Timeframe
+      const tfPillBtn = e.target.closest(".tf-pill-btn");
+      const tfApplyBtn = e.target.closest(".btn-apply-tf-sugg");
+      if (tfPillBtn || tfApplyBtn) {
+        const targetTf = tfPillBtn ? tfPillBtn.dataset.v : currentP.suggestedTimeframe;
+        if (!targetTf) return;
+        try {
+          const res = await fetch("/api/strategies/timeframe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol: currentP.symbol, timeframe: targetTf })
+          });
+          const d = await res.json();
+          if (d.success) {
+            currentP.timeframe = targetTf;
+            updatePositionCard(card, currentP);
+            if (typeof showToast === "function") showToast(`⏱️ Marco de ${currentP.symbol} fijado en ${targetTf.toUpperCase()}`);
+          }
+        } catch(err) {
+          console.error("Error setting timeframe:", err);
+        }
+        return;
+      }
+
+      // Click en botones de Callback
       const pillBtn = e.target.closest(".cb-pill-btn");
       const applyBtn = e.target.closest(".btn-apply-cb-sugg");
       if (!pillBtn && !applyBtn) return;
@@ -222,6 +266,39 @@
     setClass(pnl, "pnl-value " + (gain ? "pos-profit" : "pos-loss"));
     setText(pnl, `${s}${fmt(p.pnlUsdt)} USDT (${s}${p.gainPct.toFixed(2)}%)`);
     setText(f("pnlcop"), `≈ ${s}${cop(p.pnlCop)} COP`);
+
+    // Timeframe Dinámico y Sugerencia Centinela
+    const tfVal = (p.timeframe || "1h").toLowerCase();
+    const suggTf = (p.suggestedTimeframe || "1h").toLowerCase();
+    const suggTfReason = p.suggestedTimeframeReason || "Velocidad analizada";
+
+    setText(f("tfval"), `${tfVal.toUpperCase()} ${p.isTimeframeOptimal ? "(Óptimo)" : "(Personalizado)"}`);
+    const tfSuggEl = f("tfsuggtext");
+    if (tfSuggEl) {
+      tfSuggEl.innerHTML = `💡 Viable ahora: <b>${suggTf.toUpperCase()}</b> <span style="opacity:0.8;font-size:10px;">(${suggTfReason})</span>`;
+    }
+
+    const btnApplyTf = f("btnapplytf");
+    if (btnApplyTf) {
+      if (tfVal === suggTf) {
+        btnApplyTf.textContent = "✓ Óptimo";
+        btnApplyTf.style.opacity = "0.5";
+        btnApplyTf.style.pointerEvents = "none";
+      } else {
+        btnApplyTf.textContent = `⚡ Usar ${suggTf.toUpperCase()}`;
+        btnApplyTf.style.opacity = "1";
+        btnApplyTf.style.pointerEvents = "auto";
+      }
+    }
+
+    card.querySelectorAll(".tf-pill-btn").forEach((btn) => {
+      const v = btn.dataset.v.toLowerCase();
+      if (v === tfVal) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
 
     // Callback Dinámico y Sugerencia Centinela
     const cbVal = p.callbackPct || 0.35;

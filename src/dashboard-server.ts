@@ -232,6 +232,46 @@ export class DashboardServer {
     } catch(e) {}
   }
 
+  
+  private getSuggestedTimeframe(symbol: string): { timeframe: "15m" | "1h" | "4h"; reason: string } {
+    if (symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) {
+      return {
+        timeframe: "15m",
+        reason: "Alta velocidad meme (15m aprovecha impulsos rápidos)"
+      };
+    }
+    if (symbol.includes("BTC") || symbol.includes("ETH")) {
+      return {
+        timeframe: "1h",
+        reason: "Filtro de ruido institucional (1H confirma soportes y volumen)"
+      };
+    }
+    if (symbol.includes("AVAX") || symbol.includes("SOL") || symbol.includes("LINK")) {
+      return {
+        timeframe: "1h",
+        reason: "Onda swing equilibrada"
+      };
+    }
+    return {
+      timeframe: "1h",
+      reason: "Estructura estándar de tendencia"
+    };
+  }
+
+  private getTimeframeForSymbol(symbol: string, pos?: any): "15m" | "1h" | "4h" {
+    if (pos && pos.customTimeframe) return pos.customTimeframe;
+    const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+    if (fs.existsSync(ctrlFile)) {
+      try {
+        const controls = JSON.parse(fs.readFileSync(ctrlFile, "utf-8"));
+        if (controls.symbolTimeframes && controls.symbolTimeframes[symbol]) {
+          return controls.symbolTimeframes[symbol];
+        }
+      } catch(e) {}
+    }
+    return this.getSuggestedTimeframe(symbol).timeframe;
+  }
+
   private getCallbackPct(symbol: string, pos?: any): number {
     if (pos && typeof pos.customCallbackPct === "number" && pos.customCallbackPct > 0) {
       return pos.customCallbackPct;
@@ -289,6 +329,10 @@ export class DashboardServer {
         isCustomCallback: !!pos.customCallbackPct,
         suggestedCallback: (symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) ? 0.45 : ((symbol.includes("AVAX") || symbol.includes("SOL")) ? 0.35 : 0.25),
         suggestedReason: (symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) ? "Alta volatilidad Meme (tolerar micro-retrocesos)" : ((symbol.includes("AVAX") || symbol.includes("SOL")) ? "Volatilidad media" : "Mercado clásico (salida ágil)"),
+        timeframe: this.getTimeframeForSymbol(symbol, pos),
+        suggestedTimeframe: this.getSuggestedTimeframe(symbol).timeframe,
+        suggestedTimeframeReason: this.getSuggestedTimeframe(symbol).reason,
+        isTimeframeOptimal: this.getTimeframeForSymbol(symbol, pos) === this.getSuggestedTimeframe(symbol).timeframe,
         activated: !!pos.activated
       };
     });
@@ -623,7 +667,53 @@ export class DashboardServer {
         return;
       }
 
-            if (parsedUrl.pathname === "/api/strategies/callback" && req.method === "POST") {
+                  if (parsedUrl.pathname === "/api/strategies/timeframe" && req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => body += chunk);
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const sym = data.symbol ? (data.symbol.endsWith("USDT") || data.symbol === "default" ? data.symbol : data.symbol + "USDT") : null;
+            const tf = data.timeframe && ["15m", "1h", "4h", "1d"].includes(data.timeframe) ? data.timeframe : null;
+
+            if (!sym || !tf) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Símbolo y timeframe válidos ('15m', '1h', '4h') requeridos." }));
+              return;
+            }
+
+            const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+            const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {};
+            if (!controls.symbolTimeframes) controls.symbolTimeframes = {};
+            controls.symbolTimeframes[sym] = tf;
+            controls.updatedAt = Date.now();
+            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+
+            const posFile = path.resolve(process.cwd(), ".trailing-positions.json");
+            if (fs.existsSync(posFile)) {
+              try {
+                const positions = JSON.parse(fs.readFileSync(posFile, "utf-8"));
+                const map = new Map(positions);
+                if (map.has(sym)) {
+                  const p: any = map.get(sym);
+                  p.customTimeframe = tf;
+                  map.set(sym, p);
+                  fs.writeFileSync(posFile, JSON.stringify(Array.from(map.entries()), null, 2), "utf-8");
+                }
+              } catch(e) {}
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: true, symbol: sym, timeframe: tf }));
+          } catch(e: any) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/strategies/callback" && req.method === "POST") {
         let body = "";
         req.on("data", chunk => body += chunk);
         req.on("end", () => {
