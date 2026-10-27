@@ -531,7 +531,7 @@ export class DashboardServer {
             const strat = data.strategy;
             if (strat && ["trailing_rebound", "smart_dca", "micro_grid", "cazador_weekend"].includes(strat)) {
               if (!controls.strategySettings[strat]) {
-                controls.strategySettings[strat] = { timeframe: "1h", stopLossEnabled: true, stopLossPct: 4.0 };
+                controls.strategySettings[strat] = { timeframe: "1h", stopLossEnabled: false, stopLossPct: 4.0 };
               }
               if (data.timeframe) controls.strategySettings[strat].timeframe = data.timeframe;
               if (data.stopLossEnabled !== undefined) controls.strategySettings[strat].stopLossEnabled = !!data.stopLossEnabled;

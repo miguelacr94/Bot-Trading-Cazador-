@@ -312,7 +312,7 @@ export class TrailingMasterBot {
                     this.controls.strategies = { trailing_rebound: true, smart_dca: true, micro_grid: false, cazador_weekend: this.isWeekendWindow() };
                 }
                 if (this.controls.stopLossEnabled === undefined)
-                    this.controls.stopLossEnabled = true;
+                    this.controls.stopLossEnabled = false; // BLINDAJE SPOT: NUNCA vender a pérdida por defecto
                 if (this.controls.stopLossPct === undefined)
                     this.controls.stopLossPct = 4.0;
                 if (!this.controls.timeframe)
@@ -325,10 +325,10 @@ export class TrailingMasterBot {
                     this.controls.maxPerCoinPct = 30;
                 if (!this.controls.strategySettings) {
                     this.controls.strategySettings = {
-                        trailing_rebound: { timeframe: "1h", stopLossEnabled: true, stopLossPct: 4.0 },
-                        smart_dca: { timeframe: "4h", stopLossEnabled: true, stopLossPct: 6.0 },
-                        micro_grid: { timeframe: "15m", stopLossEnabled: true, stopLossPct: 2.0 },
-                        cazador_weekend: { timeframe: "1h", stopLossEnabled: true, stopLossPct: 5.0 }
+                        trailing_rebound: { timeframe: "1h", stopLossEnabled: false, stopLossPct: 4.0 },
+                        smart_dca: { timeframe: "4h", stopLossEnabled: false, stopLossPct: 6.0 },
+                        micro_grid: { timeframe: "15m", stopLossEnabled: false, stopLossPct: 2.0 },
+                        cazador_weekend: { timeframe: "1h", stopLossEnabled: false, stopLossPct: 5.0 }
                     };
                 }
                 if (!this.controls.suggestions) {
@@ -751,9 +751,11 @@ export class TrailingMasterBot {
                 const ticker = await this.client.tickerPrice(symbol);
                 const curPrice = parseFloat(ticker.data.price);
                 const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
-                // 0. Evaluar Stop-Loss si está activado y la posición aún NO ha asegurado ganancias
-                const slEnabled = this.controls.stopLossEnabled !== false;
-                const slPct = this.controls.stopLossPct ?? 4.0;
+                // 0. BLINDAJE SPOT ESTRICTO: NUNCA vender a pérdida salvo activación explícita (=== true)
+                const stratSlEnabled = !!(pos.strategy && this.controls.strategySettings?.[pos.strategy]?.stopLossEnabled === true);
+                const globalSlEnabled = this.controls.stopLossEnabled === true;
+                const slEnabled = globalSlEnabled || stratSlEnabled;
+                const slPct = (pos.strategy && this.controls.strategySettings?.[pos.strategy]?.stopLossPct) || this.controls.stopLossPct || 8.0;
                 if (slEnabled && !pos.activated && gainPct <= -slPct) {
                     console.log(`🛑 [STOP-LOSS DISPARADO] ${symbol} cayó a ${curPrice} (${gainPct.toFixed(2)}% <= -${slPct}%). Ejecutando corte de emergencia...`);
                     const sold = await this.executeTrailingSell(pos, curPrice, false, true);
