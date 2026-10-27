@@ -453,6 +453,78 @@ export class DashboardServer {
                 });
                 return;
             }
+            // Actualizar ajustes independientes de un módulo de estrategia
+            if (parsedUrl.pathname === "/api/strategies/module-settings" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => body += chunk);
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+                        const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {};
+                        if (!controls.strategySettings)
+                            controls.strategySettings = {};
+                        const strat = data.strategy;
+                        if (strat && ["trailing_rebound", "smart_dca", "micro_grid", "cazador_weekend"].includes(strat)) {
+                            if (!controls.strategySettings[strat]) {
+                                controls.strategySettings[strat] = { timeframe: "1h", stopLossEnabled: true, stopLossPct: 4.0 };
+                            }
+                            if (data.timeframe)
+                                controls.strategySettings[strat].timeframe = data.timeframe;
+                            if (data.stopLossEnabled !== undefined)
+                                controls.strategySettings[strat].stopLossEnabled = !!data.stopLossEnabled;
+                            if (data.stopLossPct !== undefined)
+                                controls.strategySettings[strat].stopLossPct = Math.max(1, Math.min(20, parseFloat(data.stopLossPct)));
+                        }
+                        controls.updatedAt = Date.now();
+                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                        res.end(JSON.stringify({ success: true, controls }));
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            // Aplicar sugerencia inteligente del bot a una estrategia específica
+            if (parsedUrl.pathname === "/api/strategies/apply-suggestion" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => body += chunk);
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const strat = data.strategy;
+                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+                        const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {};
+                        if (strat && controls.suggestions && controls.suggestions[strat]) {
+                            if (!controls.strategySettings)
+                                controls.strategySettings = {};
+                            if (!controls.strategySettings[strat]) {
+                                controls.strategySettings[strat] = { timeframe: "1h", stopLossEnabled: true, stopLossPct: 4.0 };
+                            }
+                            const sugg = controls.suggestions[strat];
+                            controls.strategySettings[strat].timeframe = sugg.timeframe;
+                            controls.strategySettings[strat].stopLossPct = sugg.stopLossPct;
+                            controls.strategySettings[strat].stopLossEnabled = true;
+                            controls.updatedAt = Date.now();
+                            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                            res.end(JSON.stringify({ success: true, controls, applied: sugg }));
+                        }
+                        else {
+                            res.writeHead(400, { "Content-Type": "application/json" });
+                            res.end(JSON.stringify({ error: "Sugerencia no encontrada para " + strat }));
+                        }
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
             if (parsedUrl.pathname === "/api/strategies/settings" && req.method === "POST") {
                 let body = "";
                 req.on("data", chunk => body += chunk);

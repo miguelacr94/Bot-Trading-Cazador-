@@ -57,6 +57,19 @@ interface ActivePosition {
   strategy?: "trailing_rebound" | "smart_dca" | "micro_grid" | "cazador_weekend";
 }
 
+export interface StrategySetting {
+  timeframe: "15m" | "1h" | "4h" | "1d";
+  stopLossEnabled: boolean;
+  stopLossPct: number;
+}
+
+export interface StrategySuggestion {
+  timeframe: "15m" | "1h" | "4h" | "1d";
+  stopLossPct: number;
+  reason: string;
+  updatedAt: number;
+}
+
 export interface StrategyControls {
   strategies: {
     trailing_rebound: boolean;
@@ -75,6 +88,18 @@ export interface StrategyControls {
     smart_dca: number;
     micro_grid: number;
     cazador_weekend: number;
+  };
+  strategySettings?: {
+    trailing_rebound: StrategySetting;
+    smart_dca: StrategySetting;
+    micro_grid: StrategySetting;
+    cazador_weekend: StrategySetting;
+  };
+  suggestions?: {
+    trailing_rebound: StrategySuggestion;
+    smart_dca: StrategySuggestion;
+    micro_grid: StrategySuggestion;
+    cazador_weekend: StrategySuggestion;
   };
   autoPilot: boolean;
   aiEnabled?: boolean;
@@ -331,7 +356,24 @@ export class TrailingMasterBot {
         if (this.controls.stopLossPct === undefined) this.controls.stopLossPct = 4.0;
         if (!this.controls.timeframe) this.controls.timeframe = "1h";
         if (this.controls.cashReservePct === undefined) this.controls.cashReservePct = 25;
-        if (this.controls.maxPerCoinPct === undefined) this.controls.maxPerCoinPct = 30; else if (this.controls.strategies.cazador_weekend === undefined) {
+        if (this.controls.maxPerCoinPct === undefined) this.controls.maxPerCoinPct = 30;
+
+        if (!this.controls.strategySettings) {
+          this.controls.strategySettings = {
+            trailing_rebound: { timeframe: "1h", stopLossEnabled: true, stopLossPct: 4.0 },
+            smart_dca: { timeframe: "4h", stopLossEnabled: true, stopLossPct: 6.0 },
+            micro_grid: { timeframe: "15m", stopLossEnabled: true, stopLossPct: 2.0 },
+            cazador_weekend: { timeframe: "1h", stopLossEnabled: true, stopLossPct: 5.0 }
+          };
+        }
+        if (!this.controls.suggestions) {
+          this.controls.suggestions = {
+            trailing_rebound: { timeframe: "1h", stopLossPct: 4.0, reason: "Volatilidad estándar. Óptimo 1H con SL -4.0%", updatedAt: Date.now() },
+            smart_dca: { timeframe: "4h", stopLossPct: 6.0, reason: "Monitorear soportes mayores en 4H con SL -6.0%", updatedAt: Date.now() },
+            micro_grid: { timeframe: "15m", stopLossPct: 2.0, reason: "Scalping de rejilla en 15m con SL estricto de -2.0%", updatedAt: Date.now() },
+            cazador_weekend: { timeframe: "1h", stopLossPct: 5.0, reason: "Ondas de fin de semana con SL -5.0% ante mechazos", updatedAt: Date.now() }
+          };
+        } else if (this.controls.strategies.cazador_weekend === undefined) {
           this.controls.strategies.cazador_weekend = this.isWeekendWindow();
         }
         if (!this.controls.baseAllocations) {
@@ -1801,7 +1843,7 @@ export class TrailingMasterBot {
   private lastTimeframeAdvisorTime: number = 0;
 
   async checkTimeframeAdvisor() {
-    if (Date.now() - this.lastTimeframeAdvisorTime < 900000) return; // Cada 15 minutos
+    if (Date.now() - this.lastTimeframeAdvisorTime < 300000) return; // Cada 5 minutos
     this.lastTimeframeAdvisorTime = Date.now();
 
     try {
@@ -1809,41 +1851,72 @@ export class TrailingMasterBot {
       const high = parseFloat(btc24.data.highPrice);
       const low = parseFloat(btc24.data.lowPrice);
       const range24h = ((high - low) / low) * 100;
+      const isWeekend = this.isWeekendWindow();
 
-      let rec: "15m" | "1h" | "4h" = "1h";
-      let reason = "";
+      if (!this.controls.suggestions) {
+        this.controls.suggestions = {} as any;
+      }
 
+      // 1. Sugerencia Trailing Rebound
       if (range24h >= 4.5) {
-        rec = "15m";
-        reason = `Alta volatilidad detectada en Bitcoin (${range24h.toFixed(2)}% en 24h). Conviene operar micro-ondas rápidas.`;
-      } else if (range24h >= 2.0) {
-        rec = "1h";
-        reason = `Volatilidad estándar equilibrada (${range24h.toFixed(2)}%). Ideal para capturar ondas de 1 hora completas.`;
+        this.controls.suggestions!.trailing_rebound = {
+          timeframe: "15m",
+          stopLossPct: 3.5,
+          reason: `Volatilidad alta (${range24h.toFixed(1)}%). Recomendado 15m y SL -3.5% para giros rápidos.`,
+          updatedAt: Date.now()
+        };
       } else {
-        rec = "1h";
-        reason = `Mercado en consolidación tranquila (${range24h.toFixed(2)}%). Manteniendo radar de 1H con soporte fuerte.`;
+        this.controls.suggestions!.trailing_rebound = {
+          timeframe: "1h",
+          stopLossPct: 4.0,
+          reason: `Volatilidad normal (${range24h.toFixed(1)}%). Recomendado 1H y SL -4.0% para ondas completas.`,
+          updatedAt: Date.now()
+        };
       }
 
-      const current = this.controls.timeframe || "1h";
-      if (rec !== current) {
-        if (this.controls.autoPilot) {
-          this.controls.timeframe = rec;
-          this.saveStrategyControls();
-          await this.notifier.send(
-            `⏱️ <b>[CENTINELA ADAPTATIVO: TEMPORALIDAD AJUSTADA A ${rec.toUpperCase()}]</b> 🟢\n\n` +
-            `• <b>Motivo:</b> ${reason}\n` +
-            `• 🤖 <i>Modo Autónomo: El bot calibró el radar a ${rec.toUpperCase()} para capturar mejor las ondas del momento.</i>`
-          );
-        } else {
-          await this.notifier.send(
-            `⏱️ <b>[SUGERENCIA DE TEMPORALIDAD: ${rec.toUpperCase()}]</b> 🧭\n\n` +
-            `• <b>Diagnóstico:</b> ${reason}\n` +
-            `• 🎯 <b>Recomendación:</b> Cambiar el radar de <b>${current.toUpperCase()}</b> a <b>${rec.toUpperCase()}</b>.\n\n` +
-            `👉 /timeframe ${rec} — <i>Aplicar recomendación</i>\n` +
-            `👉 /timeframe ${current} — <i>Mantener actual</i>`
-          );
-        }
+      // 2. Sugerencia Smart DCA
+      this.controls.suggestions!.smart_dca = {
+        timeframe: "4h",
+        stopLossPct: 6.0,
+        reason: "Soportes macro de 4H confirmados. SL -6.0% para tolerar caídas y promediar.",
+        updatedAt: Date.now()
+      };
+
+      // 3. Sugerencia Micro-Grid
+      if (range24h < 2.2) {
+        this.controls.suggestions!.micro_grid = {
+          timeframe: "15m",
+          stopLossPct: 2.0,
+          reason: `Día quieto en BTC (${range24h.toFixed(1)}%). Rejilla activa en 15m con SL -2.0% estricto.`,
+          updatedAt: Date.now()
+        };
+      } else {
+        this.controls.suggestions!.micro_grid = {
+          timeframe: "15m",
+          stopLossPct: 2.0,
+          reason: `Mercado direccional (${range24h.toFixed(1)}%). Pausar o mantener SL estrecho (-2.0%).`,
+          updatedAt: Date.now()
+        };
       }
+
+      // 4. Sugerencia Cazador Weekend
+      if (isWeekend) {
+        this.controls.suggestions!.cazador_weekend = {
+          timeframe: "1h",
+          stopLossPct: 5.0,
+          reason: "Ventana fin de semana abierta. Cazar en 1H con SL -5.0% para absorber mechazos.",
+          updatedAt: Date.now()
+        };
+      } else {
+        this.controls.suggestions!.cazador_weekend = {
+          timeframe: "1h",
+          stopLossPct: 5.0,
+          reason: "En espera hasta viernes 17:00 COT. Parámetros listos en 1H y SL -5.0%.",
+          updatedAt: Date.now()
+        };
+      }
+
+      this.saveStrategyControls();
     } catch(e: any) {
       console.error("Error en checkTimeframeAdvisor:", e.message);
     }

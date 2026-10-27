@@ -645,6 +645,137 @@
 
 
 
+
+    /* Autonomous Strategy Module Controls */
+    .strat-autonomous-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+    }
+    .strat-ctrl-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .strat-ctrl-label {
+      font-size: 11px;
+      color: #94A3B8;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .mini-tf-group {
+      display: flex;
+      gap: 4px;
+    }
+    .btn-mini-tf {
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #CBD5E1;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      transition: all 0.2s;
+    }
+    .btn-mini-tf:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .btn-mini-tf.active {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: #38BDF8;
+      color: #38BDF8;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+    }
+    .mini-sl-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mini-sl-val {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: #F87171;
+      min-width: 42px;
+      text-align: right;
+    }
+    .mini-sl-slider {
+      width: 75px;
+      height: 4px;
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    .mini-sl-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #F87171;
+      box-shadow: 0 0 6px rgba(248, 113, 113, 0.6);
+      cursor: pointer;
+    }
+    /* Smart Bot Suggestion Box */
+    .strat-sugg-box {
+      margin-top: 4px;
+      padding: 10px 12px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(56, 189, 248, 0.05) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .strat-sugg-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #FBBF24;
+    }
+    .strat-sugg-desc {
+      font-size: 11px;
+      line-height: 1.4;
+      color: #E2E8F0;
+    }
+    .btn-apply-sugg {
+      cursor: pointer;
+      align-self: flex-start;
+      background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+      color: #000000;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    }
+    .btn-apply-sugg:hover {
+      transform: scale(1.03);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
+    }
+    .btn-apply-sugg.applied {
+      background: #10B981;
+      color: #FFFFFF;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+
     /* In-Card Budget Sliders & Compact Toolbar */
     .hub-header-left {
       display: flex;
@@ -1406,7 +1537,7 @@
         <button class="btn-preset" data-t="60" data-d="20" data-g="0" data-w="20">🚀 Caza Rápida (60 / 20 / 0 / 20)</button>
       </div>
 
-      <div class="strategies-grid">
+            <div class="strategies-grid">
         <!-- 1. Cazador Trailing -->
         <div class="strategy-item active-strat" id="card-strat-trailing">
           <div class="strategy-card-header">
@@ -1422,17 +1553,40 @@
 
           <div class="strategy-details-section">
             <div class="strategy-mechanics">
-              <strong>Mecánica:</strong> Rastrea caídas en velas de <b>1H</b> tick a tick. Espera que la ola toque fondo y rebote <b>+0.35%</b> para comprar en el suelo, y persigue la subida vendiendo en el pico más alto. Protegido por Stop-Loss de emergencia.
+              <strong>Mecánica:</strong> Rastrea caídas en velas de <b id="lbl-tf-trailing">1H</b> tick a tick. Espera que la ola toque fondo y rebote <b>+0.35%</b> para comprar en el suelo, y persigue la subida vendiendo en el pico más alto.
             </div>
             <div class="strategy-pills-row">
-              <span class="strat-pill logic">⏱️ Radar 1H</span>
+              <span class="strat-pill logic" id="badge-tf-trailing">⏱️ 1H</span>
               <span class="strat-pill logic">📉 RSI ≤ 45</span>
               <span class="strat-pill target">🎯 Ganancia +0.8% a +3.5%</span>
-              <span class="strat-pill risk">🛑 Stop-Loss -4.0%</span>
+              <span class="strat-pill risk" id="badge-sl-trailing">🛑 SL -4.0%</span>
             </div>
           </div>
 
-          <!-- Integrated In-Card Budget Slider -->
+          <!-- Controles Autónomos Independientes -->
+          <div class="strat-autonomous-controls">
+            <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">⏱️ Temporalidad:</span>
+              <div class="mini-tf-group" data-strat="trailing_rebound">
+                <button class="btn-mini-tf" data-tf="15m">15m</button>
+                <button class="btn-mini-tf active" data-tf="1h">1H</button>
+                <button class="btn-mini-tf" data-tf="4h">4H</button>
+              </div>
+            </div>
+            <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">🛑 Stop-Loss Propio:</span>
+              <div class="mini-sl-group">
+                <label class="switch" style="width:34px;height:18px;">
+                  <input type="checkbox" id="toggle-sl-trailing" checked>
+                  <span class="slider" style="border-radius:18px;"></span>
+                </label>
+                <input type="range" class="mini-sl-slider" id="slider-sl-trailing" min="1.5" max="10.0" step="0.5" value="4.0" data-strat="trailing_rebound">
+                <b class="mini-sl-val" id="lbl-sl-trailing">-4.0%</b>
+              </div>
+            </div>
+          </div>
+
+          <!-- Presupuesto In-Card -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
               <span class="alloc-badge" id="alloc-trailing-badge">75% Asignado</span>
@@ -1443,6 +1597,17 @@
             </div>
             <input type="range" class="strat-budget-slider" id="slider-trailing" min="0" max="100" step="5" value="40">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill green" id="alloc-trailing-bar" style="width:75%;"></div></div>
+          </div>
+
+          <!-- Caja de Sugerencia Inteligente Centinela -->
+          <div class="strat-sugg-box" id="sugg-box-trailing">
+            <div class="strat-sugg-header">
+              <span>💡 Sugerencia del Bot:</span>
+            </div>
+            <div class="strat-sugg-desc" id="sugg-text-trailing">
+              Volatilidad normal (2.4%). Recomendado 1H con SL -4.0% para capturar la ola completa.
+            </div>
+            <button class="btn-apply-sugg" data-strat="trailing_rebound" id="btn-apply-trailing">⚡ Aplicar Sugerencia</button>
           </div>
         </div>
 
@@ -1461,17 +1626,40 @@
 
           <div class="strategy-details-section">
             <div class="strategy-mechanics">
-              <strong>Mecánica:</strong> Inyecta una orden de respaldo cuando una posición abierta cae a un soporte clave (≥ <b>-2.5%</b>). Promedia el precio de compra a la baja para salir en verde con una subida mínima.
+              <strong>Mecánica:</strong> Inyecta una orden de respaldo cuando una posición abierta cae a un soporte mayor (≥ <b>-2.5%</b>). Promedia el precio de compra a la baja para salir en verde con una subida mínima.
             </div>
             <div class="strategy-pills-row">
+              <span class="strat-pill logic" id="badge-tf-dca">⏱️ 4H</span>
               <span class="strat-pill logic">📉 Caída ≥ -2.5%</span>
-              <span class="strat-pill logic">🧱 Soporte Clave</span>
-              <span class="strat-pill logic">⏱️ Cooldown 2h</span>
               <span class="strat-pill target">🎯 Salida Rápida en Verde</span>
+              <span class="strat-pill risk" id="badge-sl-dca">🛑 SL -6.0%</span>
             </div>
           </div>
 
-          <!-- Integrated In-Card Budget Slider -->
+          <!-- Controles Autónomos Independientes -->
+          <div class="strat-autonomous-controls">
+            <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">⏱️ Temporalidad:</span>
+              <div class="mini-tf-group" data-strat="smart_dca">
+                <button class="btn-mini-tf" data-tf="15m">15m</button>
+                <button class="btn-mini-tf" data-tf="1h">1H</button>
+                <button class="btn-mini-tf active" data-tf="4h">4H</button>
+              </div>
+            </div>
+            <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">🛑 Stop-Loss Propio:</span>
+              <div class="mini-sl-group">
+                <label class="switch" style="width:34px;height:18px;">
+                  <input type="checkbox" id="toggle-sl-dca" checked>
+                  <span class="slider" style="border-radius:18px;"></span>
+                </label>
+                <input type="range" class="mini-sl-slider" id="slider-sl-dca" min="2.0" max="15.0" step="0.5" value="6.0" data-strat="smart_dca">
+                <b class="mini-sl-val" id="lbl-sl-dca">-6.0%</b>
+              </div>
+            </div>
+          </div>
+
+          <!-- Presupuesto In-Card -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
               <span class="alloc-badge" id="alloc-dca-badge" style="color:#C084FC; background:rgba(168,85,247,0.15);">25% Asignado</span>
@@ -1482,6 +1670,17 @@
             </div>
             <input type="range" class="strat-budget-slider" id="slider-dca" min="0" max="100" step="5" value="25">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill purple" id="alloc-dca-bar" style="width:25%;"></div></div>
+          </div>
+
+          <!-- Caja de Sugerencia Inteligente Centinela -->
+          <div class="strat-sugg-box" id="sugg-box-dca">
+            <div class="strat-sugg-header">
+              <span>💡 Sugerencia del Bot:</span>
+            </div>
+            <div class="strat-sugg-desc" id="sugg-text-dca">
+              Soportes mayores de 4H vigentes. Mantener SL -6.0% para tolerar caídas y promediar con seguridad.
+            </div>
+            <button class="btn-apply-sugg" data-strat="smart_dca" id="btn-apply-dca">⚡ Aplicar Sugerencia</button>
           </div>
         </div>
 
@@ -1503,14 +1702,37 @@
               <strong>Mecánica:</strong> Despliega una rejilla de micro-compras y ventas rápidas en días planos donde Bitcoin no se mueve (rango &lt; 2.2%). Cosecha micro-rebotes automáticos continuos sin esperar tendencias.
             </div>
             <div class="strategy-pills-row">
+              <span class="strat-pill logic" id="badge-tf-grid">⏱️ 15m</span>
               <span class="strat-pill logic">💤 BTC Rango &lt; 2.2%</span>
-              <span class="strat-pill logic">📐 Rejilla ±0.5%</span>
               <span class="strat-pill target">🎯 Rebotes +0.45% a +0.60%</span>
-              <span class="strat-pill logic">⚡ Scalping 30-60m</span>
+              <span class="strat-pill risk" id="badge-sl-grid">🛑 SL -2.0%</span>
             </div>
           </div>
 
-          <!-- Integrated In-Card Budget Slider -->
+          <!-- Controles Autónomos Independientes -->
+          <div class="strat-autonomous-controls">
+            <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">⏱️ Temporalidad:</span>
+              <div class="mini-tf-group" data-strat="micro_grid">
+                <button class="btn-mini-tf active" data-tf="15m">15m</button>
+                <button class="btn-mini-tf" data-tf="1h">1H</button>
+                <button class="btn-mini-tf" data-tf="4h">4H</button>
+              </div>
+            </div>
+            <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">🛑 Stop-Loss Propio:</span>
+              <div class="mini-sl-group">
+                <label class="switch" style="width:34px;height:18px;">
+                  <input type="checkbox" id="toggle-sl-grid" checked>
+                  <span class="slider" style="border-radius:18px;"></span>
+                </label>
+                <input type="range" class="mini-sl-slider" id="slider-sl-grid" min="1.0" max="6.0" step="0.5" value="2.0" data-strat="micro_grid">
+                <b class="mini-sl-val" id="lbl-sl-grid">-2.0%</b>
+              </div>
+            </div>
+          </div>
+
+          <!-- Presupuesto In-Card -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
               <span class="alloc-badge" id="alloc-grid-badge" style="color:#22D3EE; background:rgba(6,182,212,0.15);">0% Asignado</span>
@@ -1521,6 +1743,17 @@
             </div>
             <input type="range" class="strat-budget-slider" id="slider-grid" min="0" max="100" step="5" value="0">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill blue" id="alloc-grid-bar" style="width:0%;"></div></div>
+          </div>
+
+          <!-- Caja de Sugerencia Inteligente Centinela -->
+          <div class="strat-sugg-box" id="sugg-box-grid">
+            <div class="strat-sugg-header">
+              <span>💡 Sugerencia del Bot:</span>
+            </div>
+            <div class="strat-sugg-desc" id="sugg-text-grid">
+              Scalping en 15m con SL estricto de -2.0% para no quedar atrapado si rompe el rango.
+            </div>
+            <button class="btn-apply-sugg" data-strat="micro_grid" id="btn-apply-grid">⚡ Aplicar Sugerencia</button>
           </div>
         </div>
 
@@ -1542,14 +1775,37 @@
               <strong>Mecánica:</strong> Se activa los viernes a las 17:00 COT al cerrar las bolsas mundiales. Caza la mejor sobreventa en la baja liquidez del fin de semana y vende en el rebote máximo de apertura de CME (domingo noche/lunes).
             </div>
             <div class="strategy-pills-row">
-              <span class="strat-pill logic">📅 Vie 17:00 a Dom 18:00</span>
+              <span class="strat-pill logic" id="badge-tf-weekend">⏱️ 1H</span>
               <span class="strat-pill logic">🏦 Apertura Futuros CME</span>
-              <span class="strat-pill logic">🔻 Caza Suelo Sábado/Dom</span>
               <span class="strat-pill target">🎯 Venta Pico Dom Noche/Lun</span>
+              <span class="strat-pill risk" id="badge-sl-weekend">🛑 SL -5.0%</span>
             </div>
           </div>
 
-          <!-- Integrated In-Card Budget Slider -->
+          <!-- Controles Autónomos Independientes -->
+          <div class="strat-autonomous-controls">
+            <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">⏱️ Temporalidad:</span>
+              <div class="mini-tf-group" data-strat="cazador_weekend">
+                <button class="btn-mini-tf" data-tf="15m">15m</button>
+                <button class="btn-mini-tf active" data-tf="1h">1H</button>
+                <button class="btn-mini-tf" data-tf="4h">4H</button>
+              </div>
+            </div>
+            <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">🛑 Stop-Loss Propio:</span>
+              <div class="mini-sl-group">
+                <label class="switch" style="width:34px;height:18px;">
+                  <input type="checkbox" id="toggle-sl-weekend" checked>
+                  <span class="slider" style="border-radius:18px;"></span>
+                </label>
+                <input type="range" class="mini-sl-slider" id="slider-sl-weekend" min="2.0" max="10.0" step="0.5" value="5.0" data-strat="cazador_weekend">
+                <b class="mini-sl-val" id="lbl-sl-weekend">-5.0%</b>
+              </div>
+            </div>
+          </div>
+
+          <!-- Presupuesto In-Card -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
               <span class="alloc-badge" id="alloc-weekend-badge" style="color:#F472B6; background:rgba(236,72,153,0.15);">0% (Entre semana)</span>
@@ -1561,8 +1817,20 @@
             <input type="range" class="strat-budget-slider" id="slider-weekend" min="0" max="100" step="5" value="35">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill pink" id="alloc-weekend-bar" style="width:0%;"></div></div>
           </div>
+
+          <!-- Caja de Sugerencia Inteligente Centinela -->
+          <div class="strat-sugg-box" id="sugg-box-weekend">
+            <div class="strat-sugg-header">
+              <span>💡 Sugerencia del Bot:</span>
+            </div>
+            <div class="strat-sugg-desc" id="sugg-text-weekend">
+              En espera hasta viernes 17:00 COT. Parámetros listos en 1H y SL -5.0% ante mechazos de fin de semana.
+            </div>
+            <button class="btn-apply-sugg" data-strat="cazador_weekend" id="btn-apply-weekend">⚡ Aplicar Sugerencia</button>
+          </div>
         </div>
       </div>
+    </div>
 
       <!-- Risk Management (Stop-Loss) & Wave Timeframe Radar Hub -->
       <div class="risk-timeframe-hub">

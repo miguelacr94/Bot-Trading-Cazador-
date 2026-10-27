@@ -351,7 +351,160 @@
   let selectedTimeframe = "1h";
   let userEditingRisk = false;
 
-  function initRiskControls() {
+  
+  // ---------- Módulos Autónomos: Stop-Loss, Timeframe & Sugerencias por Tarjeta ----------
+  const strategyKeys = ["trailing_rebound", "smart_dca", "micro_grid", "cazador_weekend"];
+  const stratShortMap = { trailing_rebound: "trailing", smart_dca: "dca", micro_grid: "grid", cazador_weekend: "weekend" };
+
+  function initAutonomousStrategyControls() {
+    strategyKeys.forEach(strat => {
+      const short = stratShortMap[strat];
+
+      // 1. Timeframe buttons per strategy
+      const tfGroup = document.querySelector(`.mini-tf-group[data-strat="${strat}"]`);
+      if (tfGroup) {
+        tfGroup.querySelectorAll(".btn-mini-tf").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const tf = btn.getAttribute("data-tf");
+            tfGroup.querySelectorAll(".btn-mini-tf").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            const badgeTf = document.getElementById(`badge-tf-${short}`);
+            if (badgeTf) badgeTf.textContent = `⏱️ ${tf.toUpperCase()}`;
+            const lblTf = document.getElementById(`lbl-tf-${short}`);
+            if (lblTf) lblTf.textContent = tf.toUpperCase();
+
+            await updateModuleSettings(strat, { timeframe: tf });
+          });
+        });
+      }
+
+      // 2. Stop-Loss slider & toggle per strategy
+      const sliderSl = document.getElementById(`slider-sl-${short}`);
+      const toggleSl = document.getElementById(`toggle-sl-${short}`);
+      const lblSl = document.getElementById(`lbl-sl-${short}`);
+      const badgeSl = document.getElementById(`badge-sl-${short}`);
+
+      if (sliderSl && lblSl) {
+        sliderSl.addEventListener("input", () => {
+          lblSl.textContent = `-${parseFloat(sliderSl.value).toFixed(1)}%`;
+          if (badgeSl) badgeSl.textContent = `🛑 SL -${parseFloat(sliderSl.value).toFixed(1)}%`;
+        });
+
+        sliderSl.addEventListener("change", async () => {
+          await updateModuleSettings(strat, { stopLossPct: parseFloat(sliderSl.value) });
+        });
+      }
+
+      if (toggleSl) {
+        toggleSl.addEventListener("change", async () => {
+          if (badgeSl) {
+            badgeSl.style.opacity = toggleSl.checked ? "1" : "0.4";
+            badgeSl.textContent = toggleSl.checked ? `🛑 SL -${parseFloat(sliderSl.value).toFixed(1)}%` : "🛑 SL OFF";
+          }
+          await updateModuleSettings(strat, { stopLossEnabled: toggleSl.checked });
+        });
+      }
+
+      // 3. Bot Suggestion Button per strategy
+      const btnApply = document.getElementById(`btn-apply-${short}`);
+      if (btnApply) {
+        btnApply.addEventListener("click", async () => {
+          await applyBotSuggestion(strat, btnApply);
+        });
+      }
+    });
+  }
+
+  async function updateModuleSettings(strategy, payload) {
+    try {
+      payload.strategy = strategy;
+      await fetch("/api/strategies/module-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      fetchStrategies();
+    } catch(e) {}
+  }
+
+  async function applyBotSuggestion(strategy, btn) {
+    try {
+      if (btn) btn.textContent = "⏳ Aplicando…";
+      const res = await fetch("/api/strategies/apply-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy })
+      });
+      if (res.ok) {
+        if (btn) {
+          btn.textContent = "✅ ¡Sugerencia Aplicada!";
+          btn.classList.add("applied");
+          setTimeout(() => {
+            btn.textContent = "⚡ Aplicar Sugerencia";
+            btn.classList.remove("applied");
+          }, 2500);
+        }
+        fetchStrategies();
+      }
+    } catch(e) {
+      if (btn) btn.textContent = "⚠️ Error";
+    }
+  }
+
+  function syncModularStrategyControls(controls) {
+    if (!controls) return;
+    const settings = controls.strategySettings || {};
+    const suggestions = controls.suggestions || {};
+
+    strategyKeys.forEach(strat => {
+      const short = stratShortMap[strat];
+      const s = settings[strat] || {};
+      const sugg = suggestions[strat];
+
+      // Sync Timeframe
+      if (s.timeframe) {
+        const tfGroup = document.querySelector(`.mini-tf-group[data-strat="${strat}"]`);
+        if (tfGroup) {
+          tfGroup.querySelectorAll(".btn-mini-tf").forEach(b => {
+            b.classList.toggle("active", b.getAttribute("data-tf") === s.timeframe);
+          });
+        }
+        const badgeTf = document.getElementById(`badge-tf-${short}`);
+        if (badgeTf) badgeTf.textContent = `⏱️ ${s.timeframe.toUpperCase()}`;
+        const lblTf = document.getElementById(`lbl-tf-${short}`);
+        if (lblTf) lblTf.textContent = s.timeframe.toUpperCase();
+      }
+
+      // Sync Stop-Loss
+      const sliderSl = document.getElementById(`slider-sl-${short}`);
+      const toggleSl = document.getElementById(`toggle-sl-${short}`);
+      const lblSl = document.getElementById(`lbl-sl-${short}`);
+      const badgeSl = document.getElementById(`badge-sl-${short}`);
+
+      if (s.stopLossPct !== undefined && sliderSl && lblSl) {
+        sliderSl.value = s.stopLossPct;
+        lblSl.textContent = `-${parseFloat(s.stopLossPct).toFixed(1)}%`;
+        if (badgeSl) badgeSl.textContent = `🛑 SL -${parseFloat(s.stopLossPct).toFixed(1)}%`;
+      }
+      if (s.stopLossEnabled !== undefined && toggleSl) {
+        toggleSl.checked = s.stopLossEnabled;
+        if (badgeSl) {
+          badgeSl.style.opacity = s.stopLossEnabled ? "1" : "0.4";
+          if (!s.stopLossEnabled) badgeSl.textContent = "🛑 SL OFF";
+        }
+      }
+
+      // Sync Suggestion Text
+      if (sugg && sugg.reason) {
+        const textSugg = document.getElementById(`sugg-text-${short}`);
+        if (textSugg) {
+          textSugg.textContent = sugg.reason;
+        }
+      }
+    });
+  }
+
+function initRiskControls() {
     const sliderSl = document.getElementById("slider-stoploss");
     const labelSl = document.getElementById("stoploss-val-label");
     const toggleSl = document.getElementById("toggle-stoploss");
@@ -450,11 +603,14 @@
   let currentOpportunity = null;
 
   async function fetchStrategies() {
+    // sync autonomous controls
+
     try {
       const res = await fetch("/api/strategies", { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       if (!data || !data.controls) return;
+      syncModularStrategyControls(data.controls);
 
       const c = data.controls;
       const s = c.strategies || {};
