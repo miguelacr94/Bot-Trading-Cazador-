@@ -644,6 +644,70 @@
     }
 
 
+
+    /* In-Card Budget Sliders & Compact Toolbar */
+    .hub-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .hub-header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .strategy-slider-ctrl {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #94A3B8;
+    }
+    .slider-ctrl-val {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .slider-ctrl-val.green { color: #34D399; }
+    .slider-ctrl-val.purple { color: #C084FC; }
+    .slider-ctrl-val.blue { color: #22D3EE; }
+    .slider-ctrl-val.pink { color: #F472B6; }
+    .strat-budget-slider {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+      margin: 8px 0 4px 0;
+    }
+    .strat-budget-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 0 8px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+    .presets-mini-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .presets-mini-label {
+      font-size: 11px;
+      color: #94A3B8;
+      font-weight: 600;
+      margin-right: 4px;
+    }
+
     /* Institutional Trading Platform Strategy Cards */
     .strategies-grid {
       display: grid;
@@ -1312,22 +1376,37 @@
       <div class="opp-footnote">🤖 Modo Autónomo: Si no respondes antes del tiempo límite, el bot ejecutará automáticamente la oportunidad recomendada.</div>
     </div>
 
-    <!-- Strategy Control Hub -->
+        <!-- Strategy Control Hub -->
     <div class="strategy-hub-card">
       <div class="hub-header">
-        <div class="hub-title">
-          <span class="hub-icon">⚙️</span>
-          <span>Orquestador Multi-Estrategia</span>
+        <div class="hub-header-left">
+          <div class="hub-title">
+            <span class="hub-icon">⚙️</span>
+            <span>Orquestador Multi-Estrategia</span>
+          </div>
+          <span id="budget-sum-badge">Total: 100%</span>
         </div>
-        <div class="hub-mode-toggle">
-          <span class="hub-mode-label" id="mode-label">🟢 Piloto Automático</span>
-          <label class="switch">
-            <input type="checkbox" id="toggle-autopilot" checked>
-            <span class="slider"></span>
-          </label>
+        <div class="hub-header-right">
+          <button id="btn-save-alloc" class="btn-save-alloc">💾 Guardar Presupuesto</button>
+          <div class="hub-mode-toggle">
+            <span class="hub-mode-label" id="mode-label">🟢 Piloto Automático</span>
+            <label class="switch">
+              <input type="checkbox" id="toggle-autopilot" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
         </div>
       </div>
-            <div class="strategies-grid">
+
+      <!-- Quick Preset Buttons -->
+      <div class="presets-mini-row">
+        <span class="presets-mini-label">⚡ Ajustes Rápidos:</span>
+        <button class="btn-preset" data-t="50" data-d="30" data-g="0" data-w="20">Balanceado (50 / 30 / 0 / 20)</button>
+        <button class="btn-preset" data-t="40" data-d="25" data-g="0" data-w="35">🏖️ Weekend (40 / 25 / 0 / 35)</button>
+        <button class="btn-preset" data-t="60" data-d="20" data-g="0" data-w="20">🚀 Caza Rápida (60 / 20 / 0 / 20)</button>
+      </div>
+
+      <div class="strategies-grid">
         <!-- 1. Cazador Trailing -->
         <div class="strategy-item active-strat" id="card-strat-trailing">
           <div class="strategy-card-header">
@@ -1353,11 +1432,16 @@
             </div>
           </div>
 
+          <!-- Integrated In-Card Budget Slider -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
               <span class="alloc-badge" id="alloc-trailing-badge">75% Asignado</span>
               <span class="alloc-amount" id="alloc-trailing-amount">-- USDT libres</span>
+              <div class="strategy-slider-ctrl">
+                <span>Base:</span> <b class="slider-ctrl-val green" id="slider-trailing-val">40%</b>
+              </div>
             </div>
+            <input type="range" class="strat-budget-slider" id="slider-trailing" min="0" max="100" step="5" value="40">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill green" id="alloc-trailing-bar" style="width:75%;"></div></div>
           </div>
         </div>
@@ -1387,11 +1471,16 @@
             </div>
           </div>
 
+          <!-- Integrated In-Card Budget Slider -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
               <span class="alloc-badge" id="alloc-dca-badge" style="color:#C084FC; background:rgba(168,85,247,0.15);">25% Asignado</span>
               <span class="alloc-amount" id="alloc-dca-amount">-- USDT libres</span>
+              <div class="strategy-slider-ctrl">
+                <span>Base:</span> <b class="slider-ctrl-val purple" id="slider-dca-val">25%</b>
+              </div>
             </div>
+            <input type="range" class="strat-budget-slider" id="slider-dca" min="0" max="100" step="5" value="25">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill purple" id="alloc-dca-bar" style="width:25%;"></div></div>
           </div>
         </div>
@@ -1421,11 +1510,16 @@
             </div>
           </div>
 
+          <!-- Integrated In-Card Budget Slider -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
               <span class="alloc-badge" id="alloc-grid-badge" style="color:#22D3EE; background:rgba(6,182,212,0.15);">0% Asignado</span>
               <span class="alloc-amount" id="alloc-grid-amount">-- USDT libres</span>
+              <div class="strategy-slider-ctrl">
+                <span>Base:</span> <b class="slider-ctrl-val blue" id="slider-grid-val">0%</b>
+              </div>
             </div>
+            <input type="range" class="strat-budget-slider" id="slider-grid" min="0" max="100" step="5" value="0">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill blue" id="alloc-grid-bar" style="width:0%;"></div></div>
           </div>
         </div>
@@ -1455,44 +1549,18 @@
             </div>
           </div>
 
+          <!-- Integrated In-Card Budget Slider -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
               <span class="alloc-badge" id="alloc-weekend-badge" style="color:#F472B6; background:rgba(236,72,153,0.15);">0% (Entre semana)</span>
               <span class="alloc-amount" id="alloc-weekend-amount">-- USDT libres</span>
+              <div class="strategy-slider-ctrl">
+                <span>Base:</span> <b class="slider-ctrl-val pink" id="slider-weekend-val">35%</b>
+              </div>
             </div>
+            <input type="range" class="strat-budget-slider" id="slider-weekend" min="0" max="100" step="5" value="35">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill pink" id="alloc-weekend-bar" style="width:0%;"></div></div>
           </div>
-        </div>
-      </div>
-
-      <!-- Interactive Budget Allocator -->
-      <div class="budget-allocation-hub">
-        <div class="budget-hub-title">
-          <span>📊 Presupuesto por Estrategia (Total: <span id="budget-sum-badge">100%</span>)</span>
-          <button id="btn-save-alloc" class="btn-save-alloc">💾 Guardar Porcentajes</button>
-        </div>
-        <div class="sliders-row">
-          <div class="slider-box">
-            <label><span>🏹 Trailing</span> <b id="slider-trailing-val">40%</b></label>
-            <input type="range" id="slider-trailing" min="0" max="100" step="5" value="40">
-          </div>
-          <div class="slider-box">
-            <label><span>🛡️ Smart DCA</span> <b id="slider-dca-val">25%</b></label>
-            <input type="range" id="slider-dca" min="0" max="100" step="5" value="25">
-          </div>
-          <div class="slider-box">
-            <label><span>🌐 Micro-Grid</span> <b id="slider-grid-val">0%</b></label>
-            <input type="range" id="slider-grid" min="0" max="100" step="5" value="0">
-          </div>
-          <div class="slider-box">
-            <label><span>🏖️ Weekend</span> <b id="slider-weekend-val">35%</b></label>
-            <input type="range" id="slider-weekend" min="0" max="100" step="5" value="35">
-          </div>
-        </div>
-        <div class="preset-buttons">
-          <button class="btn-preset" data-t="50" data-d="30" data-g="0" data-w="20">⚡ Balanceado (50 / 30 / 0 / 20)</button>
-          <button class="btn-preset" data-t="40" data-d="25" data-g="0" data-w="35">🏖️ Modo Weekend (40 / 25 / 0 / 35)</button>
-          <button class="btn-preset" data-t="60" data-d="20" data-g="0" data-w="20">🚀 Caza Rápida (60 / 20 / 0 / 20)</button>
         </div>
       </div>
 
