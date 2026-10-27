@@ -139,7 +139,7 @@ export class DashboardServer {
         : [];
       let updated = false;
 
-      const candidates = ["PEPE", "SOL", "ETH", "AVAX", "BTC", "BNB", "XRP"];
+      const candidates = ["BONK", "PEPE", "SOL", "ETH", "AVAX", "BTC", "BNB", "XRP", "DOGE", "SHIB"];
       for (const base of candidates) {
         const sym = base + "USDT";
         if (diskPositions.some(([s]) => s === sym)) continue;
