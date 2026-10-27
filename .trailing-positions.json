@@ -15,9 +15,9 @@
     "AVAXUSDT",
     {
       "symbol": "AVAXUSDT",
-      "buyPrice": 9.142,
-      "qty": 10.65767154,
-      "investedUsdt": 97.43243321868,
+      "buyPrice": 9.104,
+      "qty": 12.57743938,
+      "investedUsdt": 114.5,
       "highestPrice": 9.142,
       "activated": false,
       "buyTime": 1792762758204
@@ -27,12 +27,12 @@
     "PEPEUSDT",
     {
       "symbol": "PEPEUSDT",
-      "buyPrice": 0.0000044699999999999996,
-      "qty": 8888193.91,
-      "investedUsdt": 39.76999677,
-      "highestPrice": 0.00000452,
-      "activated": true,
-      "buyTime": 1793124306598,
+      "buyPrice": 0.00000452,
+      "qty": 8851758.91,
+      "investedUsdt": 40.01,
+      "highestPrice": 0.00000454,
+      "activated": false,
+      "buyTime": 1793131863807,
       "strategy": "trailing_rebound",
       "customCallbackPct": 0.45
     }
