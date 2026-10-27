@@ -1,1 +1,13 @@
-[]
+[
+  [
+    "BNBUSDT",
+    {
+      "symbol": "BNBUSDT",
+      "armedPrice": 746.2,
+      "lowestPrice": 745.49,
+      "armedTime": 1793139389922,
+      "rsi": 54.88890767451054,
+      "dropPct": 1.0725317848572722
+    }
+  ]
+]

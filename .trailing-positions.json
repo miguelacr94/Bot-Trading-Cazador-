@@ -8,8 +8,21 @@
       "investedUsdt": 16.26,
       "highestPrice": 2412.02,
       "activated": false,
-      "buyTime": 1792677217622,
-      "customTimeframe": "1h"
+      "buyTime": 1792677217622
+    }
+  ],
+  [
+    "BONKUSDT",
+    {
+      "symbol": "BONKUSDT",
+      "buyPrice": 0.00000305,
+      "qty": 16327917.74,
+      "investedUsdt": 49.8499991,
+      "highestPrice": 0.00000305,
+      "activated": false,
+      "buyTime": 1793139153361,
+      "strategy": "trailing_rebound",
+      "customCallbackPct": 0.45
     }
   ]
 ]

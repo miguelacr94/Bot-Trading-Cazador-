@@ -8,7 +8,7 @@
   },
   "autoPilot": true,
   "approvalTimeoutSec": 180,
-  "updatedAt": 1793139067296,
+  "updatedAt": 1793140007420,
   "allocations": {
     "trailing_rebound": 55,
     "smart_dca": 25,
@@ -67,8 +67,8 @@
       "porQue": "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario y posiciona al bot para capturar movimientos enteros de +1.5% a +3.0%. El stop-loss se calibra en -4.0% para dar espacio al activo sin salidas falsas.",
       "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "btcRange24h": 2.256433476718738,
-      "updatedAt": 1793139067296,
-      "expiresAt": 1793142667296,
+      "updatedAt": 1793139957314,
+      "expiresAt": 1793143557314,
       "isCurrent": true,
       "status": "applied"
     },
@@ -84,8 +84,8 @@
       "porQue": "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
       "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "btcRange24h": 2.256433476718738,
-      "updatedAt": 1793139067296,
-      "expiresAt": 1793142667296,
+      "updatedAt": 1793139957314,
+      "expiresAt": 1793143557314,
       "isCurrent": true,
       "status": "applied"
     },
@@ -100,8 +100,8 @@
       "porQue": "Cuando el mercado tiene movimiento direccional, las estrategias de rejilla corren riesgo de quedar con compras atrapadas. Se sugiere mantener el presupuesto de Micro-Grid en 0% o con Stop-Loss estricto de -2.0% mientras el Trailing Hunter hace el trabajo pesado.",
       "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "btcRange24h": 2.256433476718738,
-      "updatedAt": 1793139067296,
-      "expiresAt": 1793142667296,
+      "updatedAt": 1793139957314,
+      "expiresAt": 1793143557314,
       "isCurrent": true,
       "status": "applied"
     },
@@ -116,8 +116,8 @@
       "porQue": "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
       "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "btcRange24h": 2.256433476718738,
-      "updatedAt": 1793139067296,
-      "expiresAt": 1793142667296,
+      "updatedAt": 1793139957314,
+      "expiresAt": 1793143557314,
       "isCurrent": true,
       "status": "applied"
     }
@@ -127,7 +127,8 @@
     "PEPEUSDT": 0.45,
     "AVAXUSDT": 0.35,
     "ETHUSDT": 0.25,
-    "default": 0.35
+    "default": 0.35,
+    "BONKUSDT": 0.45
   },
   "symbolTimeframes": {
     "PEPEUSDT": "15m",
