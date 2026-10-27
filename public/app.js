@@ -1215,6 +1215,28 @@
       latestFreeUsdt = (d.portfolio?.usdtFree ?? 0) + (d.portfolio?.usdtEarn ?? 0);
       renderAuthBanner(d.authError);
       renderKpis(d);
+
+    // Actualizar barra de recuperación Centinela Alpha
+    const tracker = d.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
+    const target = tracker.targetUsdt || 2.30;
+    const recovered = tracker.recoveredUsdt || 0;
+    const pct = Math.min(100, Math.max(0, (recovered / target) * 100));
+    const remaining = Math.max(0, target - recovered);
+
+    const barEl = $("recovery-progress-bar");
+    const statsEl = $("recovery-stats-text");
+    const remEl = $("recovery-remaining-text");
+
+    if (barEl) barEl.style.width = pct.toFixed(1) + "%";
+    if (statsEl) statsEl.innerHTML = `+${recovered.toFixed(2)} / ${target.toFixed(2)} USDT (${pct.toFixed(0)}%)`;
+    if (remEl) {
+      if (remaining <= 0) {
+        remEl.innerHTML = `<span style="color:#10b981; font-weight:700;">✅ ¡DEUDA 100% SALDADA!</span>`;
+      } else {
+        remEl.textContent = `Faltan ${remaining.toFixed(2)} USDT para saldar (${tracker.tradesCount || 0} operaciones cerradas)`;
+      }
+    }
+
       renderPositions(d.positions);
       renderRadar(d.radar);
       renderHistory(d.recentCycles);
