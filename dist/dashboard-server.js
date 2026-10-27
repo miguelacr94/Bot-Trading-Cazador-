@@ -453,6 +453,42 @@ export class DashboardServer {
                 });
                 return;
             }
+            if (parsedUrl.pathname === "/api/strategies/settings" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => body += chunk);
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+                        const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {
+                            strategies: { trailing_rebound: true, smart_dca: true, micro_grid: false, cazador_weekend: true },
+                            autoPilot: true,
+                            approvalTimeoutSec: 180
+                        };
+                        if (data.stopLossEnabled !== undefined)
+                            controls.stopLossEnabled = !!data.stopLossEnabled;
+                        if (data.stopLossPct !== undefined)
+                            controls.stopLossPct = Math.max(1, Math.min(20, parseFloat(data.stopLossPct)));
+                        if (data.timeframe && ["15m", "1h", "4h", "1d"].includes(data.timeframe))
+                            controls.timeframe = data.timeframe;
+                        if (data.cashReservePct !== undefined)
+                            controls.cashReservePct = Math.max(5, Math.min(50, parseInt(data.cashReservePct, 10)));
+                        if (data.maxPerCoinPct !== undefined)
+                            controls.maxPerCoinPct = Math.max(10, Math.min(60, parseInt(data.maxPerCoinPct, 10)));
+                        if (data.autoPilot !== undefined)
+                            controls.autoPilot = !!data.autoPilot;
+                        controls.updatedAt = Date.now();
+                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                        res.end(JSON.stringify({ success: true, controls }));
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
             if (parsedUrl.pathname === "/api/strategies/toggle" && req.method === "POST") {
                 let body = "";
                 req.on("data", chunk => body += chunk);

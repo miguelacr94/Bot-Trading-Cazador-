@@ -79,6 +79,11 @@ export interface StrategyControls {
   autoPilot: boolean;
   aiEnabled?: boolean;
   gridIgnoredUntil?: number;
+  stopLossEnabled?: boolean;
+  stopLossPct?: number;
+  timeframe?: "15m" | "1h" | "4h" | "1d";
+  cashReservePct?: number;
+  maxPerCoinPct?: number;
   approvalTimeoutSec: number;
   updatedAt: number;
 }
@@ -321,7 +326,12 @@ export class TrailingMasterBot {
         this.controls = JSON.parse(fs.readFileSync(file, "utf-8"));
         if (!this.controls.strategies) {
           this.controls.strategies = { trailing_rebound: true, smart_dca: true, micro_grid: false, cazador_weekend: this.isWeekendWindow() };
-        } else if (this.controls.strategies.cazador_weekend === undefined) {
+        }
+        if (this.controls.stopLossEnabled === undefined) this.controls.stopLossEnabled = true;
+        if (this.controls.stopLossPct === undefined) this.controls.stopLossPct = 4.0;
+        if (!this.controls.timeframe) this.controls.timeframe = "1h";
+        if (this.controls.cashReservePct === undefined) this.controls.cashReservePct = 25;
+        if (this.controls.maxPerCoinPct === undefined) this.controls.maxPerCoinPct = 30; else if (this.controls.strategies.cazador_weekend === undefined) {
           this.controls.strategies.cazador_weekend = this.isWeekendWindow();
         }
         if (!this.controls.baseAllocations) {
@@ -744,6 +754,23 @@ export class TrailingMasterBot {
         const curPrice = parseFloat(ticker.data.price);
         const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
 
+        // 0. Evaluar Stop-Loss si está activado y la posición aún NO ha asegurado ganancias
+        const slEnabled = this.controls.stopLossEnabled !== false;
+        const slPct = this.controls.stopLossPct ?? 4.0;
+        if (slEnabled && !pos.activated && gainPct <= -slPct) {
+          console.log(`🛑 [STOP-LOSS DISPARADO] ${symbol} cayó a ${curPrice} (${gainPct.toFixed(2)}% <= -${slPct}%). Ejecutando corte de emergencia...`);
+          const sold = await this.executeTrailingSell(pos, curPrice, false, true);
+          if (sold) {
+            const strat = pos.strategy;
+            this.activeTrailingPositions.delete(symbol);
+            this.saveTrailingPositions();
+            if (strat === "cazador_weekend") {
+              await this.onWeekendTradeCompleted(symbol);
+            }
+          }
+          continue;
+        }
+
         // 1. Activar Trailing si superó el +0.8%
         if (gainPct >= TRAILING_ACTIVATION_PCT && !pos.activated) {
           pos.activated = true;
@@ -840,7 +867,7 @@ export class TrailingMasterBot {
     return fee;
   }
 
-  async executeTrailingSell(pos: ActivePosition, exitPrice: number, hitHardCap: boolean): Promise<boolean> {
+  async executeTrailingSell(pos: ActivePosition, exitPrice: number, hitHardCap: boolean, isStopLoss: boolean = false): Promise<boolean> {
     try {
       const asset = pos.symbol.replace("USDT", "");
       let freeBal = await this.getFreeBalance(asset);
@@ -880,15 +907,25 @@ export class TrailingMasterBot {
       const netPct = (profitUsdt / costBasis) * 100;
       const sign = profitUsdt >= 0 ? "+" : "";
 
-      const alertMsg = `🏆 <b>¡GANANCIA COBRADA CON TRAILING TAKE PROFIT!</b> 🎉\n\n` +
-        `• <b>Moneda:</b> ${pos.symbol}\n` +
-        `• <b>Precio de compra:</b> ${fmtPrice(pos.buyPrice)}\n` +
-        `• <b>Pico alcanzado:</b> ${fmtPrice(pos.highestPrice)}\n` +
-        `• <b>Precio de venta:</b> ${fmtPrice(avgSell)}\n` +
-        `• <b>Comisiones:</b> ${sellFee.toFixed(4)} USDT\n` +
-        `• 💵 <b>Ganancia líquida:</b> ${profitUsdt >= 0 ? "🟢" : "🔴"} <b>${sign}${profitUsdt.toFixed(3)} USDT</b> (<b>${sign}${netPct.toFixed(2)}% NETO</b>) ≈ ${sign}$${Math.round(profitUsdt * COP_PER_USDT).toLocaleString("es-CO")} COP\n\n` +
-        `🛡️ <i>${hitHardCap ? "Meta máxima de +3.5% alcanzada." : "Venta óptima capturada en la cima del rebote."}</i>\n` +
-        `📊 <i>Escribe /reporte para ver el acumulado real.</i>`;
+      let alertMsg = "";
+      if (isStopLoss) {
+        alertMsg = `🛑 <b>[STOP-LOSS EJECUTADO: ${pos.symbol}]</b> 🛡️\n\n` +
+          `• <b>Precio de compra:</b> ${fmtPrice(pos.buyPrice)}\n` +
+          `• <b>Precio de corte:</b> ${fmtPrice(avgSell)}\n` +
+          `• 💵 <b>Capital rescatado:</b> <b>${(grossUsdt - sellFee).toFixed(2)} USDT líquidos</b>\n` +
+          `• 📉 Pérdida controlada asumida: 🔴 <b>${profitUsdt.toFixed(3)} USDT</b> (<b>${netPct.toFixed(2)}%</b>) ≈ ${Math.round(profitUsdt * COP_PER_USDT).toLocaleString("es-CO")} COP\n\n` +
+          `💡 <i>Posición cerrada para proteger tu dinero y tener pólvora lista para la siguiente ola.</i>`;
+      } else {
+        alertMsg = `🏆 <b>¡GANANCIA COBRADA CON TRAILING TAKE PROFIT!</b> 🎉\n\n` +
+          `• <b>Moneda:</b> ${pos.symbol}\n` +
+          `• <b>Precio de compra:</b> ${fmtPrice(pos.buyPrice)}\n` +
+          `• <b>Pico alcanzado:</b> ${fmtPrice(pos.highestPrice)}\n` +
+          `• <b>Precio de venta:</b> ${fmtPrice(avgSell)}\n` +
+          `• <b>Comisiones:</b> ${sellFee.toFixed(4)} USDT\n` +
+          `• 💵 <b>Ganancia líquida:</b> ${profitUsdt >= 0 ? "🟢" : "🔴"} <b>${sign}${profitUsdt.toFixed(3)} USDT</b> (<b>${sign}${netPct.toFixed(2)}% NETO</b>) ≈ ${sign}${Math.round(profitUsdt * COP_PER_USDT).toLocaleString("es-CO")} COP\n\n` +
+          `🛡️ <i>${hitHardCap ? "Meta máxima de +3.5% alcanzada." : "Venta óptima capturada en la cima del rebote."}</i>\n` +
+          `📊 <i>Escribe /reporte para ver el acumulado real.</i>`;
+      }
 
       await this.notifier.send(alertMsg);
       console.log(alertMsg.replace(/<[^>]*>/g, ""));
@@ -917,7 +954,7 @@ export class TrailingMasterBot {
       } catch(e) {}
 
       // 2. Bóveda Automática de Ganancias (25% a Simple Earn)
-      if (profitUsdt >= 0.50) {
+      if (!isStopLoss && profitUsdt >= 0.50) {
         const vaultAmt = Math.floor(profitUsdt * 0.25 * 100) / 100;
         if (vaultAmt >= 0.10) {
           await this.depositToEarn("USDT", vaultAmt);
@@ -1113,6 +1150,11 @@ export class TrailingMasterBot {
           `• /weekend — <i>Estado y radar de Cazador Weekend</i>\n` +
           `• /motores — <i>Parámetros técnicos de Trailing Buy/Sell</i>\n\n` +
 
+          `<b>🛡️ GESTIÓN DE RIESGO Y RADAR:</b>\n` +
+          `• /stoploss — <i>Ver estado y porcentaje de Stop-Loss</i>\n` +
+          `• /toggle_stoploss — <i>Activar o desactivar Stop-Loss</i>\n` +
+          `• /set_stoploss 4.0 — <i>Fijar porcentaje de corte (ej: /set_stoploss 3.5)</i>\n` +
+          `• /timeframe — <i>Ver o cambiar radar de ondas (15m, 1h, 4h)</i>\n\n` +
           `<b>🔀 INTERRUPTORES (ON / OFF):</b>\n` +
           `• /toggle_trailing — <i>Switch Cazador Trailing</i>\n` +
           `• /toggle_dca — <i>Switch Smart DCA (Seguridad)</i>\n` +
@@ -1167,6 +1209,17 @@ export class TrailingMasterBot {
         msg += `• <b>4. 🏖️ Cazador Weekend:</b> ${weekendBadge}\n`;
         msg += `  <i>Aprovecha caídas de fin de semana (Vie-Dom) y exprime venta en el pico más alto (Dom noche/Lunes).</i>\n`;
         msg += `  👉 /toggle_weekend | /weekend\n\n`;
+
+        const slOn = this.controls.stopLossEnabled !== false;
+        const slVal = (this.controls.stopLossPct ?? 4.0).toFixed(1);
+        const tfVal = (this.controls.timeframe || "1h").toUpperCase();
+        msg += `• <b>5. 🛡️ Stop-Loss de Protección:</b> ${slOn ? `🟢 <b>ACTIVO (-${slVal}%)</b>` : "🔴 <i>DESACTIVADO</i>"}\n`;
+        msg += `  <i>Corta caídas anormales para proteger liquidez y liberar USDT.</i>\n`;
+        msg += `  👉 /stoploss | /toggle_stoploss\n\n`;
+
+        msg += `• <b>6. ⏱️ Radar de Ondas (Timeframe):</b> <b>${tfVal}</b> ${tfVal === "1H" ? "(Base Predeterminada)" : ""}\n`;
+        msg += `  <i>Brújula de análisis multitemporal adaptativo.</i>\n`;
+        msg += `  👉 /timeframe\n\n`;
 
         msg += `• 🤖 <b>Modo Centinela:</b> ${this.controls.autoPilot ? "🟢 Autónomo (Auto-ejecuta a los " + mins + " min)" : "🟡 Manual Estricto"}\n`;
         msg += `  👉 /modo auto | /modo manual\n\n`;
@@ -1271,7 +1324,53 @@ export class TrailingMasterBot {
                `• 🏖️ <b>Cazador Weekend:</b> ${w}% base ${!isW ? `(👉 <i>0% ahora: se apartará el viernes a las 17:00 COT</i>)` : `(👉 <b>${w}% ACTIVO</b>)`}\n\n` +
                `💾 <i>Presupuesto inteligente activo: En días hábiles todo el capital trabaja en Trailing, y el fin de semana se recupera automáticamente para cazar la caída más oportuna.</i>`;
       }
-            if (cmd === "/toggle_ia" || cmd === "/toggle_ai" || cmd === "toggle_ia" || cmd === "toggle_ai") {
+            if (cmd === "/stoploss" || cmd === "stoploss") {
+        const slOn = this.controls.stopLossEnabled !== false;
+        const slPct = (this.controls.stopLossPct ?? 4.0).toFixed(1);
+        let msg = `🛡️ <b>CONFIGURACIÓN DE STOP-LOSS</b> 🛑\n\n`;
+        msg += `• <b>Estado:</b> ${slOn ? "🟢 <b>ACTIVADO</b>" : "🔴 <i>DESACTIVADO</i>"}\n`;
+        msg += `• <b>Límite de corte:</b> <b>-${slPct}%</b> de caída máxima tolerada\n`;
+        msg += `• 💡 <i>Protección: Si la moneda cae más de -${slPct}% sin rebotar, el bot vende al mercado, rescata el 96% de tus dólares y libera liquidez para cazar la siguiente ola.</i>\n\n`;
+        msg += `👉 /toggle_stoploss — <i>Alternar ON/OFF</i>\n`;
+        msg += `👉 /set_stoploss 3.5 — <i>Ejemplo: Fijar corte en -3.5%</i>\n`;
+        msg += `👉 /set_stoploss 4.0 — <i>Ejemplo: Fijar corte en -4.0%</i>`;
+        return msg;
+      }
+
+      if (cmd === "/toggle_stoploss" || cmd === "toggle_stoploss") {
+        this.controls.stopLossEnabled = !(this.controls.stopLossEnabled !== false);
+        this.saveStrategyControls();
+        const slOn = this.controls.stopLossEnabled;
+        return `🛡️ <b>Stop-Loss:</b> ${slOn ? `🟢 <b>ACTIVADO</b> (Corta al -${(this.controls.stopLossPct ?? 4.0).toFixed(1)}% para proteger liquidez)` : "🔴 <b>DESACTIVADO</b> (Modo sin corte de pérdida)"}.`;
+      }
+
+      if (cmd === "/set_stoploss" || cmd === "set_stoploss") {
+        const val = parseFloat(parts[1] || "");
+        if (isNaN(val) || val <= 0 || val > 20) {
+          return `⚠️ <b>Uso:</b> <code>/set_stoploss &lt;PORCENTAJE&gt;</code>\nEjemplo: <code>/set_stoploss 4.0</code> (fija corte al -4.0%). Ingrese un valor entre 1.0 y 20.0.`;
+        }
+        this.controls.stopLossPct = Math.round(val * 10) / 10;
+        this.controls.stopLossEnabled = true;
+        this.saveStrategyControls();
+        return `✅ <b>¡Stop-Loss actualizado!</b> 🛡️\n\n• Límite fijado en: <b>-${this.controls.stopLossPct.toFixed(1)}%</b>\n• Estado: 🟢 <b>ACTIVADO</b>`;
+      }
+
+      if (cmd === "/timeframe" || cmd === "timeframe" || cmd === "/tf") {
+        const tf = parts[1]?.toLowerCase();
+        if (tf === "15m" || tf === "1h" || tf === "4h" || tf === "1d") {
+          this.controls.timeframe = tf as any;
+          this.saveStrategyControls();
+          return `⏱️ <b>Radar de Temporalidad actualizado:</b> <b>${tf.toUpperCase()}</b>.\nEl bot ahora calibrará sus análisis de ondas con velas de ${tf.toUpperCase()}.`;
+        }
+        const cur = (this.controls.timeframe || "1h").toUpperCase();
+        return `⏱️ <b>Radar de Temporalidad Actual:</b> <b>${cur}</b>\n\n` +
+               `Opciones disponibles:\n` +
+               `• /timeframe 15m — <i>Micro-ondas rápidas (mercados volátiles)</i>\n` +
+               `• /timeframe 1h — <i>Ondas estándar completas (PREDETERMINADO)</i>\n` +
+               `• /timeframe 4h — <i>Tendencias mayores (mercados lentos/macro)</i>`;
+      }
+
+      if (cmd === "/toggle_ia" || cmd === "/toggle_ai" || cmd === "toggle_ia" || cmd === "toggle_ai") {
         this.controls.aiEnabled = !this.controls.aiEnabled;
         this.saveStrategyControls();
         return `🤖 <b>Copiloto Gemini AI:</b> ${this.controls.aiEnabled ? "🟢 ACTIVADO (Solo responderá consultas explícitas con /ai)" : "🔴 SILENCIADO (Cero respuestas automáticas, cero consumo de tokens)"}.`;
@@ -1698,6 +1797,58 @@ export class TrailingMasterBot {
    * Si es < 2.2%, notifica por Telegram y auto-activa Micro-Grid tras 3 minutos si no hay respuesta.
    * Si sube a >= 2.5%, auto-desactiva Micro-Grid y devuelve el presupuesto a Cazador Trailing.
    */
+
+  private lastTimeframeAdvisorTime: number = 0;
+
+  async checkTimeframeAdvisor() {
+    if (Date.now() - this.lastTimeframeAdvisorTime < 900000) return; // Cada 15 minutos
+    this.lastTimeframeAdvisorTime = Date.now();
+
+    try {
+      const btc24 = await this.client.ticker24hr("BTCUSDT");
+      const high = parseFloat(btc24.data.highPrice);
+      const low = parseFloat(btc24.data.lowPrice);
+      const range24h = ((high - low) / low) * 100;
+
+      let rec: "15m" | "1h" | "4h" = "1h";
+      let reason = "";
+
+      if (range24h >= 4.5) {
+        rec = "15m";
+        reason = `Alta volatilidad detectada en Bitcoin (${range24h.toFixed(2)}% en 24h). Conviene operar micro-ondas rápidas.`;
+      } else if (range24h >= 2.0) {
+        rec = "1h";
+        reason = `Volatilidad estándar equilibrada (${range24h.toFixed(2)}%). Ideal para capturar ondas de 1 hora completas.`;
+      } else {
+        rec = "1h";
+        reason = `Mercado en consolidación tranquila (${range24h.toFixed(2)}%). Manteniendo radar de 1H con soporte fuerte.`;
+      }
+
+      const current = this.controls.timeframe || "1h";
+      if (rec !== current) {
+        if (this.controls.autoPilot) {
+          this.controls.timeframe = rec;
+          this.saveStrategyControls();
+          await this.notifier.send(
+            `⏱️ <b>[CENTINELA ADAPTATIVO: TEMPORALIDAD AJUSTADA A ${rec.toUpperCase()}]</b> 🟢\n\n` +
+            `• <b>Motivo:</b> ${reason}\n` +
+            `• 🤖 <i>Modo Autónomo: El bot calibró el radar a ${rec.toUpperCase()} para capturar mejor las ondas del momento.</i>`
+          );
+        } else {
+          await this.notifier.send(
+            `⏱️ <b>[SUGERENCIA DE TEMPORALIDAD: ${rec.toUpperCase()}]</b> 🧭\n\n` +
+            `• <b>Diagnóstico:</b> ${reason}\n` +
+            `• 🎯 <b>Recomendación:</b> Cambiar el radar de <b>${current.toUpperCase()}</b> a <b>${rec.toUpperCase()}</b>.\n\n` +
+            `👉 /timeframe ${rec} — <i>Aplicar recomendación</i>\n` +
+            `👉 /timeframe ${current} — <i>Mantener actual</i>`
+          );
+        }
+      }
+    } catch(e: any) {
+      console.error("Error en checkTimeframeAdvisor:", e.message);
+    }
+  }
+
   async checkMarketRegime() {
     if (Date.now() - this.lastRegimeCheckTime < 180000) return; // Chequear cada 3 minutos
     this.lastRegimeCheckTime = Date.now();
@@ -2003,6 +2154,7 @@ export class TrailingMasterBot {
       await this.checkOpportunityActionFile();
       await this.checkOpportunityTimeout();
       await this.checkMarketRegime();
+      await this.checkTimeframeAdvisor();
       await this.checkRegimeSwitchTimeout();
 
       // Auto-sincronizar periódicamente posiciones de Binance

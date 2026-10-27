@@ -346,6 +346,106 @@
     } catch(e) {}
   }
 
+
+  // ---------- Gestión de Riesgo (Stop-Loss) & Radar de Ondas ----------
+  let selectedTimeframe = "1h";
+  let userEditingRisk = false;
+
+  function initRiskControls() {
+    const sliderSl = document.getElementById("slider-stoploss");
+    const labelSl = document.getElementById("stoploss-val-label");
+    const toggleSl = document.getElementById("toggle-stoploss");
+    const badgeStatus = document.getElementById("risk-status-badge");
+    const btnSaveRisk = document.getElementById("btn-save-risk");
+
+    if (sliderSl && labelSl) {
+      sliderSl.addEventListener("input", () => {
+        userEditingRisk = true;
+        labelSl.textContent = `-${parseFloat(sliderSl.value).toFixed(1)}%`;
+      });
+    }
+
+    if (toggleSl && badgeStatus) {
+      toggleSl.addEventListener("change", () => {
+        userEditingRisk = true;
+        updateRiskBadge(toggleSl.checked, sliderSl ? sliderSl.value : 4.0);
+      });
+    }
+
+    // Timeframe buttons (15m, 1h, 4h)
+    ["15m", "1h", "4h"].forEach(tf => {
+      const btn = document.getElementById(`tf-${tf}`);
+      if (btn) {
+        btn.addEventListener("click", () => {
+          userEditingRisk = true;
+          selectedTimeframe = tf;
+          document.querySelectorAll(".btn-tf").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          const curBadge = document.getElementById("current-tf-badge");
+          if (curBadge) {
+            curBadge.textContent = tf === "1h" ? "1H (Base)" : tf.toUpperCase();
+          }
+        });
+      }
+    });
+
+    if (btnSaveRisk) {
+      btnSaveRisk.addEventListener("click", async () => {
+        const slOn = toggleSl ? toggleSl.checked : true;
+        const slPct = sliderSl ? parseFloat(sliderSl.value) : 4.0;
+        await saveRiskSettings(slOn, slPct, selectedTimeframe);
+      });
+    }
+  }
+
+  function updateRiskBadge(enabled, pct) {
+    const badgeStatus = document.getElementById("risk-status-badge");
+    if (!badgeStatus) return;
+    if (enabled) {
+      badgeStatus.className = "risk-badge-active";
+      badgeStatus.textContent = `🟢 Stop-Loss Activo (-${parseFloat(pct).toFixed(1)}%)`;
+      badgeStatus.style.background = "rgba(16, 185, 129, 0.15)";
+      badgeStatus.style.color = "#34D399";
+    } else {
+      badgeStatus.className = "risk-badge-active";
+      badgeStatus.textContent = "🔴 Stop-Loss Desactivado";
+      badgeStatus.style.background = "rgba(244, 63, 94, 0.15)";
+      badgeStatus.style.color = "#F87171";
+    }
+  }
+
+  async function saveRiskSettings(slOn, slPct, tf) {
+    const btn = document.getElementById("btn-save-risk");
+    try {
+      if (btn) btn.textContent = "⏳ Guardando…";
+      const res = await fetch("/api/strategies/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stopLossEnabled: slOn,
+          stopLossPct: slPct,
+          timeframe: tf,
+          cashReservePct: 25,
+          maxPerCoinPct: 30
+        })
+      });
+      if (res.ok) {
+        userEditingRisk = false;
+        if (btn) {
+          btn.textContent = "✅ ¡Ajustes Guardados!";
+          btn.style.boxShadow = "0 0 16px rgba(16, 185, 129, 0.6)";
+          setTimeout(() => {
+            btn.textContent = "💾 Guardar Ajustes de Riesgo";
+            btn.style.boxShadow = "none";
+          }, 2500);
+        }
+        fetchStrategies();
+      }
+    } catch(e) {
+      if (btn) btn.textContent = "⚠️ Error al guardar";
+    }
+  }
+
   // ---------- Orquestador Multi-Estrategia & Oportunidad Pendiente ----------
   let currentOpportunity = null;
 
@@ -358,6 +458,32 @@
 
       const c = data.controls;
       const s = c.strategies || {};
+
+
+      // Actualizar Gestión de Riesgo (Stop-Loss & Timeframe) si el usuario no está editando
+      if (!userEditingRisk) {
+        const toggleSl = document.getElementById("toggle-stoploss");
+        const sliderSl = document.getElementById("slider-stoploss");
+        const labelSl = document.getElementById("stoploss-val-label");
+        const curBadge = document.getElementById("current-tf-badge");
+
+        const slOn = c.stopLossEnabled !== false;
+        const slVal = c.stopLossPct ?? 4.0;
+        const tfVal = c.timeframe || "1h";
+
+        if (toggleSl) toggleSl.checked = slOn;
+        if (sliderSl) sliderSl.value = slVal;
+        if (labelSl) labelSl.textContent = `-${parseFloat(slVal).toFixed(1)}%`;
+        updateRiskBadge(slOn, slVal);
+
+        selectedTimeframe = tfVal;
+        document.querySelectorAll(".btn-tf").forEach(b => {
+          b.classList.toggle("active", b.getAttribute("data-tf") === tfVal);
+        });
+        if (curBadge) {
+          curBadge.textContent = tfVal === "1h" ? "1H (Base)" : tfVal.toUpperCase();
+        }
+      }
 
       // Actualizar toggles sólo si el usuario no los está arrastrando en este milisegundo
       const tTrailing = document.getElementById("toggle-trailing");

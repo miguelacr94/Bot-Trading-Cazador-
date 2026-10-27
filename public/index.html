@@ -972,6 +972,171 @@
       font-family: var(--font-mono);
     }
 
+
+    /* Risk Management & Timeframe Radar Hub */
+    .risk-timeframe-hub {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .risk-hub-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .risk-hub-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+    .risk-badge-active {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34D399;
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .risk-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      transition: all 0.2s ease;
+    }
+    .risk-card:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+    .risk-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .risk-card-label {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .risk-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+    .risk-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .risk-slider-box {
+      margin-top: 4px;
+    }
+    .risk-slider-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 6px;
+      color: #CBD5E1;
+    }
+    .risk-val-red {
+      color: #F87171;
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+    .timeframe-current-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: #38BDF8;
+      background: rgba(56, 189, 248, 0.15);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+    }
+    .timeframe-buttons {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-tf {
+      flex: 1;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: #CBD5E1;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .btn-tf .tf-sub {
+      font-size: 9px;
+      font-weight: normal;
+      color: #94A3B8;
+    }
+    .btn-tf:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .btn-tf.active {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: #38BDF8;
+      color: #38BDF8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+    }
+    .btn-tf.active .tf-sub {
+      color: #7DD3FC;
+    }
+    .risk-caps-row {
+      display: flex;
+      gap: 12px;
+    }
+    .cap-pill {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .cap-pill.green {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .cap-pill.blue {
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .cap-label {
+      font-size: 10px;
+      color: #94A3B8;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .cap-val {
+      font-size: 13px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+    .cap-pill.green .cap-val { color: #34D399; }
+    .cap-pill.blue .cap-val { color: #38BDF8; }
+
   </style>
 </head>
 <body>
@@ -1134,6 +1299,77 @@
           <button class="btn-preset" data-t="50" data-d="30" data-g="0" data-w="20">⚡ Balanceado (50 / 30 / 0 / 20)</button>
           <button class="btn-preset" data-t="40" data-d="25" data-g="0" data-w="35">🏖️ Modo Weekend (40 / 25 / 0 / 35)</button>
           <button class="btn-preset" data-t="60" data-d="20" data-g="0" data-w="20">🚀 Caza Rápida (60 / 20 / 0 / 20)</button>
+        </div>
+      </div>
+
+      <!-- Risk Management (Stop-Loss) & Wave Timeframe Radar Hub -->
+      <div class="risk-timeframe-hub">
+        <div class="risk-hub-header">
+          <div class="risk-hub-title">
+            <span class="hub-icon">🛡️</span>
+            <span>Gestión de Riesgo & Radar de Ondas</span>
+            <span class="risk-badge-active" id="risk-status-badge">🟢 Stop-Loss Activo (-4.0%)</span>
+          </div>
+          <button id="btn-save-risk" class="btn-save-alloc">💾 Guardar Ajustes de Riesgo</button>
+        </div>
+
+        <div class="risk-grid">
+          <!-- Stop-Loss Card -->
+          <div class="risk-card">
+            <div class="risk-card-top">
+              <div class="risk-card-label">
+                <span class="risk-title">🛑 Stop-Loss de Protección</span>
+                <span class="risk-desc">Corta caídas anormales para proteger liquidez</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggle-stoploss" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="risk-slider-box">
+              <div class="risk-slider-label">
+                <span>Límite de Caída Máxima:</span>
+                <b id="stoploss-val-label" class="risk-val-red">-4.0%</b>
+              </div>
+              <input type="range" id="slider-stoploss" min="1.5" max="10.0" step="0.5" value="4.0">
+            </div>
+          </div>
+
+          <!-- Timeframe Radar Card -->
+          <div class="risk-card">
+            <div class="risk-card-top">
+              <div class="risk-card-label">
+                <span class="risk-title">⏱️ Radar de Ondas (Timeframe)</span>
+                <span class="risk-desc">Brújula de análisis multitemporal</span>
+              </div>
+              <span class="timeframe-current-badge" id="current-tf-badge">1H (Base)</span>
+            </div>
+            <div class="timeframe-buttons">
+              <button class="btn-tf" data-tf="15m" id="tf-15m">15m <span class="tf-sub">Rápido</span></button>
+              <button class="btn-tf active" data-tf="1h" id="tf-1h">1H <span class="tf-sub">Base</span></button>
+              <button class="btn-tf" data-tf="4h" id="tf-4h">4H <span class="tf-sub">Macro</span></button>
+            </div>
+          </div>
+
+          <!-- Cash Reserve & Max Exposure -->
+          <div class="risk-card">
+            <div class="risk-card-top">
+              <div class="risk-card-label">
+                <span class="risk-title">💼 Reserva de Pólvora & Topes</span>
+                <span class="risk-desc">Garantiza nunca quedarse en $0.00 USDT</span>
+              </div>
+            </div>
+            <div class="risk-caps-row">
+              <div class="cap-pill green">
+                <span class="cap-label">Reserva USDT</span>
+                <b class="cap-val" id="cash-reserve-val">25% Libre</b>
+              </div>
+              <div class="cap-pill blue">
+                <span class="cap-label">Máx por Moneda</span>
+                <b class="cap-val" id="max-coin-val">30% Tope</b>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

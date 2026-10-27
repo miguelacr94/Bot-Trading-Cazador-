@@ -41,6 +41,10 @@ export class TelegramCommands {
                 { command: "toggle_grid", description: "🌐 Activar / Pausar Micro-Grid" },
                 { command: "toggle_weekend", description: "🏖️ Activar / Pausar Cazador Weekend" },
                 { command: "toggle_ia", description: "🤖 Activar / Silenciar Gemini Copilot" },
+                { command: "stoploss", description: "🛡️ Ver estado y límite de Stop-Loss" },
+                { command: "toggle_stoploss", description: "🛡️ Activar / Desactivar Stop-Loss" },
+                { command: "set_stoploss", description: "🛡️ Fijar % Stop-Loss (ej: /set_stoploss 4.0)" },
+                { command: "timeframe", description: "⏱️ Ver o cambiar temporalidad (15m, 1h, 4h)" },
                 // Aprobaciones interactivas
                 { command: "aprobar", description: "✅ Aprobar oportunidad recomendada" },
                 { command: "ignorar", description: "❌ Descartar oportunidad de compra" },
