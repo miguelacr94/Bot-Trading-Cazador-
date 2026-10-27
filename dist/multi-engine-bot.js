@@ -984,17 +984,29 @@ export class TrailingMasterBot {
                 }
                 const klinesRes = await this.client.klines(sym, tf, { limit: 35 });
                 const data = klinesRes.data;
-                const closes = data.map((k) => parseFloat(k[4]));
+                const opens = data.map((k) => parseFloat(k[1]));
                 const highs = data.map((k) => parseFloat(k[2]));
+                const lows = data.map((k) => parseFloat(k[3]));
+                const closes = data.map((k) => parseFloat(k[4]));
                 const rsi = this.calculateRSI(closes, 14);
                 const curPrice = closes[closes.length - 1];
                 const maxRecent = Math.max(...highs.slice(-20));
                 const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
-                // Mismas condiciones de caída que antes, pero SIN exigir vela verde:
-                // el rebote ahora lo confirma el Trailing Buy (+0.25% desde el piso exacto).
-                const isDip = (dropPct >= 1.5 && rsi <= 58) ||
-                    (rsi <= 48 && dropPct >= 0.8) ||
-                    (rsi <= 40);
+                // 🧠 ANÁLISIS DE ACCIÓN DEL PRECIO Y COMPORTAMIENTO DE VELAS (PRICE ACTION)
+                const lastIdx = closes.length - 1;
+                const candleRange = highs[lastIdx] - lows[lastIdx];
+                const lowerWick = Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx];
+                const lowerWickRatio = candleRange > 0 ? (lowerWick / candleRange) : 0;
+                const hasPinbarRejection = lowerWickRatio >= 0.35; // Mecha inferior >= 35% (Rechazo y absorción en suelo)
+                // Condiciones inteligentes de suelo:
+                // A) Caída estándar con sobreventa RSI
+                // B) Martillo / Mecha de rechazo en soporte (adelanta rebotes institucionales)
+                // C) Sobreventa profunda
+                const isStandardDip = (dropPct >= 1.5 && rsi <= 58) || (rsi <= 48 && dropPct >= 0.8) || (rsi <= 40);
+                const isWickRebound = hasPinbarRejection && dropPct >= 1.0 && rsi <= 55;
+                const isDip = isMeme
+                    ? ((dropPct >= 2.0 && rsi <= 55) || isWickRebound || (rsi <= 40))
+                    : (isStandardDip || isWickRebound);
                 if (isDip) {
                     this.buyWatches.set(sym, { symbol: sym, armedPrice: curPrice, lowestPrice: curPrice, armedTime: Date.now(), rsi, dropPct });
                     this.saveBuyWatches();
@@ -1002,9 +1014,11 @@ export class TrailingMasterBot {
                         activeMemeCount++;
                     const trigger = curPrice * (1 + TRAILING_BUY_BOUNCE_PCT / 100);
                     console.log(`🎯 Trailing Buy ARMADO en ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Caída ${dropPct.toFixed(2)}%)`);
-                    await this.notifier.send(`🎯 <b>[TRAILING BUY ARMADO: ${sym}]</b>\n\n` +
+                    const isPinbarAlert = hasPinbarRejection ? `• 🕯️ <b>Vela de Rechazo:</b> Mecha inferior del <b>${(lowerWickRatio * 100).toFixed(0)}%</b> (Absorción de suelo)\n` : "";
+                    await this.notifier.send(`🎯 <b>[TRAILING BUY ARMADO: ${isMeme ? "🐕 MEME " : ""}${sym}]</b>\n\n` +
                         `• Caída detectada: <b>-${dropPct.toFixed(2)}%</b> (RSI ${rsi.toFixed(1)})\n` +
-                        `• Precio actual: ${curPrice}\n` +
+                        isPinbarAlert +
+                        `• Precio actual: ${fmtPrice(curPrice)}\n` +
                         `• 🔻 El bot ahora persigue el <b>piso más bajo</b> tick a tick.\n` +
                         `• ✅ Comprará cuando rebote <b>+${TRAILING_BUY_BOUNCE_PCT}%</b> desde el piso (hoy: ${trigger.toFixed(4)}).`);
                 }

@@ -7,7 +7,7 @@
   },
   "autoPilot": true,
   "approvalTimeoutSec": 180,
-  "updatedAt": 1793128676228,
+  "updatedAt": 1793129280896,
   "allocations": {
     "trailing_rebound": 75,
     "smart_dca": 25,
@@ -62,8 +62,8 @@
       "porQue": "En baja volatilidad y canales estrechos, operar en velas cortas (15m) genera falsos quiebres y compras en techos locales. Mantener el radar en 1H protege el capital esperando una expansión con volumen institucional real.",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 1.6728423012099651,
-      "updatedAt": 1793128676228,
-      "expiresAt": 1793132276228,
+      "updatedAt": 1793129280896,
+      "expiresAt": 1793132880896,
       "isCurrent": true,
       "status": "applied"
     },
@@ -79,8 +79,8 @@
       "porQue": "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 1.6728423012099651,
-      "updatedAt": 1793128676228,
-      "expiresAt": 1793132276228,
+      "updatedAt": 1793129280896,
+      "expiresAt": 1793132880896,
       "isCurrent": true,
       "status": "applied"
     },
@@ -96,8 +96,8 @@
       "porQue": "En días planos donde no hay tendencias grandes, la única forma de generar dólares es con una rejilla de micro-rebotes (+0.45% a +0.60%) en 15m. El Stop-Loss estricto de -2.0% es obligatorio: si el precio rompe el canal hacia abajo, la estrategia debe cortar de inmediato para no quedar atrapada en una caída direccional.",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 1.6728423012099651,
-      "updatedAt": 1793128676228,
-      "expiresAt": 1793132276228,
+      "updatedAt": 1793129280896,
+      "expiresAt": 1793132880896,
       "isCurrent": true,
       "status": "applied"
     },
@@ -112,8 +112,8 @@
       "porQue": "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 1.6728423012099651,
-      "updatedAt": 1793128676228,
-      "expiresAt": 1793132276228,
+      "updatedAt": 1793129280896,
+      "expiresAt": 1793132880896,
       "isCurrent": true,
       "status": "applied"
     }
