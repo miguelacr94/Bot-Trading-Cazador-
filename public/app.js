@@ -130,6 +130,25 @@
         </div>
         <div class="progress-track"><div class="progress-fill" data-f="fill" style="width:0%"></div></div>
       </div>
+
+      <!-- Control de Respiro Trailing (Callback) Dinámico -->
+      <div class="pos-callback-box">
+        <div class="pos-callback-header">
+          <span class="pos-callback-title">🎯 Respiro Trailing (Callback Salida)</span>
+          <span class="pos-callback-val" data-f="cbval">--%</span>
+        </div>
+        <div class="pos-callback-sugg" data-f="cbsuggbox">
+          <span data-f="cbsuggtext">💡 Viable ahora: --%</span>
+          <button class="btn-apply-cb-sugg" data-f="btnapplycb">⚡ Usar Sugerido</button>
+        </div>
+        <div class="pos-callback-pills" data-f="cbpills">
+          <button class="cb-pill-btn" data-v="0.25">0.25%</button>
+          <button class="cb-pill-btn" data-v="0.35">0.35%</button>
+          <button class="cb-pill-btn" data-v="0.45">0.45%</button>
+          <button class="cb-pill-btn" data-v="0.55">0.55%</button>
+        </div>
+      </div>
+
       <div class="pos-footer">
         <span class="pnl-label">Ganancia flotante</span>
         <div style="text-align:right">
@@ -137,10 +156,38 @@
           <div class="pnl-cop" data-f="pnlcop"></div>
         </div>
       </div>`;
+    card.addEventListener("click", async (e) => {
+      const pillBtn = e.target.closest(".cb-pill-btn");
+      const applyBtn = e.target.closest(".btn-apply-cb-sugg");
+      if (!pillBtn && !applyBtn) return;
+
+      const currentP = card._currentPos || p;
+      const targetVal = pillBtn ? parseFloat(pillBtn.dataset.v) : currentP.suggestedCallback;
+      if (!targetVal) return;
+
+      try {
+        const res = await fetch("/api/strategies/callback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: currentP.symbol, callbackPct: targetVal })
+        });
+        const d = await res.json();
+        if (d.success) {
+          currentP.callbackPct = targetVal;
+          currentP.isCustomCallback = true;
+          updatePositionCard(card, currentP);
+          if (typeof showToast === "function") showToast(`🎯 Callback de ${currentP.symbol} fijado en ${targetVal.toFixed(2)}%`);
+        }
+      } catch(err) {
+        console.error("Error setting callback:", err);
+      }
+    });
+
     return card;
   }
 
   function updatePositionCard(card, p) {
+    card._currentPos = p;
     const f = (k) => card.querySelector(`[data-f="${k}"]`);
     const gain = p.gainPct >= 0;
     const s = gain ? "+" : "";
@@ -174,7 +221,40 @@
     const pnl = f("pnl");
     setClass(pnl, "pnl-value " + (gain ? "pos-profit" : "pos-loss"));
     setText(pnl, `${s}${fmt(p.pnlUsdt)} USDT (${s}${p.gainPct.toFixed(2)}%)`);
-    setText(f("pnlcop"), `≈ ${s}$${cop(p.pnlCop)} COP`);
+    setText(f("pnlcop"), `≈ ${s}${cop(p.pnlCop)} COP`);
+
+    // Callback Dinámico y Sugerencia Centinela
+    const cbVal = p.callbackPct || 0.35;
+    setText(f("cbval"), `${cbVal.toFixed(2)}% ${p.isCustomCallback ? "(Manual)" : "(Auto)"}`);
+
+    const sugg = p.suggestedCallback || 0.35;
+    const reason = p.suggestedReason || "Volatilidad analizada";
+    const suggEl = f("cbsuggtext");
+    if (suggEl) {
+      suggEl.innerHTML = `💡 Viable ahora: <b>${sugg.toFixed(2)}%</b> <span style="opacity:0.8;font-size:10px;">(${reason})</span>`;
+    }
+
+    const btnApply = f("btnapplycb");
+    if (btnApply) {
+      if (Math.abs(cbVal - sugg) < 0.01) {
+        btnApply.textContent = "✓ Calibrado";
+        btnApply.style.opacity = "0.5";
+        btnApply.style.pointerEvents = "none";
+      } else {
+        btnApply.textContent = `⚡ Usar ${sugg.toFixed(2)}%`;
+        btnApply.style.opacity = "1";
+        btnApply.style.pointerEvents = "auto";
+      }
+    }
+
+    card.querySelectorAll(".cb-pill-btn").forEach((btn) => {
+      const v = parseFloat(btn.dataset.v);
+      if (Math.abs(v - cbVal) < 0.02) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
   }
 
   function renderPositions(list) {

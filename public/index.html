@@ -1577,6 +1577,121 @@
     .cap-pill.green .cap-val { color: #34D399; }
     .cap-pill.blue .cap-val { color: #38BDF8; }
 
+  
+    /* Widget de Callback Trailing en Posición y Estrategia */
+    .pos-callback-box {
+      margin-top: 14px;
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+    }
+    .pos-callback-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .pos-callback-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .pos-callback-val {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 800;
+      color: #38BDF8;
+    }
+    .pos-callback-sugg {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 8px;
+      padding: 6px 10px;
+      margin-bottom: 10px;
+      font-size: 11px;
+      color: #FCD34D;
+    }
+    .btn-apply-cb-sugg {
+      background: linear-gradient(135deg, #F59E0B, #D97706);
+      border: none;
+      border-radius: 6px;
+      color: #000;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 4px 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .btn-apply-cb-sugg:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+    }
+    .pos-callback-pills {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .cb-pill-btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text-dim);
+      border-radius: 6px;
+      padding: 5px 0;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+    .cb-pill-btn:hover {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: #38BDF8;
+      color: #fff;
+    }
+    .cb-pill-btn.active {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: #38BDF8;
+      color: #38BDF8;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+    }
+    .mini-cb-val {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: #38BDF8;
+      min-width: 42px;
+      text-align: right;
+    }
+    .mini-cb-slider {
+      width: 75px;
+      height: 4px;
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    .mini-cb-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: #38BDF8;
+      box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+      cursor: pointer;
+    }
+
   </style>
 </head>
 <body>
@@ -1697,6 +1812,14 @@
                 <button class="btn-mini-tf" data-tf="15m">15m</button>
                 <button class="btn-mini-tf active" data-tf="1h">1H</button>
                 <button class="btn-mini-tf" data-tf="4h">4H</button>
+              </div>
+            </div>
+            <div class="strat-ctrl-row">
+                          <div class="strat-ctrl-row">
+              <span class="strat-ctrl-label">🎯 Callback Base:</span>
+              <div class="mini-sl-group">
+                <input type="range" class="mini-cb-slider" id="slider-cb-trailing" min="0.15" max="1.0" step="0.05" value="0.35">
+                <b class="mini-cb-val" id="lbl-cb-trailing">0.35%</b>
               </div>
             </div>
             <div class="strat-ctrl-row">

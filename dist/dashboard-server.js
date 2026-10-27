@@ -292,6 +292,8 @@ export class DashboardServer {
                 stopPrice: pos.highestPrice * (1 - callback / 100),
                 callbackPct: callback,
                 isCustomCallback: !!pos.customCallbackPct,
+                suggestedCallback: (symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) ? 0.45 : ((symbol.includes("AVAX") || symbol.includes("SOL")) ? 0.35 : 0.25),
+                suggestedReason: (symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) ? "Alta volatilidad Meme (tolerar micro-retrocesos)" : ((symbol.includes("AVAX") || symbol.includes("SOL")) ? "Volatilidad media" : "Mercado clásico (salida ágil)"),
                 activated: !!pos.activated
             };
         });
