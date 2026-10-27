@@ -27,12 +27,13 @@
     "PEPEUSDT",
     {
       "symbol": "PEPEUSDT",
-      "buyPrice": 0.00000438,
-      "qty": 12439601.95,
-      "investedUsdt": 54.485456541000005,
-      "highestPrice": 0.00000444,
-      "activated": true,
-      "buyTime": 1793113916731
+      "buyPrice": 0.00000442,
+      "qty": 12385791.81,
+      "investedUsdt": 54.7999998,
+      "highestPrice": 0.00000442,
+      "activated": false,
+      "buyTime": 1793119071775,
+      "strategy": "trailing_rebound"
     }
   ]
 ]
