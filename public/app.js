@@ -405,11 +405,25 @@
         });
       }
 
-      // 3. Bot Suggestion Button per strategy
+      // 3. Bot Suggestion Buttons per strategy (Apply, Reject, Undo)
       const btnApply = document.getElementById(`btn-apply-${short}`);
       if (btnApply) {
         btnApply.addEventListener("click", async () => {
           await applyBotSuggestion(strat, btnApply);
+        });
+      }
+
+      const btnReject = document.getElementById(`btn-reject-${short}`);
+      if (btnReject) {
+        btnReject.addEventListener("click", async () => {
+          await rejectBotSuggestion(strat, btnReject);
+        });
+      }
+
+      const btnUndo = document.querySelector(`.btn-undo-sugg[data-strat="${strat}"]`);
+      if (btnUndo) {
+        btnUndo.addEventListener("click", async () => {
+          await undoRejectBotSuggestion(strat);
         });
       }
     });
@@ -437,12 +451,8 @@
       });
       if (res.ok) {
         if (btn) {
-          btn.textContent = "✅ ¡Sugerencia Aplicada!";
+          btn.textContent = "✅ ¡Sincronizado!";
           btn.classList.add("applied");
-          setTimeout(() => {
-            btn.textContent = "⚡ Aplicar Sugerencia";
-            btn.classList.remove("applied");
-          }, 2500);
         }
         fetchStrategies();
       }
@@ -451,10 +461,40 @@
     }
   }
 
+  async function rejectBotSuggestion(strategy, btn) {
+    try {
+      if (btn) btn.textContent = "⏳ Descartando…";
+      const res = await fetch("/api/strategies/reject-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy })
+      });
+      if (res.ok) {
+        fetchStrategies();
+      }
+    } catch(e) {
+      if (btn) btn.textContent = "⚠️ Error";
+    }
+  }
+
+  async function undoRejectBotSuggestion(strategy) {
+    try {
+      const res = await fetch("/api/strategies/undo-reject-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy })
+      });
+      if (res.ok) {
+        fetchStrategies();
+      }
+    } catch(e) {}
+  }
+
   function syncModularStrategyControls(controls) {
     if (!controls) return;
     const settings = controls.strategySettings || {};
     const suggestions = controls.suggestions || {};
+    const rejectedSuggestions = controls.rejectedSuggestions || {};
 
     strategyKeys.forEach(strat => {
       const short = stratShortMap[strat];
@@ -494,27 +534,83 @@
         }
       }
 
-      // Sync Detailed Suggestion with Criteria & Why
-      if (sugg) {
-        const textSugg = document.getElementById(`sugg-text-${short}`);
+      // Sync Suggestion Lifecycle (Dynamic: Synchronized / Actionable / Rejected)
+      const isRejected = !!(rejectedSuggestions[strat] && rejectedSuggestions[strat] > Date.now());
+      const suggBox = document.getElementById(`sugg-box-${short}`);
+      const textSugg = document.getElementById(`sugg-text-${short}`);
+      const critBox = document.getElementById(`sugg-criteria-${short}`);
+      const whyBox = document.getElementById(`sugg-why-${short}`);
+      const actionsBox = document.getElementById(`sugg-actions-${short}`);
+      const rejectedMsg = document.getElementById(`sugg-rejected-${short}`);
+      const tagBadge = document.getElementById(`sugg-tag-${short}`);
+      const btnApply = document.getElementById(`btn-apply-${short}`);
+      const btnReject = document.getElementById(`btn-reject-${short}`);
+
+      if (isRejected) {
+        if (rejectedMsg) rejectedMsg.style.display = "flex";
+        if (actionsBox) actionsBox.style.display = "none";
+        if (critBox) critBox.style.display = "none";
+        if (whyBox) whyBox.style.display = "none";
+        if (textSugg) textSugg.textContent = "Sugerencia descartada por el usuario (silenciada).";
+        if (tagBadge) {
+          tagBadge.textContent = "⚪ Rechazada";
+          tagBadge.className = "sugg-status-tag rejected";
+        }
+        if (suggBox) suggBox.classList.remove("is-synced");
+      } else if (sugg) {
+        if (rejectedMsg) rejectedMsg.style.display = "none";
+        if (critBox) critBox.style.display = "flex";
+        if (whyBox) whyBox.style.display = "block";
+        if (actionsBox) actionsBox.style.display = "flex";
+
         if (textSugg && sugg.reason) {
           textSugg.textContent = sugg.reason;
         }
-
-        const critBox = document.getElementById(`sugg-criteria-${short}`);
         if (critBox && sugg.criterios && sugg.criterios.length) {
           critBox.innerHTML = sugg.criterios.map(c => `<div class="sugg-criteria-item">🔹 ${c}</div>`).join("");
         }
-
-        const whyBox = document.getElementById(`sugg-why-${short}`);
         if (whyBox && sugg.porQue) {
           whyBox.innerHTML = `<strong>¿Por qué?:</strong> ${sugg.porQue}`;
+        }
+
+        const isCurrent = (s.timeframe === sugg.timeframe);
+        if (isCurrent) {
+          // Estrategia ya está sintonizada y en su estado óptimo para el régimen de mercado actual
+          if (suggBox) suggBox.classList.add("is-synced");
+          if (tagBadge) {
+            tagBadge.textContent = "🟢 Óptima";
+            tagBadge.className = "sugg-status-tag synced";
+          }
+          if (btnApply) {
+            btnApply.disabled = true;
+            btnApply.textContent = `✅ Parámetros Óptimos (${s.timeframe.toUpperCase()})`;
+            btnApply.classList.add("applied");
+          }
+          if (btnReject) {
+            btnReject.style.display = "none";
+          }
+        } else {
+          // Hay una recomendación de cambio pendiente
+          if (suggBox) suggBox.classList.remove("is-synced");
+          if (tagBadge) {
+            tagBadge.textContent = "⚡ Cambio Sugerido";
+            tagBadge.className = "sugg-status-tag pending";
+          }
+          if (btnApply) {
+            btnApply.disabled = false;
+            btnApply.textContent = `⚡ Aplicar Cambio a ${sugg.timeframe.toUpperCase()}`;
+            btnApply.classList.remove("applied");
+          }
+          if (btnReject) {
+            btnReject.style.display = "inline-flex";
+            btnReject.textContent = "❌ Rechazar";
+          }
         }
       }
     });
   }
 
-function initRiskControls() {
+  function initRiskControls() {
     const sliderSl = document.getElementById("slider-stoploss");
     const labelSl = document.getElementById("stoploss-val-label");
     const toggleSl = document.getElementById("toggle-stoploss");

@@ -256,6 +256,8 @@ export class TrailingMasterBot {
                     this.controls.stopLossPct = 4.0;
                 if (!this.controls.timeframe)
                     this.controls.timeframe = "1h";
+                if (!this.controls.rejectedSuggestions)
+                    this.controls.rejectedSuggestions = {};
                 if (this.controls.cashReservePct === undefined)
                     this.controls.cashReservePct = 25;
                 if (this.controls.maxPerCoinPct === undefined)
@@ -1060,6 +1062,8 @@ export class TrailingMasterBot {
                     `• /stoploss — <i>Ver estado y porcentaje de Stop-Loss</i>\n` +
                     `• /toggle_stoploss — <i>Activar o desactivar Stop-Loss</i>\n` +
                     `• /set_stoploss 4.0 — <i>Fijar porcentaje de corte (ej: /set_stoploss 3.5)</i>\n` +
+                    `• /sugerencias — <i>Diagnóstico y recomendaciones Centinela</i>\n` +
+                    `• /rechazar — <i>Descartar sugerencia (ej: /rechazar trailing)</i>\n` +
                     `• /timeframe — <i>Ver o cambiar radar de ondas (15m, 1h, 4h)</i>\n\n` +
                     `<b>🔀 INTERRUPTORES (ON / OFF):</b>\n` +
                     `• /toggle_trailing — <i>Switch Cazador Trailing</i>\n` +
@@ -1245,6 +1249,116 @@ export class TrailingMasterBot {
                     `• /timeframe 15m — <i>Micro-ondas rápidas (mercados volátiles)</i>\n` +
                     `• /timeframe 1h — <i>Ondas estándar completas (PREDETERMINADO)</i>\n` +
                     `• /timeframe 4h — <i>Tendencias mayores (mercados lentos/macro)</i>`;
+            }
+            if (cmd === "/sugerencias" || cmd === "sugerencias" || cmd === "/advisor") {
+                await this.checkTimeframeAdvisor();
+                const suggs = this.controls.suggestions || {};
+                const settings = this.controls.strategySettings || {};
+                const rejections = this.controls.rejectedSuggestions || {};
+                let msg = `🧠 <b>SUGERENCIAS INTELIGENTES CENTINELA</b> 🛡️\n\n`;
+                const names = {
+                    trailing_rebound: "🏹 Trailing Rebound",
+                    smart_dca: "🛡️ Smart DCA",
+                    micro_grid: "🌐 Micro-Grid",
+                    cazador_weekend: "🏖️ Cazador Weekend"
+                };
+                for (const [key, name] of Object.entries(names)) {
+                    const s = suggs[key];
+                    const cur = settings[key] || {};
+                    const isRej = !!(rejections[key] && rejections[key] > Date.now());
+                    msg += `<b>${name}:</b>\n`;
+                    if (!s) {
+                        msg += `• <i>Sin análisis disponible</i>\n\n`;
+                        continue;
+                    }
+                    if (isRej) {
+                        msg += `• Estado: ⚪ <i>Sugerencia descartada (silenciada)</i>\n`;
+                        msg += `• Radar actual: <b>${(cur.timeframe || "1h").toUpperCase()}</b>\n\n`;
+                        continue;
+                    }
+                    const isSynced = cur.timeframe === s.timeframe;
+                    if (isSynced) {
+                        msg += `• Estado: 🟢 <b>Sincronizada con el mercado</b>\n`;
+                        msg += `• Radar óptimo activo: <b>${s.timeframe.toUpperCase()}</b>\n`;
+                        msg += `• Contexto: <i>${s.reason}</i>\n\n`;
+                    }
+                    else {
+                        msg += `• Estado: ⚡ <b>CAMBIO RECOMENDADO</b>\n`;
+                        msg += `• Actual: <b>${(cur.timeframe || "1h").toUpperCase()}</b> ➔ Sugerido: <b>${s.timeframe.toUpperCase()}</b>\n`;
+                        msg += `• Motivo: <i>${s.reason}</i>\n`;
+                        const shortCmd = key === "trailing_rebound" ? "trailing" : (key === "smart_dca" ? "dca" : (key === "micro_grid" ? "grid" : "weekend"));
+                        msg += `👉 /aplicar ${shortCmd} — <i>Aplicar cambio</i>\n`;
+                        msg += `👉 /rechazar ${shortCmd} — <i>Descartar sugerencia</i>\n\n`;
+                    }
+                }
+                return msg;
+            }
+            if (cmd === "/rechazar" || cmd === "rechazar" || cmd === "/descartar" || cmd === "descartar") {
+                const target = (parts[1] || "").toLowerCase();
+                let targetKey = null;
+                if (target.includes("trail") || target === "tr")
+                    targetKey = "trailing_rebound";
+                else if (target.includes("dca"))
+                    targetKey = "smart_dca";
+                else if (target.includes("grid"))
+                    targetKey = "micro_grid";
+                else if (target.includes("week"))
+                    targetKey = "cazador_weekend";
+                else if (target === "all" || target === "todas") {
+                    if (!this.controls.rejectedSuggestions)
+                        this.controls.rejectedSuggestions = {};
+                    const until = Date.now() + 4 * 3600 * 1000;
+                    this.controls.rejectedSuggestions.trailing_rebound = until;
+                    this.controls.rejectedSuggestions.smart_dca = until;
+                    this.controls.rejectedSuggestions.micro_grid = until;
+                    this.controls.rejectedSuggestions.cazador_weekend = until;
+                    this.saveStrategyControls();
+                    return `⚪ <b>Todas las sugerencias Centinela han sido descartadas.</b>\nSilenciadas por 4 horas o hasta que la volatilidad cambie drásticamente.`;
+                }
+                if (!targetKey) {
+                    return `⚠️ <b>Uso:</b> <code>/rechazar &lt;ESTRATEGIA&gt;</code>\n\nEjemplos:\n• <code>/rechazar trailing</code>\n• <code>/rechazar dca</code>\n• <code>/rechazar grid</code>\n• <code>/rechazar weekend</code>\n• <code>/rechazar all</code>`;
+                }
+                if (!this.controls.rejectedSuggestions)
+                    this.controls.rejectedSuggestions = {};
+                this.controls.rejectedSuggestions[targetKey] = Date.now() + 4 * 3600 * 1000;
+                if (this.controls.suggestions && this.controls.suggestions[targetKey]) {
+                    this.controls.suggestions[targetKey].status = "rejected";
+                }
+                this.saveStrategyControls();
+                return `⚪ <b>Sugerencia de ${targetKey} descartada.</b>\nSilenciada por 4 horas. Para ver el estado actual use /sugerencias.`;
+            }
+            if (cmd === "/aplicar" || cmd === "aplicar") {
+                const target = (parts[1] || "").toLowerCase();
+                let targetKey = null;
+                if (target.includes("trail") || target === "tr")
+                    targetKey = "trailing_rebound";
+                else if (target.includes("dca"))
+                    targetKey = "smart_dca";
+                else if (target.includes("grid"))
+                    targetKey = "micro_grid";
+                else if (target.includes("week"))
+                    targetKey = "cazador_weekend";
+                if (!targetKey || !this.controls.suggestions || !this.controls.suggestions[targetKey]) {
+                    return `⚠️ <b>Uso:</b> <code>/aplicar &lt;ESTRATEGIA&gt;</code>\n\nEjemplos:\n• <code>/aplicar trailing</code>\n• <code>/aplicar dca</code>\n• <code>/aplicar grid</code>\n• <code>/aplicar weekend</code>`;
+                }
+                const sugg = this.controls.suggestions[targetKey];
+                if (!this.controls.strategySettings)
+                    this.controls.strategySettings = {};
+                if (!this.controls.strategySettings[targetKey]) {
+                    this.controls.strategySettings[targetKey] = { timeframe: "1h", stopLossEnabled: false, stopLossPct: 4.0 };
+                }
+                const s = this.controls.strategySettings[targetKey];
+                s.timeframe = sugg.timeframe;
+                s.stopLossPct = sugg.stopLossPct;
+                if (s.stopLossEnabled === undefined)
+                    s.stopLossEnabled = false;
+                if (this.controls.rejectedSuggestions && this.controls.rejectedSuggestions[targetKey]) {
+                    delete this.controls.rejectedSuggestions[targetKey];
+                }
+                sugg.status = "applied";
+                sugg.isCurrent = true;
+                this.saveStrategyControls();
+                return `⚡ <b>¡Sugerencia aplicada a ${targetKey}!</b> ✅\n\n• Radar calibrado en: <b>${sugg.timeframe.toUpperCase()}</b>\n• Stop-Loss ajustado a: <b>-${sugg.stopLossPct.toFixed(1)}%</b> (${s.stopLossEnabled ? "🟢 ACTIVO" : "🔴 DESACTIVADO por seguridad Spot"})\n• Razón: <i>${sugg.reason}</i>`;
             }
             if (cmd === "/toggle_ia" || cmd === "/toggle_ai" || cmd === "toggle_ia" || cmd === "toggle_ai") {
                 this.controls.aiEnabled = !this.controls.aiEnabled;
@@ -1676,40 +1790,74 @@ export class TrailingMasterBot {
             if (!this.controls.suggestions) {
                 this.controls.suggestions = {};
             }
+            if (!this.controls.rejectedSuggestions) {
+                this.controls.rejectedSuggestions = {};
+            }
+            // Limpiar rechazos que ya expiraron
+            const now = Date.now();
+            for (const k of Object.keys(this.controls.rejectedSuggestions)) {
+                if (this.controls.rejectedSuggestions[k] <= now) {
+                    delete this.controls.rejectedSuggestions[k];
+                }
+            }
+            const currentSettings = this.controls.strategySettings || {};
             // 1. Sugerencia Trailing Rebound (Cazador de Ondas)
-            if (range24h >= 4.5) {
-                this.controls.suggestions.trailing_rebound = {
-                    timeframe: "15m",
-                    stopLossPct: 3.5,
-                    reason: `Volatilidad alta en Bitcoin (${range24h.toFixed(1)}%). Sesión ${session}.`,
-                    criterios: [
-                        `Rango 24h Bitcoin: ${range24h.toFixed(2)}% (Alta velocidad)`,
-                        `Sesión: ${session}`,
-                        "Flujo de órdenes agresivo con rompimientos frecuentes"
-                    ],
-                    porQue: "Con el mercado acelerado, las ondas completas tardan menos en madurar. Bajar el radar a 15m permite cazar rebotes de +1.5% a +2.5% varias veces al día. Se ajusta el Stop-Loss a -3.5% para proteger contra giros falsos.",
-                    session,
-                    btcRange24h: range24h,
-                    updatedAt: Date.now()
-                };
+            let trTf = "1h";
+            let trSl = 4.0;
+            let trReason = "";
+            let trCriterios = [];
+            let trWhy = "";
+            if (range24h >= 4.0) {
+                trTf = "15m";
+                trSl = 3.5;
+                trReason = `Volatilidad alta en Bitcoin (${range24h.toFixed(1)}%). Sesión ${session}.`;
+                trCriterios = [
+                    `Rango 24h Bitcoin: ${range24h.toFixed(2)}% (Alta velocidad y momentum)`,
+                    `Sesión: ${session}`,
+                    "Flujo de órdenes agresivo con rompimientos frecuentes"
+                ];
+                trWhy = "Con el mercado acelerado, las ondas completas tardan menos en madurar. Bajar el radar a 15m permite cazar rebotes de +1.5% a +2.5% varias veces al día. Se calibra Stop-Loss en -3.5% para proteger contra giros falsos.";
+            }
+            else if (range24h >= 2.0) {
+                trTf = "1h";
+                trSl = 4.0;
+                trReason = `Volatilidad estándar equilibrada (${range24h.toFixed(1)}%). Sesión ${session}.`;
+                trCriterios = [
+                    `Rango 24h Bitcoin: ${range24h.toFixed(2)}% (Oscilación limpia)`,
+                    `Sesión: ${session}`,
+                    "Estructura de ondas de 1H con soporte y resistencia definidos"
+                ];
+                trWhy = "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario y te posiciona para capturar el movimiento entero de +2.0% a +3.5%. El Stop-Loss en -4.0% le da el espacio exacto al activo para respirar sin sacarte antes del rebote.";
             }
             else {
-                this.controls.suggestions.trailing_rebound = {
-                    timeframe: "1h",
-                    stopLossPct: 4.0,
-                    reason: `Volatilidad estándar equilibrada (${range24h.toFixed(1)}%). Sesión ${session}.`,
-                    criterios: [
-                        `Rango 24h Bitcoin: ${range24h.toFixed(2)}% (Oscilación limpia)`,
-                        `Sesión: ${session}`,
-                        "Estructura de ondas de 1H con soporte y resistencia definidos"
-                    ],
-                    porQue: "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario y te posiciona para capturar el movimiento entero de +2.0% a +3.5%. El Stop-Loss en -4.0% le da el espacio exacto al activo para respirar sin sacarte antes del rebote.",
-                    session,
-                    btcRange24h: range24h,
-                    updatedAt: Date.now()
-                };
+                trTf = "1h";
+                trSl = 4.0;
+                trReason = `Mercado lateral / Compresión de rango (${range24h.toFixed(1)}%). Sesión ${session}.`;
+                trCriterios = [
+                    `Rango 24h Bitcoin comprimido: ${range24h.toFixed(2)}% (< 2.0%)`,
+                    `Sesión: ${session}`,
+                    "Radar en 1H para filtrar falso ruido y trampas de mercado lateral"
+                ];
+                trWhy = "En baja volatilidad y canales estrechos, operar en velas cortas (15m) genera falsos quiebres y compras en techos locales. Mantener el radar en 1H protege el capital esperando una expansión con volumen institucional real.";
             }
+            const isTrCurrent = currentSettings.trailing_rebound?.timeframe === trTf;
+            const isTrRejected = !!(this.controls.rejectedSuggestions.trailing_rebound && this.controls.rejectedSuggestions.trailing_rebound > now);
+            this.controls.suggestions.trailing_rebound = {
+                timeframe: trTf,
+                stopLossPct: trSl,
+                reason: trReason,
+                criterios: trCriterios,
+                porQue: trWhy,
+                session,
+                btcRange24h: range24h,
+                updatedAt: now,
+                expiresAt: now + 3600000,
+                isCurrent: isTrCurrent,
+                status: isTrRejected ? "rejected" : (isTrCurrent ? "applied" : "pending")
+            };
             // 2. Sugerencia Smart DCA (Seguridad y Rescate)
+            const isDcaCurrent = currentSettings.smart_dca?.timeframe === "4h";
+            const isDcaRejected = !!(this.controls.rejectedSuggestions.smart_dca && this.controls.rejectedSuggestions.smart_dca > now);
             this.controls.suggestions.smart_dca = {
                 timeframe: "4h",
                 stopLossPct: 6.0,
@@ -1722,9 +1870,14 @@ export class TrailingMasterBot {
                 porQue: "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
                 session,
                 btcRange24h: range24h,
-                updatedAt: Date.now()
+                updatedAt: now,
+                expiresAt: now + 3600000,
+                isCurrent: isDcaCurrent,
+                status: isDcaRejected ? "rejected" : (isDcaCurrent ? "applied" : "pending")
             };
             // 3. Sugerencia Micro-Grid (Rango Lateral Plano)
+            const isGridCurrent = currentSettings.micro_grid?.timeframe === "15m";
+            const isGridRejected = !!(this.controls.rejectedSuggestions.micro_grid && this.controls.rejectedSuggestions.micro_grid > now);
             if (range24h < 2.2) {
                 this.controls.suggestions.micro_grid = {
                     timeframe: "15m",
@@ -1738,7 +1891,10 @@ export class TrailingMasterBot {
                     porQue: "En días planos donde no hay tendencias grandes, la única forma de generar dólares es con una rejilla de micro-rebotes (+0.45% a +0.60%) en 15m. El Stop-Loss estricto de -2.0% es obligatorio: si el precio rompe el canal hacia abajo, la estrategia debe cortar de inmediato para no quedar atrapada en una caída direccional.",
                     session,
                     btcRange24h: range24h,
-                    updatedAt: Date.now()
+                    updatedAt: now,
+                    expiresAt: now + 3600000,
+                    isCurrent: isGridCurrent,
+                    status: isGridRejected ? "rejected" : (isGridCurrent ? "applied" : "pending")
                 };
             }
             else {
@@ -1753,10 +1909,15 @@ export class TrailingMasterBot {
                     porQue: "Cuando el mercado tiene movimiento direccional, las estrategias de rejilla corren riesgo de quedar con compras atrapadas. Se sugiere mantener el presupuesto de Micro-Grid en 0% o con Stop-Loss estricto de -2.0% mientras el Trailing Hunter hace el trabajo pesado.",
                     session,
                     btcRange24h: range24h,
-                    updatedAt: Date.now()
+                    updatedAt: now,
+                    expiresAt: now + 3600000,
+                    isCurrent: isGridCurrent,
+                    status: isGridRejected ? "rejected" : (isGridCurrent ? "applied" : "pending")
                 };
             }
             // 4. Sugerencia Cazador Weekend (Anomalía Fin de Semana)
+            const isWeekendCurrent = currentSettings.cazador_weekend?.timeframe === "1h";
+            const isWeekendRejected = !!(this.controls.rejectedSuggestions.cazador_weekend && this.controls.rejectedSuggestions.cazador_weekend > now);
             if (isWeekend) {
                 this.controls.suggestions.cazador_weekend = {
                     timeframe: "1h",
@@ -1770,7 +1931,10 @@ export class TrailingMasterBot {
                     porQue: "Durante el fin de semana el dinero institucional descansa y los creadores de mercado suelen empujar el precio a la baja para cazar stop-losses. Se calibra en 1H con Stop-Loss tolerante de -5.0% para no ser expulsado por un mechazo, esperando la recuperación de compras cuando reabre CME el domingo por la noche.",
                     session,
                     btcRange24h: range24h,
-                    updatedAt: Date.now()
+                    updatedAt: now,
+                    expiresAt: now + 3600000,
+                    isCurrent: isWeekendCurrent,
+                    status: isWeekendRejected ? "rejected" : (isWeekendCurrent ? "applied" : "pending")
                 };
             }
             else {
@@ -1785,7 +1949,10 @@ export class TrailingMasterBot {
                     porQue: "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
                     session,
                     btcRange24h: range24h,
-                    updatedAt: Date.now()
+                    updatedAt: now,
+                    expiresAt: now + 3600000,
+                    isCurrent: isWeekendCurrent,
+                    status: isWeekendRejected ? "rejected" : (isWeekendCurrent ? "applied" : "pending")
                 };
             }
             this.saveStrategyControls();

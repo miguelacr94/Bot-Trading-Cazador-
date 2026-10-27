@@ -772,23 +772,40 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      transition: all 0.3s ease;
+    }
+    .strat-sugg-box.is-synced {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(56, 189, 248, 0.04) 100%);
+      border-color: rgba(16, 185, 129, 0.3);
     }
     .strat-sugg-header {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 6px;
       font-size: 11px;
       font-weight: 700;
       color: #FBBF24;
+    }
+    .strat-sugg-header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .strat-sugg-desc {
       font-size: 11px;
       line-height: 1.4;
       color: #E2E8F0;
     }
+    .strat-sugg-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 2px;
+      flex-wrap: wrap;
+    }
     .btn-apply-sugg {
       cursor: pointer;
-      align-self: flex-start;
       background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
       color: #000000;
       border: none;
@@ -802,14 +819,87 @@
       transition: all 0.2s ease;
       box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
     }
-    .btn-apply-sugg:hover {
+    .btn-apply-sugg:hover:not(:disabled) {
       transform: scale(1.03);
       box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
     }
-    .btn-apply-sugg.applied {
-      background: #10B981;
-      color: #FFFFFF;
-      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    .btn-apply-sugg.applied, .btn-apply-sugg:disabled {
+      background: rgba(16, 185, 129, 0.18) !important;
+      color: #34D399 !important;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      box-shadow: none;
+      cursor: default;
+      transform: none;
+    }
+    .btn-reject-sugg {
+      cursor: pointer;
+      background: rgba(239, 68, 68, 0.1);
+      color: #F87171;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s ease;
+    }
+    .btn-reject-sugg:hover {
+      background: rgba(239, 68, 68, 0.22);
+      border-color: #EF4444;
+      color: #FECACA;
+      transform: translateY(-1px);
+    }
+    .strat-sugg-rejected-msg {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #94A3B8;
+      background: rgba(148, 163, 184, 0.08);
+      border: 1px dashed rgba(148, 163, 184, 0.25);
+      padding: 6px 10px;
+      border-radius: 6px;
+      gap: 8px;
+    }
+    .btn-undo-sugg {
+      background: transparent;
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      color: #38BDF8;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-undo-sugg:hover {
+      background: rgba(56, 189, 248, 0.15);
+      color: #BAE6FD;
+    }
+    .sugg-status-tag {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.3px;
+    }
+    .sugg-status-tag.synced {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .sugg-status-tag.pending {
+      background: rgba(245, 158, 11, 0.2);
+      color: #FBBF24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      animation: pulse-border 2s infinite;
+    }
+    .sugg-status-tag.rejected {
+      background: rgba(148, 163, 184, 0.12);
+      color: #94A3B8;
+      border: 1px solid rgba(148, 163, 184, 0.25);
     }
 
     /* In-Card Budget Sliders & Compact Toolbar */
@@ -1638,7 +1728,10 @@
           <!-- Caja de Sugerencia Inteligente Centinela -->
           <div class="strat-sugg-box" id="sugg-box-trailing">
             <div class="strat-sugg-header">
-              <span>🧠 Sugerencia Inteligente Centinela:</span>
+              <div class="strat-sugg-header-left">
+                <span>🧠 Sugerencia Inteligente Centinela:</span>
+              </div>
+              <span class="sugg-status-tag" id="sugg-tag-trailing"></span>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-trailing">
               Cargando análisis en tiempo real…
@@ -1649,7 +1742,14 @@
             <div class="strat-sugg-why" id="sugg-why-trailing">
               <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
             </div>
-            <button class="btn-apply-sugg" data-strat="trailing_rebound" id="btn-apply-trailing">⚡ Aplicar Sugerencia del Bot</button>
+            <div class="strat-sugg-actions" id="sugg-actions-trailing">
+              <button class="btn-apply-sugg" data-strat="trailing_rebound" id="btn-apply-trailing">⚡ Aplicar Sugerencia</button>
+              <button class="btn-reject-sugg" data-strat="trailing_rebound" id="btn-reject-trailing">❌ Rechazar</button>
+            </div>
+            <div class="strat-sugg-rejected-msg" id="sugg-rejected-trailing" style="display: none;">
+              <span>⚪ Sugerencia descartada (Silenciada por 4h)</span>
+              <button class="btn-undo-sugg" data-strat="trailing_rebound">↺ Deshacer</button>
+            </div>
           </div>
         </div>
 
@@ -1717,7 +1817,10 @@
           <!-- Caja de Sugerencia Inteligente Centinela -->
           <div class="strat-sugg-box" id="sugg-box-dca">
             <div class="strat-sugg-header">
-              <span>🧠 Sugerencia Inteligente Centinela:</span>
+              <div class="strat-sugg-header-left">
+                <span>🧠 Sugerencia Inteligente Centinela:</span>
+              </div>
+              <span class="sugg-status-tag" id="sugg-tag-dca"></span>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-dca">
               Cargando análisis en tiempo real…
@@ -1728,7 +1831,14 @@
             <div class="strat-sugg-why" id="sugg-why-dca">
               <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
             </div>
-            <button class="btn-apply-sugg" data-strat="smart_dca" id="btn-apply-dca">⚡ Aplicar Sugerencia del Bot</button>
+            <div class="strat-sugg-actions" id="sugg-actions-dca">
+              <button class="btn-apply-sugg" data-strat="smart_dca" id="btn-apply-dca">⚡ Aplicar Sugerencia</button>
+              <button class="btn-reject-sugg" data-strat="smart_dca" id="btn-reject-dca">❌ Rechazar</button>
+            </div>
+            <div class="strat-sugg-rejected-msg" id="sugg-rejected-dca" style="display: none;">
+              <span>⚪ Sugerencia descartada (Silenciada por 4h)</span>
+              <button class="btn-undo-sugg" data-strat="smart_dca">↺ Deshacer</button>
+            </div>
           </div>
         </div>
 
@@ -1796,7 +1906,10 @@
           <!-- Caja de Sugerencia Inteligente Centinela -->
           <div class="strat-sugg-box" id="sugg-box-grid">
             <div class="strat-sugg-header">
-              <span>🧠 Sugerencia Inteligente Centinela:</span>
+              <div class="strat-sugg-header-left">
+                <span>🧠 Sugerencia Inteligente Centinela:</span>
+              </div>
+              <span class="sugg-status-tag" id="sugg-tag-grid"></span>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-grid">
               Cargando análisis en tiempo real…
@@ -1807,7 +1920,14 @@
             <div class="strat-sugg-why" id="sugg-why-grid">
               <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
             </div>
-            <button class="btn-apply-sugg" data-strat="micro_grid" id="btn-apply-grid">⚡ Aplicar Sugerencia del Bot</button>
+            <div class="strat-sugg-actions" id="sugg-actions-grid">
+              <button class="btn-apply-sugg" data-strat="micro_grid" id="btn-apply-grid">⚡ Aplicar Sugerencia</button>
+              <button class="btn-reject-sugg" data-strat="micro_grid" id="btn-reject-grid">❌ Rechazar</button>
+            </div>
+            <div class="strat-sugg-rejected-msg" id="sugg-rejected-grid" style="display: none;">
+              <span>⚪ Sugerencia descartada (Silenciada por 4h)</span>
+              <button class="btn-undo-sugg" data-strat="micro_grid">↺ Deshacer</button>
+            </div>
           </div>
         </div>
 
@@ -1875,7 +1995,10 @@
           <!-- Caja de Sugerencia Inteligente Centinela -->
           <div class="strat-sugg-box" id="sugg-box-weekend">
             <div class="strat-sugg-header">
-              <span>🧠 Sugerencia Inteligente Centinela:</span>
+              <div class="strat-sugg-header-left">
+                <span>🧠 Sugerencia Inteligente Centinela:</span>
+              </div>
+              <span class="sugg-status-tag" id="sugg-tag-weekend"></span>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-weekend">
               Cargando análisis en tiempo real…
@@ -1886,7 +2009,14 @@
             <div class="strat-sugg-why" id="sugg-why-weekend">
               <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
             </div>
-            <button class="btn-apply-sugg" data-strat="cazador_weekend" id="btn-apply-weekend">⚡ Aplicar Sugerencia del Bot</button>
+            <div class="strat-sugg-actions" id="sugg-actions-weekend">
+              <button class="btn-apply-sugg" data-strat="cazador_weekend" id="btn-apply-weekend">⚡ Aplicar Sugerencia</button>
+              <button class="btn-reject-sugg" data-strat="cazador_weekend" id="btn-reject-weekend">❌ Rechazar</button>
+            </div>
+            <div class="strat-sugg-rejected-msg" id="sugg-rejected-weekend" style="display: none;">
+              <span>⚪ Sugerencia descartada (Silenciada por 4h)</span>
+              <button class="btn-undo-sugg" data-strat="cazador_weekend">↺ Deshacer</button>
+            </div>
           </div>
         </div>
       </div>

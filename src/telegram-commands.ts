@@ -23,6 +23,8 @@ export class TelegramCommands {
       const commands = [
         // Menú y Estrategias
         { command: "menu", description: "📋 Centro de comandos completo" },
+        { command: "sugerencias", description: "🧠 Sugerencias Centinela (aplicar/rechazar)" },
+        { command: "rechazar", description: "❌ Descartar sugerencia activa" },
         { command: "estrategias", description: "⚙️ Panel y switches de estrategias" },
         { command: "presupuesto", description: "💼 Presupuesto auto-graduado y saldos" },
         { command: "asignar", description: "🎯 Configurar % (ej: /asignar 40 25 0 35)" },

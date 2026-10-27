@@ -502,12 +502,23 @@ export class DashboardServer {
                             if (!controls.strategySettings)
                                 controls.strategySettings = {};
                             if (!controls.strategySettings[strat]) {
-                                controls.strategySettings[strat] = { timeframe: "1h", stopLossEnabled: true, stopLossPct: 4.0 };
+                                controls.strategySettings[strat] = { timeframe: "1h", stopLossEnabled: false, stopLossPct: 4.0 };
                             }
                             const sugg = controls.suggestions[strat];
                             controls.strategySettings[strat].timeframe = sugg.timeframe;
                             controls.strategySettings[strat].stopLossPct = sugg.stopLossPct;
-                            controls.strategySettings[strat].stopLossEnabled = true;
+                            // SEGURIDAD SPOT: NO forzar venta a pérdida; preservar el switch de stopLossEnabled que decidió el usuario
+                            if (controls.strategySettings[strat].stopLossEnabled === undefined) {
+                                controls.strategySettings[strat].stopLossEnabled = false;
+                            }
+                            // Si estaba rechazada, limpiar rechazo
+                            if (controls.rejectedSuggestions && controls.rejectedSuggestions[strat]) {
+                                delete controls.rejectedSuggestions[strat];
+                            }
+                            if (controls.suggestions[strat]) {
+                                controls.suggestions[strat].status = "applied";
+                                controls.suggestions[strat].isCurrent = true;
+                            }
                             controls.updatedAt = Date.now();
                             fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
                             res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -520,6 +531,75 @@ export class DashboardServer {
                     }
                     catch (e) {
                         res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            // Descartar / Rechazar sugerencia de Centinela (silenciar por 4h)
+            if (parsedUrl.pathname === "/api/strategies/reject-suggestion" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => body += chunk);
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const strat = data.strategy;
+                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+                        const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {};
+                        if (!controls.rejectedSuggestions)
+                            controls.rejectedSuggestions = {};
+                        if (strat) {
+                            // Silenciar por 4 horas
+                            controls.rejectedSuggestions[strat] = Date.now() + 4 * 3600 * 1000;
+                            if (controls.suggestions && controls.suggestions[strat]) {
+                                controls.suggestions[strat].status = "rejected";
+                            }
+                            controls.updatedAt = Date.now();
+                            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                            res.end(JSON.stringify({ success: true, controls, rejected: strat }));
+                        }
+                        else {
+                            res.writeHead(400, { "Content-Type": "application/json" });
+                            res.end(JSON.stringify({ error: "Parámetro strategy faltante" }));
+                        }
+                    }
+                    catch (e) {
+                        res.writeHead(500, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            // Deshacer rechazo de sugerencia de Centinela
+            if (parsedUrl.pathname === "/api/strategies/undo-reject-suggestion" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => body += chunk);
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const strat = data.strategy;
+                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+                        const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {};
+                        if (controls.rejectedSuggestions && strat) {
+                            delete controls.rejectedSuggestions[strat];
+                            if (controls.suggestions && controls.suggestions[strat]) {
+                                const s = controls.strategySettings?.[strat];
+                                const isCurrent = s?.timeframe === controls.suggestions[strat].timeframe;
+                                controls.suggestions[strat].status = isCurrent ? "applied" : "pending";
+                            }
+                            controls.updatedAt = Date.now();
+                            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                            res.end(JSON.stringify({ success: true, controls, unrejected: strat }));
+                        }
+                        else {
+                            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                            res.end(JSON.stringify({ success: true, controls }));
+                        }
+                    }
+                    catch (e) {
+                        res.writeHead(500, { "Content-Type": "application/json" });
                         res.end(JSON.stringify({ error: e.message }));
                     }
                 });
