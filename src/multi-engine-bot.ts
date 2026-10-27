@@ -687,7 +687,8 @@ export class TrailingMasterBot {
         }
 
         if (dropPct <= -2.5) {
-          const klines = await this.client.klines(sym, "15m", { limit: 25 });
+          const dcaTf = this.controls.strategySettings?.smart_dca?.timeframe || "4h";
+          const klines = await this.client.klines(sym, dcaTf, { limit: 25 });
           const closes = klines.data.map((k: any) => parseFloat(k[4]));
           const rsi = this.calculateRSI(closes, 14);
 
@@ -1090,13 +1091,14 @@ export class TrailingMasterBot {
    * Ya no compra en la primera vela verde: registra el precio y rastrea el piso más bajo.
    */
   async scanForDips(activeSymbols: Set<string>): Promise<void> {
+    const tf = this.controls.strategySettings?.trailing_rebound?.timeframe || this.controls.timeframe || "1h";
     for (const sym of WATCHLIST) {
       try {
         if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
           continue; // No acumular en la misma moneda ni duplicar vigilancias
         }
 
-        const klinesRes = await this.client.klines(sym, "15m", { limit: 35 });
+        const klinesRes = await this.client.klines(sym, tf, { limit: 35 });
         const data = klinesRes.data;
         const closes = data.map((k: any) => parseFloat(k[4]));
         const highs = data.map((k: any) => parseFloat(k[2]));
@@ -2307,7 +2309,8 @@ export class TrailingMasterBot {
           continue;
         }
 
-        const klinesRes = await this.client.klines(sym, "15m", { limit: 24 });
+        const gridTf = this.controls.strategySettings?.micro_grid?.timeframe || "15m";
+        const klinesRes = await this.client.klines(sym, gridTf, { limit: 24 });
         const data = klinesRes.data;
         const closes = data.map((k: any) => parseFloat(k[4]));
         const highs = data.map((k: any) => parseFloat(k[2]));
@@ -2365,7 +2368,8 @@ export class TrailingMasterBot {
           continue;
         }
 
-        const klinesRes = await this.client.klines(sym, "15m", { limit: 48 });
+        const weekendTf = this.controls.strategySettings?.cazador_weekend?.timeframe || "1h";
+        const klinesRes = await this.client.klines(sym, weekendTf, { limit: 48 });
         const data = klinesRes.data;
         const closes = data.map((k: any) => parseFloat(k[4]));
         const highs = data.map((k: any) => parseFloat(k[2]));
