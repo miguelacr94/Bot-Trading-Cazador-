@@ -239,9 +239,10 @@ export class TrailingMasterBot {
   }
 
   public getCallbackPct(symbol: string): number {
-    if (symbol.includes("PEPE")) return 0.55; // Mayor margen para posición viva de PEPE
-    if (symbol.includes("AVAX")) return 0.45; // Alta volatilidad
-    return 0.30; // Monedas mayores estándar (ETH, SOL, BTC, etc.)
+    // Callbacks optimizados y estrictos para capturar picos reales sin regalar ganancias al retroceder
+    if (symbol.includes("PEPE")) return 0.25; // Ajustado de 0.55% a 0.25% para asegurar el pico
+    if (symbol.includes("AVAX")) return 0.25; // Ajustado de 0.45% a 0.25%
+    return 0.20; // Monedas mayores estándar (ETH, SOL, BTC, etc.)
   }
 
   /**
@@ -309,6 +310,7 @@ export class TrailingMasterBot {
     }
   }
   private activeTrailingPositions: Map<string, ActivePosition> = new Map();
+  private recentlySoldSymbols: Map<string, number> = new Map();
   private buyWatches: Map<string, BuyWatch> = new Map();
   private ignoredDca: Map<string, { timestamp: number; price: number; dropPct: number }> = new Map();
   private dashboardServer: DashboardServer;
@@ -865,7 +867,7 @@ export class TrailingMasterBot {
           const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
           const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
           const callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol);
-          const minGain = pos.strategy === "micro_grid" ? 0.35 : 0.55;
+          const minGain = pos.strategy === "micro_grid" ? 0.35 : 0.80; // Blindado a +0.80% mínimo para no cerrar con migajas
           const hitCallback = dropFromPeak >= callback && gainPct >= minGain;
 
           if (hitCallback || hitHardCap) {
@@ -875,6 +877,7 @@ export class TrailingMasterBot {
             if (sold) {
               const strat = pos.strategy;
               this.activeTrailingPositions.delete(symbol);
+              this.recentlySoldSymbols.set(symbol, Date.now());
               this.saveTrailingPositions();
               if (strat === "cazador_weekend") {
                 await this.onWeekendTradeCompleted(symbol);
@@ -1094,6 +1097,11 @@ export class TrailingMasterBot {
     const tf = this.controls.strategySettings?.trailing_rebound?.timeframe || this.controls.timeframe || "1h";
     for (const sym of WATCHLIST) {
       try {
+        const lastSold = this.recentlySoldSymbols.get(sym);
+        if (lastSold && (Date.now() - lastSold) < 20 * 60 * 1000) {
+          continue; // Cooldown post-venta de 20 min: evitar recomprar en el mismo techo
+        }
+
         if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
           continue; // No acumular en la misma moneda ni duplicar vigilancias
         }
