@@ -494,11 +494,21 @@
         }
       }
 
-      // Sync Suggestion Text
-      if (sugg && sugg.reason) {
+      // Sync Detailed Suggestion with Criteria & Why
+      if (sugg) {
         const textSugg = document.getElementById(`sugg-text-${short}`);
-        if (textSugg) {
+        if (textSugg && sugg.reason) {
           textSugg.textContent = sugg.reason;
+        }
+
+        const critBox = document.getElementById(`sugg-criteria-${short}`);
+        if (critBox && sugg.criterios && sugg.criterios.length) {
+          critBox.innerHTML = sugg.criterios.map(c => `<div class="sugg-criteria-item">🔹 ${c}</div>`).join("");
+        }
+
+        const whyBox = document.getElementById(`sugg-why-${short}`);
+        if (whyBox && sugg.porQue) {
+          whyBox.innerHTML = `<strong>¿Por qué?:</strong> ${sugg.porQue}`;
         }
       }
     });

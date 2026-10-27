@@ -1642,9 +1642,27 @@ export class TrailingMasterBot {
      * Si sube a >= 2.5%, auto-desactiva Micro-Grid y devuelve el presupuesto a Cazador Trailing.
      */
     lastTimeframeAdvisorTime = 0;
+    getCurrentMarketSession() {
+        const now = new Date();
+        const day = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
+        const hour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+        if (day === "Sat" || (day === "Sun" && hour < 17)) {
+            return "Fin de Semana (Bolsas Cerradas / Libros Delgados)";
+        }
+        if (day === "Sun" && hour >= 17) {
+            return "Apertura Futuros CME (Retorno de Liquidez)";
+        }
+        if (hour >= 8 && hour < 16) {
+            return "Wall Street / New York (Máxima Liquidez y Volumen)";
+        }
+        if (hour >= 2 && hour < 8) {
+            return "Londres / Europa (Transición y Caza de Liquidez)";
+        }
+        return "Asia / Tokio (Consolidación y Rango Lateral)";
+    }
     async checkTimeframeAdvisor() {
-        if (Date.now() - this.lastTimeframeAdvisorTime < 300000)
-            return; // Cada 5 minutos
+        if (Date.now() - this.lastTimeframeAdvisorTime < 180000)
+            return; // Cada 3 minutos
         this.lastTimeframeAdvisorTime = Date.now();
         try {
             const btc24 = await this.client.ticker24hr("BTCUSDT");
@@ -1652,15 +1670,24 @@ export class TrailingMasterBot {
             const low = parseFloat(btc24.data.lowPrice);
             const range24h = ((high - low) / low) * 100;
             const isWeekend = this.isWeekendWindow();
+            const session = this.getCurrentMarketSession();
             if (!this.controls.suggestions) {
                 this.controls.suggestions = {};
             }
-            // 1. Sugerencia Trailing Rebound
+            // 1. Sugerencia Trailing Rebound (Cazador de Ondas)
             if (range24h >= 4.5) {
                 this.controls.suggestions.trailing_rebound = {
                     timeframe: "15m",
                     stopLossPct: 3.5,
-                    reason: `Volatilidad alta (${range24h.toFixed(1)}%). Recomendado 15m y SL -3.5% para giros rápidos.`,
+                    reason: `Volatilidad alta en Bitcoin (${range24h.toFixed(1)}%). Sesión ${session}.`,
+                    criterios: [
+                        `Rango 24h Bitcoin: ${range24h.toFixed(2)}% (Alta velocidad)`,
+                        `Sesión: ${session}`,
+                        "Flujo de órdenes agresivo con rompimientos frecuentes"
+                    ],
+                    porQue: "Con el mercado acelerado, las ondas completas tardan menos en madurar. Bajar el radar a 15m permite cazar rebotes de +1.5% a +2.5% varias veces al día. Se ajusta el Stop-Loss a -3.5% para proteger contra giros falsos.",
+                    session,
+                    btcRange24h: range24h,
                     updatedAt: Date.now()
                 };
             }
@@ -1668,23 +1695,47 @@ export class TrailingMasterBot {
                 this.controls.suggestions.trailing_rebound = {
                     timeframe: "1h",
                     stopLossPct: 4.0,
-                    reason: `Volatilidad normal (${range24h.toFixed(1)}%). Recomendado 1H y SL -4.0% para ondas completas.`,
+                    reason: `Volatilidad estándar equilibrada (${range24h.toFixed(1)}%). Sesión ${session}.`,
+                    criterios: [
+                        `Rango 24h Bitcoin: ${range24h.toFixed(2)}% (Oscilación limpia)`,
+                        `Sesión: ${session}`,
+                        "Estructura de ondas de 1H con soporte y resistencia definidos"
+                    ],
+                    porQue: "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario y te posiciona para capturar el movimiento entero de +2.0% a +3.5%. El Stop-Loss en -4.0% le da el espacio exacto al activo para respirar sin sacarte antes del rebote.",
+                    session,
+                    btcRange24h: range24h,
                     updatedAt: Date.now()
                 };
             }
-            // 2. Sugerencia Smart DCA
+            // 2. Sugerencia Smart DCA (Seguridad y Rescate)
             this.controls.suggestions.smart_dca = {
                 timeframe: "4h",
                 stopLossPct: 6.0,
-                reason: "Soportes macro de 4H confirmados. SL -6.0% para tolerar caídas y promediar.",
+                reason: "Soportes mayores de 4H. Tolerancia de promediado segura.",
+                criterios: [
+                    "Soportes estructurales en temporalidad de 4 Horas",
+                    "Umbral de caída acumulada ≥ -2.5% desde la compra",
+                    "Cooldown de 2 horas entre compras consecutivas"
+                ],
+                porQue: "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
+                session,
+                btcRange24h: range24h,
                 updatedAt: Date.now()
             };
-            // 3. Sugerencia Micro-Grid
+            // 3. Sugerencia Micro-Grid (Rango Lateral Plano)
             if (range24h < 2.2) {
                 this.controls.suggestions.micro_grid = {
                     timeframe: "15m",
                     stopLossPct: 2.0,
-                    reason: `Día quieto en BTC (${range24h.toFixed(1)}%). Rejilla activa en 15m con SL -2.0% estricto.`,
+                    reason: `Día quieto confirmado en Bitcoin (${range24h.toFixed(1)}%). Malla activa.`,
+                    criterios: [
+                        `Compresión de volatilidad extrema: ${range24h.toFixed(2)}% (< 2.2%)`,
+                        "Mercado sin dirección de tendencia (lateral plano)",
+                        "Micro-oscilaciones constantes en canales de ±0.5%"
+                    ],
+                    porQue: "En días planos donde no hay tendencias grandes, la única forma de generar dólares es con una rejilla de micro-rebotes (+0.45% a +0.60%) en 15m. El Stop-Loss estricto de -2.0% es obligatorio: si el precio rompe el canal hacia abajo, la estrategia debe cortar de inmediato para no quedar atrapada en una caída direccional.",
+                    session,
+                    btcRange24h: range24h,
                     updatedAt: Date.now()
                 };
             }
@@ -1692,16 +1743,31 @@ export class TrailingMasterBot {
                 this.controls.suggestions.micro_grid = {
                     timeframe: "15m",
                     stopLossPct: 2.0,
-                    reason: `Mercado direccional (${range24h.toFixed(1)}%). Pausar o mantener SL estrecho (-2.0%).`,
+                    reason: `Mercado direccional activo (${range24h.toFixed(1)}%). Conviene cautela.`,
+                    criterios: [
+                        `Rango 24h: ${range24h.toFixed(2)}% (Mercado con dirección)`,
+                        "Poco favorable para mallas fijas sin tendencia"
+                    ],
+                    porQue: "Cuando el mercado tiene movimiento direccional, las estrategias de rejilla corren riesgo de quedar con compras atrapadas. Se sugiere mantener el presupuesto de Micro-Grid en 0% o con Stop-Loss estricto de -2.0% mientras el Trailing Hunter hace el trabajo pesado.",
+                    session,
+                    btcRange24h: range24h,
                     updatedAt: Date.now()
                 };
             }
-            // 4. Sugerencia Cazador Weekend
+            // 4. Sugerencia Cazador Weekend (Anomalía Fin de Semana)
             if (isWeekend) {
                 this.controls.suggestions.cazador_weekend = {
                     timeframe: "1h",
                     stopLossPct: 5.0,
-                    reason: "Ventana fin de semana abierta. Cazar en 1H con SL -5.0% para absorber mechazos.",
+                    reason: "Ventana de fin de semana abierta (Vie 17:00 a Dom 18:00 COT).",
+                    criterios: [
+                        "Bolsas mundiales y bancos cerrados (libros delgados)",
+                        "Frecuentes barridas de liquidez y mechazos falsos",
+                        "Apertura de futuros CME el domingo a las 17:00 COT"
+                    ],
+                    porQue: "Durante el fin de semana el dinero institucional descansa y los creadores de mercado suelen empujar el precio a la baja para cazar stop-losses. Se calibra en 1H con Stop-Loss tolerante de -5.0% para no ser expulsado por un mechazo, esperando la recuperación de compras cuando reabre CME el domingo por la noche.",
+                    session,
+                    btcRange24h: range24h,
                     updatedAt: Date.now()
                 };
             }
@@ -1709,7 +1775,14 @@ export class TrailingMasterBot {
                 this.controls.suggestions.cazador_weekend = {
                     timeframe: "1h",
                     stopLossPct: 5.0,
-                    reason: "En espera hasta viernes 17:00 COT. Parámetros listos en 1H y SL -5.0%.",
+                    reason: "En espera hasta el viernes a las 17:00 COT.",
+                    criterios: [
+                        "Días hábiles de semana (mercados tradicionales abiertos)",
+                        "Capital trabajando al 100% en Cazador Trailing"
+                    ],
+                    porQue: "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
+                    session,
+                    btcRange24h: range24h,
                     updatedAt: Date.now()
                 };
             }

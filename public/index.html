@@ -726,6 +726,42 @@
       box-shadow: 0 0 6px rgba(248, 113, 113, 0.6);
       cursor: pointer;
     }
+
+    .strat-sugg-criteria {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      margin: 4px 0;
+      padding: 6px 8px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 6px;
+      border-left: 2px solid #F59E0B;
+    }
+    .sugg-criteria-item {
+      font-size: 10px;
+      color: #94A3B8;
+      font-family: var(--font-mono);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .sugg-criteria-item b {
+      color: #F8FAFC;
+    }
+    .strat-sugg-why {
+      font-size: 11px;
+      line-height: 1.45;
+      color: #CBD5E1;
+      font-style: italic;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 6px 8px;
+      border-radius: 6px;
+    }
+    .strat-sugg-why strong {
+      color: #FBBF24;
+      font-style: normal;
+    }
+
     /* Smart Bot Suggestion Box */
     .strat-sugg-box {
       margin-top: 4px;
@@ -1602,12 +1638,18 @@
           <!-- Caja de Sugerencia Inteligente Centinela -->
           <div class="strat-sugg-box" id="sugg-box-trailing">
             <div class="strat-sugg-header">
-              <span>💡 Sugerencia del Bot:</span>
+              <span>🧠 Sugerencia Inteligente Centinela:</span>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-trailing">
-              Volatilidad normal (2.4%). Recomendado 1H con SL -4.0% para capturar la ola completa.
+              Cargando análisis en tiempo real…
             </div>
-            <button class="btn-apply-sugg" data-strat="trailing_rebound" id="btn-apply-trailing">⚡ Aplicar Sugerencia</button>
+            <div class="strat-sugg-criteria" id="sugg-criteria-trailing">
+              <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
+            </div>
+            <div class="strat-sugg-why" id="sugg-why-trailing">
+              <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+            </div>
+            <button class="btn-apply-sugg" data-strat="trailing_rebound" id="btn-apply-trailing">⚡ Aplicar Sugerencia del Bot</button>
           </div>
         </div>
 
@@ -1675,12 +1717,18 @@
           <!-- Caja de Sugerencia Inteligente Centinela -->
           <div class="strat-sugg-box" id="sugg-box-dca">
             <div class="strat-sugg-header">
-              <span>💡 Sugerencia del Bot:</span>
+              <span>🧠 Sugerencia Inteligente Centinela:</span>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-dca">
-              Soportes mayores de 4H vigentes. Mantener SL -6.0% para tolerar caídas y promediar con seguridad.
+              Cargando análisis en tiempo real…
             </div>
-            <button class="btn-apply-sugg" data-strat="smart_dca" id="btn-apply-dca">⚡ Aplicar Sugerencia</button>
+            <div class="strat-sugg-criteria" id="sugg-criteria-dca">
+              <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
+            </div>
+            <div class="strat-sugg-why" id="sugg-why-dca">
+              <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+            </div>
+            <button class="btn-apply-sugg" data-strat="smart_dca" id="btn-apply-dca">⚡ Aplicar Sugerencia del Bot</button>
           </div>
         </div>
 
@@ -1748,12 +1796,18 @@
           <!-- Caja de Sugerencia Inteligente Centinela -->
           <div class="strat-sugg-box" id="sugg-box-grid">
             <div class="strat-sugg-header">
-              <span>💡 Sugerencia del Bot:</span>
+              <span>🧠 Sugerencia Inteligente Centinela:</span>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-grid">
-              Scalping en 15m con SL estricto de -2.0% para no quedar atrapado si rompe el rango.
+              Cargando análisis en tiempo real…
             </div>
-            <button class="btn-apply-sugg" data-strat="micro_grid" id="btn-apply-grid">⚡ Aplicar Sugerencia</button>
+            <div class="strat-sugg-criteria" id="sugg-criteria-grid">
+              <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
+            </div>
+            <div class="strat-sugg-why" id="sugg-why-grid">
+              <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+            </div>
+            <button class="btn-apply-sugg" data-strat="micro_grid" id="btn-apply-grid">⚡ Aplicar Sugerencia del Bot</button>
           </div>
         </div>
 
@@ -1821,12 +1875,18 @@
           <!-- Caja de Sugerencia Inteligente Centinela -->
           <div class="strat-sugg-box" id="sugg-box-weekend">
             <div class="strat-sugg-header">
-              <span>💡 Sugerencia del Bot:</span>
+              <span>🧠 Sugerencia Inteligente Centinela:</span>
             </div>
             <div class="strat-sugg-desc" id="sugg-text-weekend">
-              En espera hasta viernes 17:00 COT. Parámetros listos en 1H y SL -5.0% ante mechazos de fin de semana.
+              Cargando análisis en tiempo real…
             </div>
-            <button class="btn-apply-sugg" data-strat="cazador_weekend" id="btn-apply-weekend">⚡ Aplicar Sugerencia</button>
+            <div class="strat-sugg-criteria" id="sugg-criteria-weekend">
+              <div class="sugg-criteria-item">📊 Analizando condiciones de mercado…</div>
+            </div>
+            <div class="strat-sugg-why" id="sugg-why-weekend">
+              <strong>¿Por qué?:</strong> Evaluando volatilidad y liquidez institucional.
+            </div>
+            <button class="btn-apply-sugg" data-strat="cazador_weekend" id="btn-apply-weekend">⚡ Aplicar Sugerencia del Bot</button>
           </div>
         </div>
       </div>
