@@ -272,6 +272,17 @@ export class DashboardServer {
     return this.getSuggestedTimeframe(symbol).timeframe;
   }
 
+  private getRecoveryTracker(): { targetUsdt: number; recoveredUsdt: number; tradesCount: number } | null {
+    const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+    if (fs.existsSync(ctrlFile)) {
+      try {
+        const controls = JSON.parse(fs.readFileSync(ctrlFile, "utf-8"));
+        return controls.recoveryTracker || null;
+      } catch(e) {}
+    }
+    return null;
+  }
+
   private getCallbackPct(symbol: string, pos?: any): number {
     if (pos && typeof pos.customCallbackPct === "number" && pos.customCallbackPct > 0) {
       return pos.customCallbackPct;
@@ -403,7 +414,8 @@ export class DashboardServer {
           p90dCop: dailyRunRate * 90 * COP_PER_USDT
         };
       })() : null,
-      recentCycles: p ? p.cycles.slice(-15).reverse() : null
+      recentCycles: p ? p.cycles.slice(-15).reverse() : null,
+      recoveryTracker: this.getRecoveryTracker()
     };
   }
 

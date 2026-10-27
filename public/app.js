@@ -213,7 +213,6 @@
       const applyBtn = e.target.closest(".btn-apply-cb-sugg");
       if (!pillBtn && !applyBtn) return;
 
-      const currentP = card._currentPos || p;
       const targetVal = pillBtn ? parseFloat(pillBtn.dataset.v) : currentP.suggestedCallback;
       if (!targetVal) return;
 
