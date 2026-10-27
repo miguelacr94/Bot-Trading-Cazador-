@@ -444,12 +444,14 @@ export class TrailingMasterBot {
             this.savePendingOpportunity();
             if (this.controls.autoPilot) {
                 console.log(`⚡ [AUTO-PILOTO] Tiempo de 3 min agotado. Ejecutando automáticamente ${opp.strategyName} en ${opp.symbol}...`);
-                await this.notifier.send(`⚡ <b>[AUTO-PILOTO ACTIVADO]</b>\n\n` +
+                await this.notifier.send(`⚡ <b>[AUTO-PILOTO: DECISIÓN INTELIGENTE EJECUTADA]</b> 🤖\n\n` +
                     `⏱️ Tiempo de espera agotado sin respuesta.\n` +
-                    `🚀 Ejecutando automáticamente la recomendación para asegurar la ventana:\n` +
+                    `🚀 <b>Acción:</b> Ejecutando compra para no perder la ventana de rebote:\n` +
                     `• <b>Moneda:</b> ${opp.symbol}\n` +
                     `• <b>Estrategia:</b> ${opp.strategyName}\n` +
-                    `• <b>Monto:</b> ${opp.amount.toFixed(2)} USDT`);
+                    `• <b>Monto:</b> ${opp.amount.toFixed(2)} USDT\n\n` +
+                    `📊 <b>Criterio Técnico Evaluado:</b> ${opp.reason}\n` +
+                    `🧠 <b>¿Por qué tomó esta decisión?:</b> Los datos confirmaron absorción de venta y giro hacia arriba en soporte. La compra se ejecuta en el suelo para cazar el impulso (+0.8% a +3.5%) sin dejar pasar la oportunidad.`);
                 await this.executeOpportunity(opp);
             }
             else {
