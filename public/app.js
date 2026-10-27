@@ -50,6 +50,13 @@
 
   // ---------- KPIs ----------
   function renderKpis(d) {
+    if (d.recoveryTracker) {
+      const pill = $("recovery-pill");
+      if (pill) {
+        const pct = Math.min(100, (d.recoveryTracker.recoveredUsdt / d.recoveryTracker.targetUsdt) * 100);
+        pill.innerHTML = `🛡️ Recuperación: <b>${d.recoveryTracker.recoveredUsdt.toFixed(2)} / ${d.recoveryTracker.targetUsdt.toFixed(2)} USDT</b> (${pct.toFixed(0)}%)`;
+      }
+    }
     const pf = d.portfolio;
     setText($("kpi-total-usdt-num"), `$${fmt(pf.totalEstimatedUsdt)}`);
     setText($("kpi-total-cop"), `≈ $${cop(pf.totalEstimatedCop)} COP`);
@@ -106,13 +113,14 @@
   function createPositionCard(p) {
     const card = document.createElement("div");
     card.className = "position-card";
+    card.dataset.id = p.id || p.symbol;
     card.dataset.symbol = p.symbol;
     card.innerHTML = `
       <div class="pos-head">
         <div class="coin-badge">
           <div class="coin-avatar">${p.base.substring(0, 4)}</div>
           <div>
-            <div class="coin-name">${p.symbol}</div>
+            <div class="coin-name">${p.symbol} <span class="strat-pill logic" style="font-size:9px;margin-left:4px;" data-f="stratbadge"></span></div>
             <div class="coin-qty" data-f="qty"></div>
           </div>
         </div>
@@ -236,7 +244,9 @@
     const gain = p.gainPct >= 0;
     const s = gain ? "+" : "";
 
-    setText(f("qty"), `${fmt(p.qty)} ${p.base} • Invertido: $${fmt(p.investedUsdt)} USDT`);
+    const stratName = p.strategy === "centinela_alpha" ? "🤖 Alpha (20%)" : (p.lotIndex > 1 ? `🛡️ Lote #${p.lotIndex}` : "🏹 Lote 1");
+    setText(f("stratbadge"), stratName);
+    setText(f("qty"), `${fmt(p.qty)} ${p.base} • Invertido: ${fmt(p.investedUsdt)} USDT`);
     setText(f("buy"), `$${fmt(p.buyPrice)}`);
     setText(f("cur"), `$${fmt(p.curPrice)}`);
     setStyle(f("cur"), "color", gain ? "var(--accent-green)" : "var(--accent-rose)");
@@ -337,18 +347,18 @@
   function renderPositions(list) {
     const box = $("positions-container");
     const empty = $("positions-empty");
-    setText($("active-positions-count"), `${list.length} activa(s)`);
+    setText($("active-positions-count"), `${list.length} lote(s) activo(s)`);
 
     const existing = new Map();
-    box.querySelectorAll(".position-card").forEach((c) => existing.set(c.dataset.symbol, c));
+    box.querySelectorAll(".position-card").forEach((c) => existing.set(c.dataset.id || c.dataset.symbol, c));
 
     list.forEach((p) => {
-      let card = existing.get(p.symbol);
+      const cardKey = p.id || p.symbol;
+      let card = existing.get(cardKey);
       if (!card) { card = createPositionCard(p); box.appendChild(card); }
       updatePositionCard(card, p);
-      existing.delete(p.symbol);
+      existing.delete(cardKey);
     });
-    // Solo se retira una tarjeta cuando la posición se cerró de verdad
     existing.forEach((card) => card.remove());
 
     setStyle(empty, "display", list.length === 0 ? "block" : "none");

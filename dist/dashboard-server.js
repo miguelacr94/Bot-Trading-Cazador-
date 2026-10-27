@@ -305,18 +305,22 @@ export class DashboardServer {
         const rawBuys = this.readJson(".trailing-buys.json");
         let totalInvested = 0;
         let positionsValue = 0;
-        const positions = rawPositions.map(([symbol, pos]) => {
-            const curPrice = this.prices[symbol] || pos.buyPrice;
+        const positions = rawPositions.map(([symbolOrId, pos]) => {
+            const sym = pos.symbol || symbolOrId.split('_')[0];
+            const curPrice = this.prices[sym] || pos.buyPrice;
             const target08 = pos.buyPrice * 1.008;
             const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
             const progressPct = ((curPrice - pos.buyPrice) / (target08 - pos.buyPrice)) * 100;
             const pnlUsdt = pos.qty * curPrice - pos.investedUsdt;
-            const callback = this.getCallbackPct(symbol, pos);
+            const callback = this.getCallbackPct(sym, pos);
             totalInvested += pos.investedUsdt;
             positionsValue += pos.qty * curPrice;
             return {
-                symbol,
-                base: symbol.replace("USDT", ""),
+                id: pos.id || symbolOrId,
+                symbol: sym,
+                lotIndex: pos.lotIndex || 1,
+                strategy: pos.strategy || "trailing_rebound",
+                base: sym.replace("USDT", ""),
                 qty: pos.qty,
                 investedUsdt: pos.investedUsdt,
                 buyPrice: pos.buyPrice,
@@ -331,12 +335,12 @@ export class DashboardServer {
                 stopPrice: pos.highestPrice * (1 - callback / 100),
                 callbackPct: callback,
                 isCustomCallback: !!pos.customCallbackPct,
-                suggestedCallback: (symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) ? 0.45 : ((symbol.includes("AVAX") || symbol.includes("SOL")) ? 0.35 : 0.25),
-                suggestedReason: (symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) ? "Alta volatilidad Meme (tolerar micro-retrocesos)" : ((symbol.includes("AVAX") || symbol.includes("SOL")) ? "Volatilidad media" : "Mercado clásico (salida ágil)"),
-                timeframe: this.getTimeframeForSymbol(symbol, pos),
-                suggestedTimeframe: this.getSuggestedTimeframe(symbol).timeframe,
-                suggestedTimeframeReason: this.getSuggestedTimeframe(symbol).reason,
-                isTimeframeOptimal: this.getTimeframeForSymbol(symbol, pos) === this.getSuggestedTimeframe(symbol).timeframe,
+                suggestedCallback: (sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE") || sym.includes("SHIB") || sym.includes("WIF")) ? 0.45 : ((sym.includes("AVAX") || sym.includes("SOL")) ? 0.35 : 0.25),
+                suggestedReason: (sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE") || sym.includes("SHIB") || sym.includes("WIF")) ? "Alta volatilidad Meme (tolerar micro-retrocesos)" : ((sym.includes("AVAX") || sym.includes("SOL")) ? "Volatilidad media" : "Mercado clásico (salida ágil)"),
+                timeframe: this.getTimeframeForSymbol(sym, pos),
+                suggestedTimeframe: this.getSuggestedTimeframe(sym).timeframe,
+                suggestedTimeframeReason: this.getSuggestedTimeframe(sym).reason,
+                isTimeframeOptimal: this.getTimeframeForSymbol(sym, pos) === this.getSuggestedTimeframe(sym).timeframe,
                 activated: !!pos.activated
             };
         });

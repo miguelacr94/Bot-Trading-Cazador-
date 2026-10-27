@@ -25,6 +25,8 @@ export class TelegramCommands {
         { command: "menu", description: "📋 Centro de comandos completo" },
         { command: "memes", description: "🐕 Canasta y radar de Memecoins" },
         { command: "callback", description: "🎯 Ver y ajustar callback de salida (ej: /callback PEPE 0.45)" },
+        { command: "alpha", description: "🤖 Centinela Alpha (Recuperación y Caza 20%)" },
+        { command: "lotes", description: "📦 Registro de Lotes 100% aislados (Cero mezcla)" },
         { command: "sugerencias", description: "🧠 Sugerencias Centinela (aplicar/rechazar)" },
         { command: "rechazar", description: "❌ Descartar sugerencia activa" },
         { command: "estrategias", description: "⚙️ Panel y switches de estrategias" },

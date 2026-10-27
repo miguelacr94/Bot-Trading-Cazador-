@@ -576,26 +576,34 @@ export class TrailingMasterBot {
                     feeInBase += parseFloat(f.commission);
             }
             const newQty = grossQty - feeInBase;
-            const oldBuyPrice = pos.buyPrice;
-            const oldInvested = pos.investedUsdt;
-            const oldQty = pos.qty;
-            pos.investedUsdt = oldInvested + spent;
-            pos.qty = oldQty + newQty;
-            pos.buyPrice = pos.investedUsdt / pos.qty;
-            pos.highestPrice = Math.max(pos.highestPrice, pos.buyPrice);
+            const buyPriceThisLot = spent / newQty;
+            const lotIndex = (pos.lotIndex || 1) + 1;
+            const newLotId = `${pos.symbol}_lot_${lotIndex}_${Date.now()}`;
             pos.lastDcaTime = Date.now();
             pos.dcaCount = (pos.dcaCount || 0) + 1;
+            // 🛡️ REGLA DE ORO: CADA COMPRA ES UN LOTE 100% AISLADO (NUNCA COMBINAR)
+            this.activeTrailingPositions.set(newLotId, {
+                id: newLotId,
+                symbol: pos.symbol,
+                lotIndex: lotIndex,
+                buyPrice: buyPriceThisLot,
+                qty: newQty,
+                investedUsdt: spent,
+                highestPrice: buyPriceThisLot,
+                activated: false,
+                buyTime: Date.now(),
+                strategy: "smart_dca",
+                customCallbackPct: pos.customCallbackPct,
+                customTimeframe: pos.customTimeframe
+            });
             this.saveTrailingPositions();
-            const savedPct = ((oldBuyPrice - pos.buyPrice) / oldBuyPrice) * 100;
-            const newTarget = (pos.buyPrice * 1.008).toFixed(4);
-            const alertMsg = `🛡️ <b>¡SMART DCA EJECUTADO CON ÉXITO!</b> 🎯\n\n` +
-                `• <b>Moneda:</b> <b>${pos.symbol}</b>\n` +
-                `• <b>Inyección de seguridad:</b> ${spent.toFixed(2)} USDT (+${newQty.toFixed(4)} ${asset})\n` +
-                `• 📉 <b>Precio entrada anterior:</b> ${fmtPrice(oldBuyPrice)}\n` +
-                `• 🎯 <b>NUEVO PRECIO PROMEDIO:</b> <b>${fmtPrice(pos.buyPrice)}</b> (¡<b>-${savedPct.toFixed(2)}%</b> más bajo!)\n` +
-                `• 💵 <b>Total invertido:</b> ${pos.investedUsdt.toFixed(2)} USDT\n` +
-                `• 🏁 <b>Nueva meta de ganancia (+0.8%):</b> ${newTarget}\n\n` +
-                `💡 <i>¡Excelente movimiento defensivo! El precio de salida quedó mucho más cerca y saldremos en ganancia con un rebote menor.</i>`;
+            const newTarget = (buyPriceThisLot * 1.008).toFixed(4);
+            const alertMsg = `🛡️ <b>¡SMART DCA: NUEVO LOTE INDEPENDIENTE CREADO!</b> 🎯\n\n` +
+                `• <b>Moneda:</b> <b>${pos.symbol}</b> (Lote #${lotIndex})\n` +
+                `• 💵 <b>Inversión de este lote:</b> ${spent.toFixed(2)} USDT (+${newQty.toFixed(4)} ${asset})\n` +
+                `• 🎯 <b>Precio de compra de este lote:</b> <b>${fmtPrice(buyPriceThisLot)}</b>\n` +
+                `• 🏁 <b>Meta de salida (+0.8%):</b> ${newTarget}\n\n` +
+                `🔒 <i>LOTE AISLADO: Cuando este lote rebote a ${newTarget}, se venderá ÚNICAMENTE este lote con ganancia limpia. Tus lotes anteriores quedan intactos esperando su propia meta sin arrastrar pérdidas.</i>`;
             await this.notifier.send(alertMsg);
             console.log(alertMsg.replace(/<[^>]*>/g, ""));
             return true;
@@ -604,6 +612,126 @@ export class TrailingMasterBot {
             const msg = e.response?.data?.msg || e.message;
             console.error(`❌ Error ejecutando Smart DCA en ${pos.symbol}:`, msg);
             await this.notifier.send(`⚠️ <i>No se pudo ejecutar Smart DCA en ${pos.symbol}: ${msg}</i>`);
+            return false;
+        }
+    }
+    /**
+     * 🤖 ESTRATEGIA AUTÓNOMA CENTINELA ALPHA (Recuperación y Caza Institucional)
+     * Gestiona de forma 100% independiente el 20% del presupuesto para recuperar el capital.
+     */
+    async evaluateCentinelaAlpha(usdt) {
+        try {
+            if (!this.controls.strategies?.centinela_alpha)
+                return false;
+            // Verificar si ya tenemos una posición abierta gestionada por Centinela Alpha
+            for (const p of this.activeTrailingPositions.values()) {
+                if (p.strategy === "centinela_alpha")
+                    return false;
+            }
+            if (usdt < 12)
+                return false;
+            const allocPct = this.controls.allocations?.centinela_alpha || 20;
+            const budgetUsdt = Math.min(30, Math.max(12, Math.floor(usdt * (allocPct / 100) * 100) / 100));
+            const candidates = [...WATCHLIST, ...MEME_WATCHLIST];
+            let bestAsset = null;
+            for (const sym of candidates) {
+                let isAlreadyOpen = false;
+                for (const p of this.activeTrailingPositions.values()) {
+                    if (p.symbol === sym) {
+                        isAlreadyOpen = true;
+                        break;
+                    }
+                }
+                if (isAlreadyOpen || this.buyWatches.has(sym))
+                    continue;
+                const isMeme = MEME_WATCHLIST.includes(sym) || sym.includes("PEPE");
+                const tf = isMeme ? "15m" : "1h";
+                try {
+                    const klines = await this.client.klines(sym, tf, { limit: 35 });
+                    const data = klines.data;
+                    const opens = data.map((k) => parseFloat(k[1]));
+                    const highs = data.map((k) => parseFloat(k[2]));
+                    const lows = data.map((k) => parseFloat(k[3]));
+                    const closes = data.map((k) => parseFloat(k[4]));
+                    const curPrice = closes[closes.length - 1];
+                    const rsi = this.calculateRSI(closes, 14);
+                    const maxRecent = Math.max(...highs.slice(-20));
+                    const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
+                    const lastIdx = closes.length - 1;
+                    const candleRange = highs[lastIdx] - lows[lastIdx];
+                    const lowerWick = Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx];
+                    const wickRatio = candleRange > 0 ? (lowerWick / candleRange) : 0;
+                    if ((rsi <= 44 || dropPct >= 1.8) && (wickRatio >= 0.25 || rsi <= 35)) {
+                        let score = (45 - rsi) * 2 + (wickRatio * 30) + (dropPct * 1.5);
+                        if (isMeme)
+                            score += 5;
+                        if (!bestAsset || score > bestAsset.score) {
+                            bestAsset = {
+                                symbol: sym,
+                                score,
+                                reason: `RSI ${rsi.toFixed(1)} en ${tf.toUpperCase()} con rechazo inferior del ${(wickRatio * 100).toFixed(0)}% y caída de -${dropPct.toFixed(1)}%`,
+                                rsi,
+                                curPrice,
+                                tf,
+                                callback: isMeme ? 0.45 : 0.25
+                            };
+                        }
+                    }
+                }
+                catch (e) { }
+            }
+            if (!bestAsset)
+                return false;
+            console.log(`🤖 [CENTINELA ALPHA] Oportunidad detectada en ${bestAsset.symbol}: ${bestAsset.reason}`);
+            const buyStr = (budgetUsdt - 0.15).toFixed(2);
+            const buyRes = await this.client.newOrder(bestAsset.symbol, "BUY", "MARKET", {
+                quoteOrderQty: buyStr,
+                newOrderRespType: "FULL",
+                recvWindow: 60000
+            });
+            const asset = bestAsset.symbol.replace("USDT", "");
+            const spent = parseFloat(buyRes.data.cummulativeQuoteQty);
+            const grossQty = parseFloat(buyRes.data.executedQty);
+            let feeInBase = 0;
+            for (const f of buyRes.data.fills || []) {
+                if (f.commissionAsset === asset)
+                    feeInBase += parseFloat(f.commission);
+            }
+            const netQty = grossQty - feeInBase;
+            const buyPrice = spent / netQty;
+            const posId = `${bestAsset.symbol}_alpha_${Date.now()}`;
+            this.activeTrailingPositions.set(posId, {
+                id: posId,
+                symbol: bestAsset.symbol,
+                buyPrice,
+                qty: netQty,
+                investedUsdt: spent,
+                highestPrice: buyPrice,
+                activated: false,
+                buyTime: Date.now(),
+                strategy: "centinela_alpha",
+                customCallbackPct: bestAsset.callback,
+                customTimeframe: bestAsset.tf
+            });
+            this.saveTrailingPositions();
+            const targetGain = (buyPrice * 1.008).toFixed(4);
+            const rec = this.controls.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
+            const msg = `🤖 <b>[CENTINELA ALPHA: ENTRADA DE RECUPERACIÓN]</b> 🎯\n\n` +
+                `• <b>Moneda seleccionada:</b> <b>${bestAsset.symbol}</b>\n` +
+                `• 💵 <b>Inversión autónoma:</b> ${spent.toFixed(2)} USDT (20% del portafolio)\n` +
+                `• ⏱️ <b>Marco de velas:</b> ${bestAsset.tf.toUpperCase()}\n` +
+                `• 🎯 <b>Entrada:</b> ${fmtPrice(buyPrice)} | <b>Meta mínima (+0.8%):</b> ${targetGain}\n` +
+                `• 📊 <b>Fundamento del Centinela:</b> <i>${bestAsset.reason}</i>\n\n` +
+                `🛡️ <b>Misión de Recuperación:</b>\n` +
+                `• Meta fijada: <b>${rec.targetUsdt.toFixed(2)} USDT</b>\n` +
+                `• Recuperado hasta ahora: <b>+${rec.recoveredUsdt.toFixed(2)} USDT</b>\n\n` +
+                `🔒 <i>Sin Stop-Loss: Spot puro con cero riesgo de venta en pérdidas.</i>`;
+            await this.notifier.send(msg);
+            console.log(msg.replace(/<[^>]*>/g, ""));
+            return true;
+        }
+        catch (e) {
+            console.error("Error en Centinela Alpha:", e.message);
             return false;
         }
     }
@@ -752,7 +880,7 @@ export class TrailingMasterBot {
                 const curPrice = parseFloat(ticker.data.price);
                 const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
                 // 0. BLINDAJE SPOT ESTRICTO: NUNCA vender a pérdida salvo activación explícita (=== true)
-                const stratSlEnabled = !!(pos.strategy && this.controls.strategySettings?.[pos.strategy]?.stopLossEnabled === true);
+                const stratSlEnabled = !!(pos.strategy && (this.controls.strategySettings?.[pos.strategy]?.stopLossEnabled === true));
                 const globalSlEnabled = this.controls.stopLossEnabled === true;
                 const slEnabled = globalSlEnabled || stratSlEnabled;
                 const slPct = (pos.strategy && this.controls.strategySettings?.[pos.strategy]?.stopLossPct) || this.controls.stopLossPct || 8.0;
@@ -894,6 +1022,16 @@ export class TrailingMasterBot {
             const avgSell = grossUsdt / parseFloat(sellRes.data.executedQty);
             const costBasis = pos.investedUsdt * (sellQty / pos.qty);
             const profitUsdt = grossUsdt - sellFee - costBasis;
+            if (profitUsdt > 0) {
+                if (!this.controls.recoveryTracker) {
+                    this.controls.recoveryTracker = { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
+                }
+                if (pos.strategy === "centinela_alpha") {
+                    this.controls.recoveryTracker.recoveredUsdt += profitUsdt;
+                    this.controls.recoveryTracker.tradesCount += 1;
+                    this.saveStrategyControls();
+                }
+            }
             const netPct = (profitUsdt / costBasis) * 100;
             const sign = profitUsdt >= 0 ? "+" : "";
             let alertMsg = "";
@@ -1155,6 +1293,63 @@ export class TrailingMasterBot {
             const cmd = parts[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const arg1 = parts[1]?.toUpperCase();
             const arg2 = parts[2];
+            if (cmd === "/alpha" || cmd === "alpha") {
+                const rec = this.controls.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
+                const pct = Math.min(100, (rec.recoveredUsdt / rec.targetUsdt) * 100);
+                let alphaPos = null;
+                for (const p of this.activeTrailingPositions.values()) {
+                    if (p.strategy === "centinela_alpha") {
+                        alphaPos = p;
+                        break;
+                    }
+                }
+                let msg = `🤖 <b>ESTRATEGIA AUTÓNOMA CENTINELA ALPHA</b> 🛡️\n\n` +
+                    `<i>Estrategia con 20% del presupuesto dedicada a recuperar los $2.30 USDT con gestión autónoma de parámetros.</i>\n\n` +
+                    `📊 <b>ESTADO DE LA MISIÓN:</b>\n` +
+                    `• Meta fijada: <b>${rec.targetUsdt.toFixed(2)} USDT</b>\n` +
+                    `• Recuperado hasta hoy: <b>+${rec.recoveredUsdt.toFixed(2)} USDT</b> (${pct.toFixed(1)}%)\n` +
+                    `• Operaciones cerradas en verde: ${rec.tradesCount}\n\n`;
+                if (alphaPos) {
+                    let curT = alphaPos.buyPrice;
+                    try {
+                        curT = parseFloat((await this.client.tickerPrice(alphaPos.symbol)).data.price);
+                    }
+                    catch (e) { }
+                    const gPct = ((curT - alphaPos.buyPrice) / alphaPos.buyPrice) * 100;
+                    msg += `🎯 <b>OPERACIÓN ALPHA EN CURSO:</b>\n` +
+                        `• Moneda: <b>${alphaPos.symbol}</b>\n` +
+                        `• Invertido: ${alphaPos.investedUsdt.toFixed(2)} USDT\n` +
+                        `• Entrada: ${fmtPrice(alphaPos.buyPrice)} | Actual: ${fmtPrice(curT)} (${gPct >= 0 ? "🟢 +" : "🔴 "}${gPct.toFixed(2)}%)\n` +
+                        `• Pico: ${fmtPrice(alphaPos.highestPrice)} | Estado: ${alphaPos.activated ? "🚀 Trailing Activo" : "⏳ Buscando +0.8%"}\n`;
+                }
+                else {
+                    msg += `🔍 <i>Sin operación Alpha abierta en este momento. Escaneando el radar en busca del mejor activo con rebote institucional.</i>\n`;
+                }
+                return msg;
+            }
+            if (cmd === "/lotes" || cmd === "lotes") {
+                let msg = `📦 <b>REGISTRO DE LOTES INDEPENDIENTES</b> 🛡️\n\n` +
+                    `<i>Cada compra opera como una posición 100% aislada. Cero combinaciones y cero arrastre de pérdidas.</i>\n\n`;
+                if (this.activeTrailingPositions.size === 0) {
+                    msg += `• <i>No hay lotes abiertos actualmente.</i>\n`;
+                }
+                else {
+                    for (const [id, p] of this.activeTrailingPositions.entries()) {
+                        const lotNum = p.lotIndex ? `Lote #${p.lotIndex}` : "Lote Único";
+                        let curP = p.buyPrice;
+                        try {
+                            curP = parseFloat((await this.client.tickerPrice(p.symbol)).data.price);
+                        }
+                        catch (e) { }
+                        const gP = ((curP - p.buyPrice) / p.buyPrice) * 100;
+                        msg += `🪙 <b>${p.symbol}</b> (${lotNum}) — <i>[${p.strategy || "trailing"}]</i>\n` +
+                            `• Invertido: ${p.investedUsdt.toFixed(2)} USDT | Cantidad: ${p.qty}\n` +
+                            `• Entrada: ${fmtPrice(p.buyPrice)} | Actual: ${fmtPrice(curP)} (${gP >= 0 ? "🟢 +" : "🔴 "}${gP.toFixed(2)}%)\n` +
+                            `• Pico: ${fmtPrice(p.highestPrice)} | ${p.activated ? "🚀 Trailing Activo" : "⏳ Esperando +0.8%"}\n\n`;
+                    }
+                }
+                return msg;
+            }
             if (cmd === "/callback" || cmd === "callback") {
                 const targetSym = arg1 ? (arg1.endsWith("USDT") ? arg1 : arg1 + "USDT") : null;
                 const valNum = arg2 ? parseFloat(arg2) : null;
@@ -2524,6 +2719,11 @@ export class TrailingMasterBot {
             if (usdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
                 // A) Primero evaluar Smart DCA en posiciones activas que hayan caído
                 const dcaTriggered = await this.checkSmartDcaOpportunities(usdt);
+                // B) Centinela Alpha (Estrategia Autónoma de Recuperación con 20% del presupuesto)
+                let alphaTriggered = false;
+                if (!dcaTriggered && this.controls.strategies?.centinela_alpha) {
+                    alphaTriggered = await this.evaluateCentinelaAlpha(usdt);
+                }
                 // B) Si estamos en Fin de Semana y Cazador Weekend está activo:
                 let weekendTriggered = false;
                 if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && this.activeTrailingPositions.size < 5) {
