@@ -232,10 +232,25 @@ export class DashboardServer {
     } catch(e) {}
   }
 
-  private getCallbackPct(symbol: string): number {
-    if (symbol.includes("PEPE")) return 0.55;
-    if (symbol.includes("AVAX")) return 0.45;
-    return 0.30;
+  private getCallbackPct(symbol: string, pos?: any): number {
+    if (pos && typeof pos.customCallbackPct === "number" && pos.customCallbackPct > 0) {
+      return pos.customCallbackPct;
+    }
+    const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+    if (fs.existsSync(ctrlFile)) {
+      try {
+        const controls = JSON.parse(fs.readFileSync(ctrlFile, "utf-8"));
+        if (controls.trailingCallbacks && typeof controls.trailingCallbacks[symbol] === "number") {
+          return controls.trailingCallbacks[symbol];
+        }
+        if (controls.trailingCallbacks && typeof controls.trailingCallbacks["default"] === "number") {
+          return controls.trailingCallbacks["default"];
+        }
+      } catch(e) {}
+    }
+    if (symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) return 0.45;
+    if (symbol.includes("AVAX") || symbol.includes("SOL")) return 0.35;
+    return 0.25;
   }
 
   /** Construye la respuesta a partir de la caché (síncrono, instantáneo) */
@@ -252,7 +267,7 @@ export class DashboardServer {
       const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
       const progressPct = ((curPrice - pos.buyPrice) / (target08 - pos.buyPrice)) * 100;
       const pnlUsdt = pos.qty * curPrice - pos.investedUsdt;
-      const callback = this.getCallbackPct(symbol);
+      const callback = this.getCallbackPct(symbol, pos);
       totalInvested += pos.investedUsdt;
       positionsValue += pos.qty * curPrice;
       return {
@@ -270,6 +285,8 @@ export class DashboardServer {
         highestPrice: pos.highestPrice,
         peakGainPct: ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100,
         stopPrice: pos.highestPrice * (1 - callback / 100),
+        callbackPct: callback,
+        isCustomCallback: !!pos.customCallbackPct,
         activated: !!pos.activated
       };
     });
@@ -598,6 +615,53 @@ export class DashboardServer {
             }
           } catch(e: any) {
             res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+
+            if (parsedUrl.pathname === "/api/strategies/callback" && req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => body += chunk);
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const sym = data.symbol ? (data.symbol.endsWith("USDT") || data.symbol === "default" ? data.symbol : data.symbol + "USDT") : null;
+            const cbPct = data.callbackPct !== undefined ? Math.max(0.10, Math.min(3.0, parseFloat(data.callbackPct))) : null;
+
+            if (!sym || cbPct === null) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Símbolo y callbackPct (0.10% a 3.00%) requeridos." }));
+              return;
+            }
+
+            const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+            const controls = fs.existsSync(ctrlFile) ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8")) : {};
+            if (!controls.trailingCallbacks) controls.trailingCallbacks = {};
+            controls.trailingCallbacks[sym] = cbPct;
+            controls.updatedAt = Date.now();
+            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+
+            // Si la posición está abierta en .trailing-positions.json, actualizarla también
+            const posFile = path.resolve(process.cwd(), ".trailing-positions.json");
+            if (fs.existsSync(posFile)) {
+              try {
+                const positions = JSON.parse(fs.readFileSync(posFile, "utf-8"));
+                const map = new Map(positions);
+                if (map.has(sym)) {
+                  const p: any = map.get(sym);
+                  p.customCallbackPct = cbPct;
+                  map.set(sym, p);
+                  fs.writeFileSync(posFile, JSON.stringify(Array.from(map.entries()), null, 2), "utf-8");
+                }
+              } catch(e) {}
+            }
+
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: true, symbol: sym, callbackPct: cbPct }));
+          } catch(e: any) {
+            res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: e.message }));
           }
         });

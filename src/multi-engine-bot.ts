@@ -57,6 +57,7 @@ interface ActivePosition {
   lastDcaTime?: number;
   dcaCount?: number;
   strategy?: "trailing_rebound" | "smart_dca" | "micro_grid" | "cazador_weekend";
+  customCallbackPct?: number;
 }
 
 export interface StrategySetting {
@@ -98,6 +99,7 @@ export interface StrategyControls {
     micro_grid: number;
     cazador_weekend: number;
   };
+  trailingCallbacks?: Record<string, number>;
   strategySettings?: {
     trailing_rebound: StrategySetting;
     smart_dca: StrategySetting;
@@ -240,11 +242,26 @@ export class TrailingMasterBot {
     }
   }
 
-  public getCallbackPct(symbol: string): number {
-    // Callbacks optimizados y estrictos para capturar picos reales sin regalar ganancias al retroceder
-    if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE")) return 0.25; // Memecoins: 0.25% para asegurar el pico
-    if (symbol.includes("AVAX")) return 0.25; // Ajustado de 0.45% a 0.25%
-    return 0.20; // Monedas mayores estándar (ETH, SOL, BTC, etc.)
+  public getCallbackPct(symbol: string, pos?: ActivePosition): number {
+    // 1. Prioridad: Callback individual configurado en la posición activa
+    if (pos && typeof pos.customCallbackPct === "number" && pos.customCallbackPct > 0) {
+      return pos.customCallbackPct;
+    }
+    // 2. Prioridad: Override por símbolo en controles (.strategy-controls.json)
+    if (this.controls.trailingCallbacks && typeof this.controls.trailingCallbacks[symbol] === "number") {
+      return this.controls.trailingCallbacks[symbol];
+    }
+    // 3. Prioridad: Override global 'default'
+    if (this.controls.trailingCallbacks && typeof this.controls.trailingCallbacks["default"] === "number") {
+      return this.controls.trailingCallbacks["default"];
+    }
+    // 4. Valores por defecto adaptados por volatilidad y categoría de activo:
+    // • Memecoins: 0.45% (balance óptimo entre absorber micro-ruido de velas y amarrar ganancias)
+    // • Medias (AVAX/SOL): 0.35%
+    // • Clásicas (ETH/BTC): 0.25%
+    if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE")) return 0.45;
+    if (symbol.includes("AVAX") || symbol.includes("SOL")) return 0.35;
+    return 0.25;
   }
 
   /**
@@ -852,7 +869,7 @@ export class TrailingMasterBot {
           // Si el pico subió al menos un 0.12%, avisar a Telegram
           const jumpPct = ((curPrice - oldPeak) / oldPeak) * 100;
           if (jumpPct >= 0.12) {
-            const callback = this.getCallbackPct(symbol);
+            const callback = this.getCallbackPct(symbol, pos);
             const stopPrice = curPrice * (1 - callback / 100);
             const minLockedGain = ((stopPrice - pos.buyPrice) / pos.buyPrice) * 100;
             const peakAlert = `📈 <b>¡NUEVO PICO ALCANZADO: ${symbol}!</b> 🚀\n\n` +
@@ -868,7 +885,7 @@ export class TrailingMasterBot {
         if (pos.activated) {
           const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
           const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
-          const callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol);
+          const callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol, pos);
           const minGain = pos.strategy === "micro_grid" ? 0.35 : 0.80; // Blindado a +0.80% mínimo para no cerrar con migajas
           const hitCallback = dropFromPeak >= callback && gainPct >= minGain;
 
@@ -1240,7 +1257,71 @@ export class TrailingMasterBot {
       const arg1 = parts[1]?.toUpperCase();
       const arg2 = parts[2];
 
-            if (cmd === "/menu" || cmd === "menu" || cmd === "/start") {
+                  if (cmd === "/callback" || cmd === "callback") {
+        const targetSym = arg1 ? (arg1.endsWith("USDT") ? arg1 : arg1 + "USDT") : null;
+        const valNum = arg2 ? parseFloat(arg2) : null;
+
+        // Si se envió un valor numérico para actualizar (ej: /callback PEPE 0.45 o /callback default 0.40)
+        if (targetSym && valNum !== null && !isNaN(valNum)) {
+          if (valNum < 0.10 || valNum > 3.0) {
+            return "⚠️ <b>Rango no válido:</b> El callback debe estar entre 0.10% y 3.00%.";
+          }
+
+          if (!this.controls.trailingCallbacks) {
+            this.controls.trailingCallbacks = {};
+          }
+
+          if (targetSym === "DEFAULTUSDT" || targetSym === "DEFAULT") {
+            this.controls.trailingCallbacks["default"] = valNum;
+          } else {
+            this.controls.trailingCallbacks[targetSym] = valNum;
+            // Si la posición está actualmente abierta, actualizar en vivo en la posición
+            const openPos = this.activeTrailingPositions.get(targetSym);
+            if (openPos) {
+              openPos.customCallbackPct = valNum;
+              this.saveTrailingPositions();
+            }
+          }
+
+          this.saveStrategyControls();
+
+          return `🎯 <b>CALLBACK TRAILING ACTUALIZADO</b> ✅\n\n` +
+            `• <b>Destino:</b> ${targetSym === "DEFAULTUSDT" ? "Global por Defecto" : targetSym}\n` +
+            `• <b>Nuevo Callback:</b> <b>${valNum.toFixed(2)}%</b>\n` +
+            `• 🛡️ <b>Efecto:</b> El bot permitirá un retroceso de exactamente ${valNum.toFixed(2)}% desde el pico más alto antes de liquidar con ganancia asegurada.\n\n` +
+            `<i>Guardado de inmediato en .strategy-controls.json y en memoria activa.</i>`;
+        }
+
+        // Si no se pasó argumento o solo el símbolo, mostrar estado y tabla de coherencia
+        let msg = `🎯 <b>PANEL DE CALLBACKS TRAILING INTELIGENTES</b> 🕹️\n\n`;
+        msg += `<i>El Callback es el retroceso permitido desde el pico más alto antes de disparar la venta.</i>\n\n`;
+
+        msg += `📊 <b>POSICIONES ACTIVAS VIVAS:</b>\n`;
+        if (this.activeTrailingPositions.size === 0) {
+          msg += `• <i>No hay posiciones abiertas en este momento.</i>\n`;
+        } else {
+          for (const [sym, p] of this.activeTrailingPositions.entries()) {
+            const cb = this.getCallbackPct(sym, p);
+            const stop = p.highestPrice * (1 - cb / 100);
+            const isCustom = p.customCallbackPct ? "(Personalizado)" : "(Auto/Default)";
+            msg += `• <b>${sym}:</b> ${cb.toFixed(2)}% ${isCustom}\n` +
+                   `  └ Pico: ${fmtPrice(p.highestPrice)} | Gatillo Venta: ${fmtPrice(stop)}\n`;
+          }
+        }
+
+        msg += `\n🧭 <b>VALORES COHERENTES RECOMENDADOS:</b>\n` +
+               `• 🐕 <b>Memecoins (PEPE, DOGE, BONK):</b> 0.40% – 0.50% <i>(Absorbe micro-ruido de velas)</i>\n` +
+               `• 🔺 <b>Medianas (AVAX, SOL):</b> 0.30% – 0.35% <i>(Volatilidad equilibrada)</i>\n` +
+               `• 🔷 <b>Mayores (ETH, BTC):</b> 0.20% – 0.25% <i>(Libros profundos, salida rápida)</i>\n\n` +
+               `⚙️ <b>CÓMO MODIFICARLO AL INSTANTE:</b>\n` +
+               `• <code>/callback PEPE 0.45</code> — Asigna 0.45% a PEPE\n` +
+               `• <code>/callback AVAX 0.30</code> — Asigna 0.30% a AVAX\n` +
+               `• <code>/callback default 0.40</code> — Cambia el default general\n`;
+
+        return msg;
+      }
+
+      if (cmd === "/menu" || cmd === "menu" || cmd === "/start") {
         return `📱 <b>CENTRO DE CONTROL MULTI-ESTRATEGIA SPOT</b> 🕹️\n\n` +
           `<b>⚙️ MOTORES Y ESTRATEGIAS:</b>\n` +
           `• /estrategias — <i>Panel general y switches de motores</i>\n` +
@@ -1248,7 +1329,7 @@ export class TrailingMasterBot {
           `• /asignar — <i>Configurar % (ej: /asignar 40 25 0 35)</i>\n` +
           `• /regimen — <i>Diagnóstico de volatilidad y Día Quieto</i>\n` +
           `• /weekend — <i>Estado y radar de Cazador Weekend</i>\n` +
-          `• /memes — <i>Canasta y radar de Memecoins (Top 5)</i>\n` +
+          `• /memes — <i>Canasta y radar de Memecoins (Top 5)</i>\n• /callback — <i>Ver y calibrar holgura de salida por moneda</i>\n` +
           `• /motores — <i>Parámetros técnicos de Trailing Buy/Sell</i>\n\n` +
 
           `<b>🛡️ GESTIÓN DE RIESGO Y RADAR:</b>\n` +
@@ -1728,7 +1809,7 @@ export class TrailingMasterBot {
 
             const curGain = (((cur - p.buyPrice) / p.buyPrice) * 100);
             const peakGain = (((p.highestPrice - p.buyPrice) / p.buyPrice) * 100);
-            const stopPrice = p.highestPrice * (1 - this.getCallbackPct(sym) / 100);
+            const stopPrice = p.highestPrice * (1 - this.getCallbackPct(sym, p) / 100);
             const distToStop = Math.abs(cur - stopPrice);
             const target08 = p.buyPrice * 1.008;
 

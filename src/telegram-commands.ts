@@ -24,6 +24,7 @@ export class TelegramCommands {
         // Menú y Estrategias
         { command: "menu", description: "📋 Centro de comandos completo" },
         { command: "memes", description: "🐕 Canasta y radar de Memecoins" },
+        { command: "callback", description: "🎯 Ver y ajustar callback de salida (ej: /callback PEPE 0.45)" },
         { command: "sugerencias", description: "🧠 Sugerencias Centinela (aplicar/rechazar)" },
         { command: "rechazar", description: "❌ Descartar sugerencia activa" },
         { command: "estrategias", description: "⚙️ Panel y switches de estrategias" },
