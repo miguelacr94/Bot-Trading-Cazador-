@@ -15,11 +15,8 @@ node_modules/
 # Compilación y caché
 *.tsbuildinfo
 .DS_Store
-.trailing-positions.json
 
-.trailing-buys.json
 
 # Controles locales y oportunidades
-.strategy-controls.json
 .ignored-dca.json
 .pending-opportunity.json

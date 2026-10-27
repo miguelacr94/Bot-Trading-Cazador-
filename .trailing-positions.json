@@ -1,0 +1,38 @@
+[
+  [
+    "ETHUSDT",
+    {
+      "symbol": "ETHUSDT",
+      "buyPrice": 2403.05,
+      "qty": 0.0067668,
+      "investedUsdt": 16.26,
+      "highestPrice": 2412.02,
+      "activated": false,
+      "buyTime": 1792677217622
+    }
+  ],
+  [
+    "AVAXUSDT",
+    {
+      "symbol": "AVAXUSDT",
+      "buyPrice": 9.142,
+      "qty": 10.65767154,
+      "investedUsdt": 97.43243321868,
+      "highestPrice": 9.142,
+      "activated": false,
+      "buyTime": 1792762758204
+    }
+  ],
+  [
+    "PEPEUSDT",
+    {
+      "symbol": "PEPEUSDT",
+      "buyPrice": 0.00000438,
+      "qty": 12439601.95,
+      "investedUsdt": 54.485456541000005,
+      "highestPrice": 0.00000444,
+      "activated": true,
+      "buyTime": 1793113916731
+    }
+  ]
+]

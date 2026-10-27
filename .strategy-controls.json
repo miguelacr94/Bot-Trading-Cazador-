@@ -1,0 +1,122 @@
+{
+  "strategies": {
+    "trailing_rebound": true,
+    "smart_dca": true,
+    "micro_grid": false,
+    "cazador_weekend": false
+  },
+  "autoPilot": true,
+  "approvalTimeoutSec": 180,
+  "updatedAt": 1793118967173,
+  "allocations": {
+    "trailing_rebound": 75,
+    "smart_dca": 25,
+    "micro_grid": 0,
+    "cazador_weekend": 0
+  },
+  "baseAllocations": {
+    "trailing_rebound": 75,
+    "smart_dca": 25,
+    "micro_grid": 0,
+    "cazador_weekend": 0
+  },
+  "aiEnabled": false,
+  "gridIgnoredUntil": 1793150252980,
+  "stopLossEnabled": false,
+  "stopLossPct": 4,
+  "timeframe": "1h",
+  "cashReservePct": 25,
+  "maxPerCoinPct": 30,
+  "strategySettings": {
+    "trailing_rebound": {
+      "timeframe": "1h",
+      "stopLossEnabled": false,
+      "stopLossPct": 4
+    },
+    "smart_dca": {
+      "timeframe": "4h",
+      "stopLossEnabled": false,
+      "stopLossPct": 6
+    },
+    "micro_grid": {
+      "timeframe": "15m",
+      "stopLossEnabled": false,
+      "stopLossPct": 2
+    },
+    "cazador_weekend": {
+      "timeframe": "1h",
+      "stopLossEnabled": false,
+      "stopLossPct": 5
+    }
+  },
+  "suggestions": {
+    "trailing_rebound": {
+      "timeframe": "1h",
+      "stopLossPct": 4,
+      "reason": "Mercado lateral / Compresión de rango (1.5%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
+      "criterios": [
+        "Rango 24h Bitcoin comprimido: 1.51% (< 2.0%)",
+        "Sesión: Wall Street / New York (Máxima Liquidez y Volumen)",
+        "Radar en 1H para filtrar falso ruido y trampas de mercado lateral"
+      ],
+      "porQue": "En baja volatilidad y canales estrechos, operar en velas cortas (15m) genera falsos quiebres y compras en techos locales. Mantener el radar en 1H protege el capital esperando una expansión con volumen institucional real.",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "btcRange24h": 1.5078861972681314,
+      "updatedAt": 1793118967173,
+      "expiresAt": 1793122567173,
+      "isCurrent": true,
+      "status": "applied"
+    },
+    "smart_dca": {
+      "timeframe": "4h",
+      "stopLossPct": 6,
+      "reason": "Soportes mayores de 4H. Tolerancia de promediado segura.",
+      "criterios": [
+        "Soportes estructurales en temporalidad de 4 Horas",
+        "Umbral de caída acumulada ≥ -2.5% desde la compra",
+        "Cooldown de 2 horas entre compras consecutivas"
+      ],
+      "porQue": "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "btcRange24h": 1.5078861972681314,
+      "updatedAt": 1793118967173,
+      "expiresAt": 1793122567173,
+      "isCurrent": true,
+      "status": "applied"
+    },
+    "micro_grid": {
+      "timeframe": "15m",
+      "stopLossPct": 2,
+      "reason": "Día quieto confirmado en Bitcoin (1.5%). Malla activa.",
+      "criterios": [
+        "Compresión de volatilidad extrema: 1.51% (< 2.2%)",
+        "Mercado sin dirección de tendencia (lateral plano)",
+        "Micro-oscilaciones constantes en canales de ±0.5%"
+      ],
+      "porQue": "En días planos donde no hay tendencias grandes, la única forma de generar dólares es con una rejilla de micro-rebotes (+0.45% a +0.60%) en 15m. El Stop-Loss estricto de -2.0% es obligatorio: si el precio rompe el canal hacia abajo, la estrategia debe cortar de inmediato para no quedar atrapada en una caída direccional.",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "btcRange24h": 1.5078861972681314,
+      "updatedAt": 1793118967173,
+      "expiresAt": 1793122567173,
+      "isCurrent": true,
+      "status": "applied"
+    },
+    "cazador_weekend": {
+      "timeframe": "1h",
+      "stopLossPct": 5,
+      "reason": "En espera hasta el viernes a las 17:00 COT.",
+      "criterios": [
+        "Días hábiles de semana (mercados tradicionales abiertos)",
+        "Capital trabajando al 100% en Cazador Trailing"
+      ],
+      "porQue": "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "btcRange24h": 1.5078861972681314,
+      "updatedAt": 1793118967173,
+      "expiresAt": 1793122567173,
+      "isCurrent": true,
+      "status": "applied"
+    }
+  },
+  "rejectedSuggestions": {}
+}
