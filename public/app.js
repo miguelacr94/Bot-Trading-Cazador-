@@ -1225,55 +1225,6 @@
     initAutonomousStrategyControls();
   }, 1000);
 
-  async function tick() {
-    fetchStrategies();
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 5000);
-      const res = await fetch("/api/status", { cache: "no-store", signal: ctrl.signal });
-      clearTimeout(t);
-      if (!res.ok) throw new Error(res.status);
-      const d = await res.json();
-      latestFreeUsdt = (d.portfolio?.usdtFree ?? 0) + (d.portfolio?.usdtEarn ?? 0);
-      renderAuthBanner(d.authError);
-      renderKpis(d);
-
-    // Actualizar barra de recuperación Centinela Alpha
-    const tracker = d.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
-    const target = tracker.targetUsdt || 2.30;
-    const recovered = tracker.recoveredUsdt || 0;
-    const pct = Math.min(100, Math.max(0, (recovered / target) * 100));
-    const remaining = Math.max(0, target - recovered);
-
-    const barEl = $("recovery-progress-bar");
-    const statsEl = $("recovery-stats-text");
-    const remEl = $("recovery-remaining-text");
-
-    if (barEl) barEl.style.width = pct.toFixed(1) + "%";
-    if (statsEl) statsEl.innerHTML = `+${recovered.toFixed(2)} / ${target.toFixed(2)} USDT (${pct.toFixed(0)}%)`;
-    if (remEl) {
-      if (remaining <= 0) {
-        remEl.innerHTML = `<span style="color:#10b981; font-weight:700;">✅ ¡DEUDA 100% SALDADA!</span>`;
-      } else {
-        remEl.textContent = `Faltan ${remaining.toFixed(2)} USDT para saldar (${tracker.tradesCount || 0} operaciones cerradas)`;
-      }
-    }
-
-      renderPositions(d.positions);
-      renderRadar(d.radar);
-      renderHistory(d.recentCycles);
-      setConnection(true, d.pricesFresh);
-    } catch {
-      // Si falla, se conserva lo que hay en pantalla: no se borra nada
-      setConnection(false, false);
-    } finally {
-      setTimeout(tick, 2000);
-    }
-  }
-  tick();
-})();
-
-
   // Renderizar Telemetría del Laboratorio de Futuros (Modo Dev)
   function renderFuturesTelemetry(fut) {
     if (!fut) return;
@@ -1321,10 +1272,10 @@
           return `<tr>
             <td><b>${p.symbol}</b></td>
             <td><b style="color:${sideColor};">${p.side} ${p.leverage}x</b></td>
-            <td>$${p.entryPrice.toFixed(4)}</td>
-            <td><b>$${(p.curPrice || p.entryPrice).toFixed(4)}</b></td>
-            <td style="color:#f87171;">$${p.stopLossPrice.toFixed(4)}</td>
-            <td style="color:#34d399;">$${p.trailingTriggerPrice.toFixed(4)}</td>
+            <td>${p.entryPrice.toFixed(4)}</td>
+            <td><b>${(p.curPrice || p.entryPrice).toFixed(4)}</b></td>
+            <td style="color:#f87171;">${p.stopLossPrice.toFixed(4)}</td>
+            <td style="color:#34d399;">${p.trailingTriggerPrice.toFixed(4)}</td>
             <td><b style="color:${pnlColor};">${pnlSign}${(p.floatingPnlUsdt || 0).toFixed(3)} USDT (${pnlSign}${(p.floatingRoePct || 0).toFixed(2)}%)</b></td>
             <td style="font-size:11px; color:var(--text-muted);">${p.rationale || "Señal Cuantitativa"}</td>
           </tr>`;
@@ -1342,7 +1293,7 @@
         const statusColor = r.status.includes("POSICIÓN") ? "#a78bfa" : (r.status.includes("ABSORCIÓN") ? "#34d399" : (r.status.includes("RECHAZO") ? "#f87171" : "#94a3b8"));
         return `<tr>
           <td><b>${r.symbol}</b></td>
-          <td><b>$${r.price}</b></td>
+          <td><b>${r.price}</b></td>
           <td><b style="color:${trendColor};">${r.trend} (>EMA50)</b></td>
           <td><b style="color:${rsiColor};">${r.rsi15m}</b></td>
           <td>${r.lowerWickPct}%</td>
@@ -1367,8 +1318,8 @@
           <td>${idx + 1}</td>
           <td><b>${t.symbol}</b></td>
           <td><b>${t.side} ${t.leverage}x</b></td>
-          <td>$${t.entryPrice.toFixed(4)}</td>
-          <td>$${t.exitPrice.toFixed(4)}</td>
+          <td>${t.entryPrice.toFixed(4)}</td>
+          <td>${t.exitPrice.toFixed(4)}</td>
           <td>${t.durationMin} min</td>
           <td>${t.feesUsdt.toFixed(4)} USDT</td>
           <td><b style="color:${pnlColor};">${pnlSign}${t.netPnlUsdt.toFixed(3)} USDT</b></td>
@@ -1378,3 +1329,55 @@
       }).join("");
     }
   }
+
+
+  async function tick() {
+    fetchStrategies();
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 5000);
+      const res = await fetch("/api/status", { cache: "no-store", signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) throw new Error(res.status);
+      const d = await res.json();
+      latestFreeUsdt = (d.portfolio?.usdtFree ?? 0) + (d.portfolio?.usdtEarn ?? 0);
+      renderAuthBanner(d.authError);
+      renderKpis(d);
+
+    // Actualizar barra de recuperación Centinela Alpha
+    const tracker = d.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
+    const target = tracker.targetUsdt || 2.30;
+    const recovered = tracker.recoveredUsdt || 0;
+    const pct = Math.min(100, Math.max(0, (recovered / target) * 100));
+    const remaining = Math.max(0, target - recovered);
+
+    const barEl = $("recovery-progress-bar");
+    const statsEl = $("recovery-stats-text");
+    const remEl = $("recovery-remaining-text");
+
+    if (barEl) barEl.style.width = pct.toFixed(1) + "%";
+    if (statsEl) statsEl.innerHTML = `+${recovered.toFixed(2)} / ${target.toFixed(2)} USDT (${pct.toFixed(0)}%)`;
+    if (remEl) {
+      if (remaining <= 0) {
+        remEl.innerHTML = `<span style="color:#10b981; font-weight:700;">✅ ¡DEUDA 100% SALDADA!</span>`;
+      } else {
+        remEl.textContent = `Faltan ${remaining.toFixed(2)} USDT para saldar (${tracker.tradesCount || 0} operaciones cerradas)`;
+      }
+    }
+
+      renderPositions(d.positions);
+      renderRadar(d.radar);
+      renderHistory(d.recentCycles);
+      if (d.futuresTelemetry) {
+        renderFuturesTelemetry(d.futuresTelemetry);
+      }
+      setConnection(true, d.pricesFresh);
+    } catch {
+      // Si falla, se conserva lo que hay en pantalla: no se borra nada
+      setConnection(false, false);
+    } finally {
+      setTimeout(tick, 2000);
+    }
+  }
+  tick();
+})();
