@@ -1,13 +1,14 @@
 {
   "isSimulated": true,
   "enabled": true,
-  "virtualBalanceUsdt": 30.074658300826997,
-  "startingBalanceUsdt": 30,
+  "virtualBalanceUsdt": 100,
+  "startingBalanceUsdt": 100,
   "maxActivePositions": 2,
-  "defaultMarginPerTrade": 10,
-  "defaultLeverage": 2,
+  "defaultMarginPerTrade": 15,
+  "defaultLeverage": 3,
+  "leverageMode": "dynamic",
   "stopLossPct": 1.2,
-  "trailingTriggerPct": 0.8,
-  "trailingCallbackPct": 0.25,
-  "lastScanTime": 1793215051803
+  "trailingTriggerPct": 1.2,
+  "trailingCallbackPct": 0.35,
+  "lastScanTime": 0
 }

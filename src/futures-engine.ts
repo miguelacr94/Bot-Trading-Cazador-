@@ -354,6 +354,7 @@ export class FuturesEngine {
   // --- MOTOR DE MONITOREO DE POSICIONES ABIERTAS ---
 
   public async updatePositions(): Promise<void> {
+    this.state = this.loadState();
     if (this.positions.length === 0) return;
 
     for (let i = this.positions.length - 1; i >= 0; i--) {
@@ -529,6 +530,7 @@ export class FuturesEngine {
   private radarSnapshot: any[] = [];
 
   public async scanMarket(): Promise<void> {
+    this.state = this.loadState(); // Sincronización en vivo con cambios del Dashboard
     if (!this.state.enabled) return;
     if (this.isScanning) return;
     this.isScanning = true;

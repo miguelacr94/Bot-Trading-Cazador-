@@ -1224,6 +1224,25 @@
     initCompactUI();
     initAutonomousStrategyControls();
 
+  const btnReset100 = document.getElementById("btn-reset-fut-100");
+  if (btnReset100) {
+    btnReset100.addEventListener("click", async () => {
+      const ok = confirm("¿Deseas reiniciar la simulación de Futuros con $100.00 USDT limpios y margen estándar de $15 USDT?");
+      if (ok) {
+        try {
+          await fetch("/api/futures/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reset: true, startingBalance: 100, marginPerTrade: 15, leverageMode: "dynamic" })
+          });
+          btnReset100.textContent = "✅ ¡Iniciado en $100!";
+          setTimeout(() => btnReset100.textContent = "🔄 Iniciar con $100 USDT", 2000);
+        } catch(e) {}
+      }
+    });
+  }
+
+
   // Control de Modo Simulado vs Real y Margen de Futuros
   const btnModeSim = document.getElementById("btn-fut-mode-sim");
   const btnModeReal = document.getElementById("btn-fut-mode-real");
@@ -1298,10 +1317,10 @@
     // A. Estadísticas Globales
     const stats = fut.stats || {};
     const initEl = document.getElementById("fut-dev-init-capital");
-    if (initEl) initEl.textContent = "$" + (stats.startingBalanceUsdt || 30).toFixed(2) + " USDT";
+    if (initEl) initEl.textContent = "$" + (stats.startingBalanceUsdt || 100).toFixed(2) + " USDT";
 
     const curEl = document.getElementById("fut-dev-cur-balance");
-    if (curEl) curEl.textContent = "$" + (stats.virtualBalanceUsdt || 30).toFixed(2) + " USDT";
+    if (curEl) curEl.textContent = "$" + (stats.virtualBalanceUsdt || 100).toFixed(2) + " USDT";
 
     const realPnlEl = document.getElementById("fut-dev-realized-pnl");
     if (realPnlEl) {

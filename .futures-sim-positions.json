@@ -14,8 +14,8 @@
     "trailingTriggerPct": 0.8,
     "trailingCallbackPct": 0.25,
     "trailingActive": true,
-    "peakPrice": 81207.2,
-    "trailingStopPrice": 81004.182,
+    "peakPrice": 81287.9,
+    "trailingStopPrice": 81084.68025,
     "openTime": 1793203077759,
     "status": "OPEN",
     "rationale": "Macro 1H alcista (>EMA50) + RSI 15M (34.7) en sobreventa con mecha de absorción del 43%"
