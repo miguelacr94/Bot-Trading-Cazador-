@@ -1227,21 +1227,33 @@
   // Control de Modo Simulado vs Real y Margen de Futuros
   const btnModeSim = document.getElementById("btn-fut-mode-sim");
   const btnModeReal = document.getElementById("btn-fut-mode-real");
+  const inputFutCapital = document.getElementById("input-fut-capital");
   const inputFutMargin = document.getElementById("input-fut-margin");
+  const selectFutLev = document.getElementById("select-fut-lev");
   const btnSaveFutCfg = document.getElementById("btn-save-fut-config");
 
-  async function updateFuturesConfig(isSim, margin) {
+  async function updateFuturesConfig(isSim, margin, capital, levMode) {
     try {
+      const payload = {
+        isSimulated: isSim,
+        marginPerTrade: margin,
+        startingBalance: capital,
+        leverageMode: levMode
+      };
       const res = await fetch("/api/futures/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isSimulated: isSim, marginPerTrade: margin })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.success) {
         if (btnSaveFutCfg) {
-          btnSaveFutCfg.textContent = "✅ Guardado";
-          setTimeout(() => btnSaveFutCfg.textContent = "💾 Aplicar", 2000);
+          btnSaveFutCfg.textContent = "✅ ¡Parámetros Aplicados!";
+          btnSaveFutCfg.style.background = "rgba(16,185,129,0.5)";
+          setTimeout(() => {
+            btnSaveFutCfg.textContent = "💾 Aplicar Cambios";
+            btnSaveFutCfg.style.background = "rgba(16,185,129,0.25)";
+          }, 2500);
         }
       }
     } catch (e) {
@@ -1255,7 +1267,7 @@
       btnModeSim.style.color = "#fff";
       btnModeReal.style.background = "transparent";
       btnModeReal.style.color = "#94a3b8";
-      updateFuturesConfig(true, parseFloat(inputFutMargin?.value || "10"));
+      updateFuturesConfig(true, parseFloat(inputFutMargin?.value || "15"), parseFloat(inputFutCapital?.value || "100"), selectFutLev?.value || "dynamic");
     });
 
     btnModeReal.addEventListener("click", () => {
@@ -1265,7 +1277,7 @@
         btnModeReal.style.color = "#000";
         btnModeSim.style.background = "transparent";
         btnModeSim.style.color = "#94a3b8";
-        updateFuturesConfig(false, parseFloat(inputFutMargin?.value || "10"));
+        updateFuturesConfig(false, parseFloat(inputFutMargin?.value || "15"), parseFloat(inputFutCapital?.value || "100"), selectFutLev?.value || "dynamic");
       }
     });
   }
@@ -1273,7 +1285,7 @@
   if (btnSaveFutCfg) {
     btnSaveFutCfg.addEventListener("click", () => {
       const isSim = btnModeSim && btnModeSim.style.background === "rgb(139, 92, 246)";
-      updateFuturesConfig(isSim, parseFloat(inputFutMargin?.value || "10"));
+      updateFuturesConfig(isSim, parseFloat(inputFutMargin?.value || "15"), parseFloat(inputFutCapital?.value || "100"), selectFutLev?.value || "dynamic");
     });
   }
 

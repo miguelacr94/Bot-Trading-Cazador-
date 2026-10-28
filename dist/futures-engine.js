@@ -37,14 +37,15 @@ export class FuturesEngine {
         const defaults = {
             isSimulated: true,
             enabled: true,
-            virtualBalanceUsdt: 30.0,
-            startingBalanceUsdt: 30.0,
+            virtualBalanceUsdt: 100.0,
+            startingBalanceUsdt: 100.0,
             maxActivePositions: 2,
-            defaultMarginPerTrade: 5.0,
-            defaultLeverage: 2,
+            defaultMarginPerTrade: 15.0,
+            defaultLeverage: 3,
+            leverageMode: "dynamic",
             stopLossPct: 1.2,
-            trailingTriggerPct: 0.8,
-            trailingCallbackPct: 0.25,
+            trailingTriggerPct: 1.2,
+            trailingCallbackPct: 0.35,
             lastScanTime: 0
         };
         try {
@@ -104,6 +105,13 @@ export class FuturesEngine {
         if (cfg.marginPerTrade !== undefined && cfg.marginPerTrade >= 5) {
             this.state.defaultMarginPerTrade = parseFloat(String(cfg.marginPerTrade));
         }
+        if (cfg.startingBalance !== undefined && cfg.startingBalance > 0) {
+            this.state.startingBalanceUsdt = parseFloat(String(cfg.startingBalance));
+            this.state.virtualBalanceUsdt = parseFloat(String(cfg.startingBalance));
+        }
+        if (cfg.leverageMode !== undefined) {
+            this.state.leverageMode = cfg.leverageMode;
+        }
         this.saveState();
         return this.state;
     }
@@ -155,6 +163,21 @@ export class FuturesEngine {
         const p = precisionMap[symbol] !== undefined ? precisionMap[symbol] : 2;
         const factor = Math.pow(10, p);
         return Math.floor(qty * factor) / factor;
+    }
+    // Apalancamiento Dinámico Cuantitativo según Volatilidad Institucional
+    getDynamicLeverage(symbol) {
+        if (this.state.leverageMode !== "dynamic")
+            return this.state.defaultLeverage || 3;
+        const levMap = {
+            BTCUSDT: 4, // Gigante, baja volatilidad -> 4x
+            ETHUSDT: 4, // Gigante, baja volatilidad -> 4x
+            SOLUSDT: 3, // Volatilidad media -> 3x
+            BNBUSDT: 3, // Volatilidad media -> 3x
+            XRPUSDT: 3, // Volatilidad media -> 3x
+            AVAXUSDT: 2, // Mayor volatilidad -> 2x
+            DOGEUSDT: 2 // Mayor volatilidad -> 2x
+        };
+        return levMap[symbol] !== undefined ? levMap[symbol] : 3;
     }
     getState() {
         return this.state;
@@ -510,7 +533,7 @@ export class FuturesEngine {
     }
     async openPosition(symbol, side, price, rationale) {
         const margin = this.state.defaultMarginPerTrade;
-        const leverage = this.state.defaultLeverage;
+        const leverage = this.getDynamicLeverage(symbol);
         const notional = margin * leverage;
         // Simular un pequeño slippage de entrada del 0.02%
         const slippage = side === "LONG" ? 1.0002 : 0.9998;

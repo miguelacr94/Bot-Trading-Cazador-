@@ -1,0 +1,20 @@
+[
+  {
+    "id": "sim_fut_1793203078347",
+    "symbol": "ETHUSDT",
+    "side": "LONG",
+    "entryPrice": 2333.326572,
+    "exitPrice": 2353.09,
+    "marginUsdt": 5,
+    "leverage": 2,
+    "notionalUsdt": 10,
+    "openTime": 1793203078347,
+    "closeTime": 1793215059532,
+    "durationMin": 200,
+    "exitReason": "TRAILING_TP",
+    "grossPnlUsdt": 0.08470065115257344,
+    "feesUsdt": 0.010042350325576287,
+    "netPnlUsdt": 0.07465830082699715,
+    "roePct": 1.493166016539943
+  }
+]

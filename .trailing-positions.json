@@ -60,17 +60,5 @@
       "buyTime": 1793189225126,
       "customCallbackPct": 0.45
     }
-  ],
-  [
-    "BONKUSDT",
-    {
-      "symbol": "BONKUSDT",
-      "buyPrice": 0.00000308,
-      "qty": 11530664.21,
-      "investedUsdt": 35.5144457668,
-      "highestPrice": 0.00000308,
-      "activated": false,
-      "buyTime": 1793189746403
-    }
   ]
 ]
