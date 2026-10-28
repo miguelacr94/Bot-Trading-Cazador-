@@ -1272,3 +1272,109 @@
   }
   tick();
 })();
+
+
+  // Renderizar Telemetría del Laboratorio de Futuros (Modo Dev)
+  function renderFuturesTelemetry(fut) {
+    if (!fut) return;
+
+    // A. Estadísticas Globales
+    const stats = fut.stats || {};
+    const initEl = document.getElementById("fut-dev-init-capital");
+    if (initEl) initEl.textContent = "$" + (stats.startingBalanceUsdt || 30).toFixed(2) + " USDT";
+
+    const curEl = document.getElementById("fut-dev-cur-balance");
+    if (curEl) curEl.textContent = "$" + (stats.virtualBalanceUsdt || 30).toFixed(2) + " USDT";
+
+    const realPnlEl = document.getElementById("fut-dev-realized-pnl");
+    if (realPnlEl) {
+      const pnl = stats.realizedPnlUsdt || 0;
+      realPnlEl.textContent = (pnl >= 0 ? "+" : "") + pnl.toFixed(3) + " USDT";
+      realPnlEl.style.color = pnl >= 0 ? "#34d399" : "#f87171";
+    }
+
+    const floatPnlEl = document.getElementById("fut-dev-floating-pnl");
+    if (floatPnlEl) {
+      const fpnl = stats.floatingPnlUsdt || 0;
+      floatPnlEl.textContent = (fpnl >= 0 ? "+" : "") + fpnl.toFixed(3) + " USDT";
+      floatPnlEl.style.color = fpnl >= 0 ? "#34d399" : "#f87171";
+    }
+
+    const wrEl = document.getElementById("fut-dev-winrate");
+    if (wrEl) wrEl.textContent = (stats.winRate || "0.0") + "% (" + (stats.wins || 0) + "W / " + (stats.losses || 0) + "L)";
+
+    // B. Posiciones Vivas
+    const posTbody = document.getElementById("fut-dev-positions-tbody");
+    const posBadge = document.getElementById("fut-dev-pos-badge");
+    const positions = fut.positions || [];
+
+    if (posBadge) posBadge.textContent = positions.length + " activas";
+
+    if (posTbody) {
+      if (positions.length === 0) {
+        posTbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:18px; color:var(--text-muted);">Sin posiciones abiertas. El escáner está buscando el siguiente piso/techo…</td></tr>';
+      } else {
+        posTbody.innerHTML = positions.map(p => {
+          const pnlColor = p.floatingPnlUsdt >= 0 ? "#34d399" : "#f87171";
+          const pnlSign = p.floatingPnlUsdt >= 0 ? "+" : "";
+          const sideColor = p.side === "LONG" ? "#34d399" : "#f87171";
+          return `<tr>
+            <td><b>${p.symbol}</b></td>
+            <td><b style="color:${sideColor};">${p.side} ${p.leverage}x</b></td>
+            <td>$${p.entryPrice.toFixed(4)}</td>
+            <td><b>$${(p.curPrice || p.entryPrice).toFixed(4)}</b></td>
+            <td style="color:#f87171;">$${p.stopLossPrice.toFixed(4)}</td>
+            <td style="color:#34d399;">$${p.trailingTriggerPrice.toFixed(4)}</td>
+            <td><b style="color:${pnlColor};">${pnlSign}${(p.floatingPnlUsdt || 0).toFixed(3)} USDT (${pnlSign}${(p.floatingRoePct || 0).toFixed(2)}%)</b></td>
+            <td style="font-size:11px; color:var(--text-muted);">${p.rationale || "Señal Cuantitativa"}</td>
+          </tr>`;
+        }).join("");
+      }
+    }
+
+    // C. Radar de 7 Pares
+    const radarTbody = document.getElementById("fut-dev-radar-tbody");
+    const radar = fut.radar || [];
+    if (radarTbody && radar.length > 0) {
+      radarTbody.innerHTML = radar.map(r => {
+        const trendColor = r.trend === "ALCISTA" ? "#34d399" : "#f87171";
+        const rsiColor = r.rsi15m <= 42 ? "#34d399" : (r.rsi15m >= 60 ? "#f87171" : "#94a3b8");
+        const statusColor = r.status.includes("POSICIÓN") ? "#a78bfa" : (r.status.includes("ABSORCIÓN") ? "#34d399" : (r.status.includes("RECHAZO") ? "#f87171" : "#94a3b8"));
+        return `<tr>
+          <td><b>${r.symbol}</b></td>
+          <td><b>$${r.price}</b></td>
+          <td><b style="color:${trendColor};">${r.trend} (>EMA50)</b></td>
+          <td><b style="color:${rsiColor};">${r.rsi15m}</b></td>
+          <td>${r.lowerWickPct}%</td>
+          <td>${r.upperWickPct}%</td>
+          <td style="font-size:11px;">${r.fundingRate}</td>
+          <td><span style="font-size:11px; font-weight:600; color:${statusColor};">${r.status}</span></td>
+        </tr>`;
+      }).join("");
+    }
+
+    // D. Historial de Operaciones Cerradas
+    const tradesTbody = document.getElementById("fut-dev-trades-tbody");
+    const tradesBadge = document.getElementById("fut-dev-trades-count");
+    const trades = fut.trades || [];
+    if (tradesBadge) tradesBadge.textContent = trades.length + " operaciones";
+
+    if (tradesTbody && trades.length > 0) {
+      tradesTbody.innerHTML = trades.map((t, idx) => {
+        const pnlColor = t.netPnlUsdt >= 0 ? "#34d399" : "#f87171";
+        const pnlSign = t.netPnlUsdt >= 0 ? "+" : "";
+        return `<tr>
+          <td>${idx + 1}</td>
+          <td><b>${t.symbol}</b></td>
+          <td><b>${t.side} ${t.leverage}x</b></td>
+          <td>$${t.entryPrice.toFixed(4)}</td>
+          <td>$${t.exitPrice.toFixed(4)}</td>
+          <td>${t.durationMin} min</td>
+          <td>${t.feesUsdt.toFixed(4)} USDT</td>
+          <td><b style="color:${pnlColor};">${pnlSign}${t.netPnlUsdt.toFixed(3)} USDT</b></td>
+          <td><b style="color:${pnlColor};">${pnlSign}${t.roePct.toFixed(2)}% ROE</b></td>
+          <td><span style="font-size:11px; padding:2px 6px; border-radius:4px; background:${t.exitReason === 'TRAILING_TP' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}; color:${t.exitReason === 'TRAILING_TP' ? '#34d399' : '#f87171'};">${t.exitReason}</span></td>
+        </tr>`;
+      }).join("");
+    }
+  }

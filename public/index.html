@@ -2608,6 +2608,129 @@
       </div>
     </div>
 
+
+    <!-- SECCIÓN DE TELEMETRÍA Y RADAR CUANTITATIVO DE FUTUROS (MODO DESARROLLADOR) -->
+    <div class="futures-dev-panel" id="futures-dev-panel" style="margin-top: 24px; background: rgba(18, 20, 29, 0.95); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 14px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+      <div class="futures-dev-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:24px;">🧪</span>
+          <div>
+            <div style="font-size:16px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px;">
+              Laboratorio de Futuros Cuantitativo
+              <span style="font-size:11px; background:rgba(139, 92, 246, 0.25); color:#c4b5fd; padding:3px 8px; border-radius:6px; border:1px solid rgba(139, 92, 246, 0.4); font-weight:600;">MODO DEV / SIMULACIÓN</span>
+            </div>
+            <div style="font-size:12px; color:var(--text-muted);">Monitoreo tick a tick en tiempo real con precios oficiales de Binance Futures USDⓈ-M</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:16px; flex-wrap:wrap;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 14px; text-align:center;">
+            <div style="font-size:11px; color:var(--text-muted);">Capital Inicial</div>
+            <b id="fut-dev-init-capital" style="font-size:14px; color:#fff;">$30.00 USDT</b>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 14px; text-align:center;">
+            <div style="font-size:11px; color:var(--text-muted);">Balance Simulado</div>
+            <b id="fut-dev-cur-balance" style="font-size:14px; color:#34d399;">$30.00 USDT</b>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 14px; text-align:center;">
+            <div style="font-size:11px; color:var(--text-muted);">Ganancia Cobrada</div>
+            <b id="fut-dev-realized-pnl" style="font-size:14px; color:#34d399;">+0.000 USDT</b>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 14px; text-align:center;">
+            <div style="font-size:11px; color:var(--text-muted);">PnL Flotante Vivo</div>
+            <b id="fut-dev-floating-pnl" style="font-size:14px; color:#c4b5fd;">$0.00 USDT</b>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 14px; text-align:center;">
+            <div style="font-size:11px; color:var(--text-muted);">Efectividad</div>
+            <b id="fut-dev-winrate" style="font-size:14px; color:#60a5fa;">0.0%</b>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1. Tabla de Posiciones Vivas de Futuros -->
+      <div style="margin-top:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="font-size:14px; font-weight:700; color:#e2e8f0; margin:0;">⚡ Posiciones Vivas (2x ISOLATED - Margen $5 USDT)</h3>
+          <span id="fut-dev-pos-badge" style="font-size:11px; color:#a78bfa; background:rgba(139,92,246,0.15); padding:2px 8px; border-radius:4px;">0 activas</span>
+        </div>
+        <div class="table-responsive">
+          <table class="history-table" style="font-size:12px; width:100%;">
+            <thead>
+              <tr>
+                <th>Moneda</th>
+                <th>Operación</th>
+                <th>Entrada</th>
+                <th>Precio en Vivo</th>
+                <th>Stop-Loss (-1.2%)</th>
+                <th>Gatillo Trailing (+0.8%)</th>
+                <th>PnL Flotante (ROE %)</th>
+                <th>Fundamento Cuantitativo</th>
+              </tr>
+            </thead>
+            <tbody id="fut-dev-positions-tbody">
+              <tr><td colspan="8" style="text-align:center; padding:18px; color:var(--text-muted);">Escaneando mercado en busca de gatillos óptimos…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2. Tabla Radar de Indicadores Cuantitativos en Vivo -->
+      <div style="margin-top:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="font-size:14px; font-weight:700; color:#e2e8f0; margin:0;">📡 Radar Cuantitativo en Vivo (7 Pares Institucionales)</h3>
+          <span style="font-size:11px; color:var(--text-muted);">Actualizado cada 4 segundos</span>
+        </div>
+        <div class="table-responsive">
+          <table class="radar-table" style="font-size:12px; width:100%;">
+            <thead>
+              <tr>
+                <th>Moneda</th>
+                <th>Precio Futuros</th>
+                <th>Tendencia 1H (EMA 50)</th>
+                <th>RSI (15m)</th>
+                <th>Mecha Inferior (Absorción)</th>
+                <th>Mecha Superior (Rechazo)</th>
+                <th>Funding Rate</th>
+                <th>Estado del Escáner</th>
+              </tr>
+            </thead>
+            <tbody id="fut-dev-radar-tbody">
+              <tr><td colspan="8" style="text-align:center; padding:18px; color:var(--text-muted);">Cargando telemetría de Binance Futures…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 3. Historial de Operaciones de Futuros Cerradas -->
+      <div style="margin-top:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="font-size:14px; font-weight:700; color:#e2e8f0; margin:0;">🏆 Operaciones de Futuros Cerradas con Ganancia</h3>
+          <span id="fut-dev-trades-count" style="font-size:11px; color:#34d399; background:rgba(16,185,129,0.15); padding:2px 8px; border-radius:4px;">0 operaciones</span>
+        </div>
+        <div class="table-responsive">
+          <table class="history-table" style="font-size:12px; width:100%;">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Moneda</th>
+                <th>Operación</th>
+                <th>Entrada</th>
+                <th>Salida</th>
+                <th>Duración</th>
+                <th>Comisión</th>
+                <th>Ganancia Neta</th>
+                <th>Rendimiento ROE</th>
+                <th>Motivo Cierre</th>
+              </tr>
+            </thead>
+            <tbody id="fut-dev-trades-tbody">
+              <tr><td colspan="10" style="text-align:center; padding:18px; color:var(--text-muted);">Aún no hay operaciones cerradas. Las posiciones vivas están persiguiendo el pico de ganancia.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+
     <!-- Active Positions Section -->
     <div class="section-title">
       <h2>🏹 Compras Activas (Trailing Take Profit)</h2>

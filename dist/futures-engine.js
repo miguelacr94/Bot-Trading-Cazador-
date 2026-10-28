@@ -346,32 +346,33 @@ export class FuturesEngine {
     }
     // --- ESCÁNER DE OPORTUNIDADES CUANTITATIVAS BI-DIRECCIONAL ---
     lastRadarLogTime = 0;
+    radarSnapshot = [];
     async scanMarket() {
         if (!this.state.enabled)
-            return;
-        if (this.positions.length >= this.state.maxActivePositions)
             return;
         if (this.isScanning)
             return;
         this.isScanning = true;
         try {
             this.state.lastScanTime = Date.now();
+            const currentRadar = [];
             const shouldLogRadar = Date.now() - this.lastRadarLogTime > 45000;
             if (shouldLogRadar) {
                 this.lastRadarLogTime = Date.now();
                 console.log(`[FUTUROS 📡 RADAR] Escaneando ${FUTURES_WATCHLIST.length} pares (2x ISOLATED)... Posiciones activas: ${this.positions.length}/${this.state.maxActivePositions}`);
             }
             for (const symbol of FUTURES_WATCHLIST) {
-                if (this.positions.length >= this.state.maxActivePositions)
-                    break;
-                // Verificar si ya tenemos posición abierta en esta moneda
-                if (this.positions.some((p) => p.symbol === symbol))
-                    continue;
-                // Verificar Cooldown
-                const cd = this.symbolCooldowns.get(symbol);
-                if (cd && Date.now() < cd)
-                    continue;
-                await this.evaluateSymbol(symbol);
+                // Obtenemos telemetría de todos los pares para el radar del dashboard
+                const item = await this.evaluateSymbolWithData(symbol);
+                if (item)
+                    currentRadar.push(item);
+            }
+            if (currentRadar.length > 0) {
+                this.radarSnapshot = currentRadar;
+                try {
+                    fs.writeFileSync(path.resolve(process.cwd(), ".futures-radar.json"), JSON.stringify(currentRadar, null, 2), "utf-8");
+                }
+                catch { }
             }
         }
         catch (e) {
@@ -381,7 +382,8 @@ export class FuturesEngine {
             this.isScanning = false;
         }
     }
-    async evaluateSymbol(symbol) {
+    async evaluateSymbolWithData(symbol) {
+        const hasPosition = this.positions.find((p) => p.symbol === symbol);
         // 1. Obtener velas 1H (Macro) y 15M (Gatillo)
         const [klines1h, klines15m] = await Promise.all([
             this.fetchKlines(symbol, "1h", 60),
@@ -410,21 +412,42 @@ export class FuturesEngine {
         const isRsiOversold = rsi15m <= 42; // Captura cualquier sobreventa válida (incluso < 30)
         const isLowerAbsorption = lowerWickRatio >= 0.35;
         const isFundingSafeForLong = fundingRate < 0.0003;
-        if (isMacroBullish && isRsiOversold && isLowerAbsorption && isFundingSafeForLong) {
+        // Cooldown check
+        const cd = this.symbolCooldowns.get(symbol);
+        const inCooldown = cd && Date.now() < cd;
+        if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && isMacroBullish && isRsiOversold && isLowerAbsorption && isFundingSafeForLong) {
             const rationale = `Macro 1H alcista (>EMA50) + RSI 15M (${rsi15m.toFixed(1)}) en sobreventa con mecha de absorción del ${(lowerWickRatio * 100).toFixed(0)}%`;
             await this.openPosition(symbol, "LONG", curPrice, rationale);
-            return;
         }
         // --- EVALUACIÓN DE SEÑAL SHORT ---
         const isMacroBearish = curPrice1h <= ema50_1h * 1.005; // Macro neutral a bajista
-        const isRsiOverbought = rsi15m >= 60; // Captura cualquier sobrecompra válida (incluso > 75)
+        const isRsiOverbought = rsi15m >= 60; // Captura sobrecompra
         const isUpperRejection = upperWickRatio >= 0.35;
         const isFundingSafeForShort = fundingRate > -0.0003;
-        if (isMacroBearish && isRsiOverbought && isUpperRejection && isFundingSafeForShort) {
+        if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && isMacroBearish && isRsiOverbought && isUpperRejection && isFundingSafeForShort) {
             const rationale = `Macro 1H bajista (<EMA50) + RSI 15M (${rsi15m.toFixed(1)}) en sobrecompra con rechazo superior del ${(upperWickRatio * 100).toFixed(0)}%`;
             await this.openPosition(symbol, "SHORT", curPrice, rationale);
-            return;
         }
+        let statusText = "VIGILANDO";
+        if (hasPosition)
+            statusText = `POSICIÓN VIVA (${hasPosition.side} ${hasPosition.leverage}x)`;
+        else if (isRsiOversold)
+            statusText = "🟢 ZONA ABSORCIÓN ALCISTA";
+        else if (isRsiOverbought)
+            statusText = "🔴 ZONA RECHAZO BAJISTA";
+        else if (inCooldown)
+            statusText = "⏳ EN COOLDOWN";
+        return {
+            symbol,
+            price: curPrice,
+            ema50: ema50_1h,
+            trend: curPrice >= ema50_1h ? "ALCISTA" : "BAJISTA",
+            rsi15m: parseFloat(rsi15m.toFixed(1)),
+            lowerWickPct: Math.round(lowerWickRatio * 100),
+            upperWickPct: Math.round(upperWickRatio * 100),
+            fundingRate: (fundingRate * 100).toFixed(4) + "%",
+            status: statusText
+        };
     }
     async openPosition(symbol, side, price, rationale) {
         const margin = this.state.defaultMarginPerTrade;

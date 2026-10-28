@@ -424,6 +424,73 @@ export class DashboardServer {
                 lowestPrice: watch?.lowestPrice ?? null,
             };
         });
+        // TELEMETRÍA DE FUTUROS (MODO DESARROLLADOR / SIMULACIÓN)
+        let futuresState = { isSimulated: true, enabled: true, virtualBalanceUsdt: 30.0, startingBalanceUsdt: 30.0, maxActivePositions: 2, defaultMarginPerTrade: 5.0, defaultLeverage: 2, stopLossPct: 1.2, trailingTriggerPct: 0.8 };
+        try {
+            const f = path.resolve(process.cwd(), ".futures-sim-state.json");
+            if (fs.existsSync(f))
+                futuresState = { ...futuresState, ...JSON.parse(fs.readFileSync(f, "utf-8")) };
+        }
+        catch { }
+        let rawFutPositions = [];
+        try {
+            const f = path.resolve(process.cwd(), ".futures-sim-positions.json");
+            if (fs.existsSync(f))
+                rawFutPositions = JSON.parse(fs.readFileSync(f, "utf-8"));
+        }
+        catch { }
+        let rawFutTrades = [];
+        try {
+            const f = path.resolve(process.cwd(), ".futures-sim-trades.json");
+            if (fs.existsSync(f))
+                rawFutTrades = JSON.parse(fs.readFileSync(f, "utf-8"));
+        }
+        catch { }
+        let futuresRadar = [];
+        try {
+            const f = path.resolve(process.cwd(), ".futures-radar.json");
+            if (fs.existsSync(f))
+                futuresRadar = JSON.parse(fs.readFileSync(f, "utf-8"));
+        }
+        catch { }
+        // Calcular PnL flotante tick a tick en posiciones vivas
+        const enrichedFutPositions = rawFutPositions.map((pos) => {
+            const curPrice = this.prices[pos.symbol] || pos.entryPrice;
+            let floatingPnlUsdt = 0;
+            if (pos.side === "LONG") {
+                floatingPnlUsdt = (curPrice - pos.entryPrice) * pos.contracts;
+            }
+            else {
+                floatingPnlUsdt = (pos.entryPrice - curPrice) * pos.contracts;
+            }
+            const floatingRoePct = pos.marginUsdt > 0 ? (floatingPnlUsdt / pos.marginUsdt) * 100 : 0;
+            return {
+                ...pos,
+                curPrice,
+                floatingPnlUsdt,
+                floatingRoePct
+            };
+        });
+        const futWins = rawFutTrades.filter((t) => t.netPnlUsdt > 0).length;
+        const futLosses = rawFutTrades.filter((t) => t.netPnlUsdt <= 0).length;
+        const futWinRate = rawFutTrades.length > 0 ? ((futWins / rawFutTrades.length) * 100).toFixed(1) : "0.0";
+        const futRealizedPnl = rawFutTrades.reduce((acc, t) => acc + (t.netPnlUsdt || 0), 0);
+        const futFloatingPnl = enrichedFutPositions.reduce((acc, p) => acc + (p.floatingPnlUsdt || 0), 0);
+        const futuresTelemetry = {
+            state: futuresState,
+            positions: enrichedFutPositions,
+            trades: rawFutTrades.slice(-15).reverse(),
+            radar: futuresRadar,
+            stats: {
+                startingBalanceUsdt: futuresState.startingBalanceUsdt,
+                virtualBalanceUsdt: futuresState.virtualBalanceUsdt,
+                realizedPnlUsdt: futRealizedPnl,
+                floatingPnlUsdt: futFloatingPnl,
+                wins: futWins,
+                losses: futLosses,
+                winRate: futWinRate
+            }
+        };
         const cash = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
         const total = positionsValue + cash;
         const p = this.pnl;
@@ -544,6 +611,7 @@ export class DashboardServer {
                 })()
                 : null,
             recentCycles: allMergedCycles.slice(-35).reverse(),
+            futuresTelemetry,
             recoveryTracker: this.getRecoveryTracker(),
         };
     }

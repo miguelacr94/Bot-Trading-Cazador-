@@ -1,0 +1,79 @@
+[
+  {
+    "symbol": "BTCUSDT",
+    "price": 80444,
+    "ema50": 80503.38982146811,
+    "trend": "BAJISTA",
+    "rsi15m": 34,
+    "lowerWickPct": 41,
+    "upperWickPct": 48,
+    "fundingRate": "0.0085%",
+    "status": "POSICIÓN VIVA (LONG 2x)"
+  },
+  {
+    "symbol": "ETHUSDT",
+    "price": 2330.25,
+    "ema50": 2335.5232624239993,
+    "trend": "BAJISTA",
+    "rsi15m": 34.5,
+    "lowerWickPct": 35,
+    "upperWickPct": 44,
+    "fundingRate": "0.0089%",
+    "status": "POSICIÓN VIVA (LONG 2x)"
+  },
+  {
+    "symbol": "SOLUSDT",
+    "price": 100.84,
+    "ema50": 101.20680658516382,
+    "trend": "BAJISTA",
+    "rsi15m": 36.9,
+    "lowerWickPct": 27,
+    "upperWickPct": 55,
+    "fundingRate": "0.0100%",
+    "status": "🟢 ZONA ABSORCIÓN ALCISTA"
+  },
+  {
+    "symbol": "BNBUSDT",
+    "price": 750,
+    "ema50": 746.5061813723134,
+    "trend": "ALCISTA",
+    "rsi15m": 44.1,
+    "lowerWickPct": 55,
+    "upperWickPct": 7,
+    "fundingRate": "0.0075%",
+    "status": "VIGILANDO"
+  },
+  {
+    "symbol": "AVAXUSDT",
+    "price": 8.851,
+    "ema50": 8.905147108447403,
+    "trend": "BAJISTA",
+    "rsi15m": 39.8,
+    "lowerWickPct": 27,
+    "upperWickPct": 12,
+    "fundingRate": "0.0036%",
+    "status": "🟢 ZONA ABSORCIÓN ALCISTA"
+  },
+  {
+    "symbol": "XRPUSDT",
+    "price": 1.3101,
+    "ema50": 1.3112935252552775,
+    "trend": "BAJISTA",
+    "rsi15m": 34.9,
+    "lowerWickPct": 41,
+    "upperWickPct": 56,
+    "fundingRate": "0.0100%",
+    "status": "🟢 ZONA ABSORCIÓN ALCISTA"
+  },
+  {
+    "symbol": "DOGEUSDT",
+    "price": 0.0792,
+    "ema50": 0.07844002794043531,
+    "trend": "ALCISTA",
+    "rsi15m": 44,
+    "lowerWickPct": 50,
+    "upperWickPct": 33,
+    "fundingRate": "0.0100%",
+    "status": "VIGILANDO"
+  }
+]
