@@ -1201,6 +1201,7 @@
   }
 
     initCompactUI();
+    initAutonomousStrategyControls();
   }, 1000);
 
   async function tick() {
