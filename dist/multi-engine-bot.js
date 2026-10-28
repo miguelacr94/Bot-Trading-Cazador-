@@ -1320,6 +1320,58 @@ export class TrailingMasterBot {
             const cmd = parts[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const arg1 = parts[1]?.toUpperCase();
             const arg2 = parts[2];
+            if (cmd === "/viabilidad_futuros" || cmd === "viabilidad_futuros" || cmd === "/viabilidad" || cmd === "viabilidad") {
+                const viability = await this.futuresEngine.evaluateMarketViability();
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const freeUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                let msg = `🎯 <b>DIAGNÓSTICO EN VIVO: VIABILIDAD DE FUTUROS</b>\n\n` +
+                    `💼 <b>USDT Libre en Spot:</b> ${freeUsdt.toFixed(2)} USDT\n` +
+                    `📊 <b>Estado del Mercado:</b> ${viability.isViable ? "🟢 <b>VIABLE</b>" : "🔴 <b>NO VIABLE</b>"} (Puntaje: ${viability.score}/100)\n\n` +
+                    `• <b>BTC Macro 1H:</b> ${viability.btcStatus}\n` +
+                    `• <b>Tasas de Financiación:</b> ${viability.fundingStatus}\n` +
+                    `• <b>Volatilidad:</b> ${viability.volatilityStatus}\n` +
+                    `• <b>Oportunidades Técnicas:</b> ${viability.opportunitiesFound} pares con setup activo\n`;
+                if (viability.favorableSymbols && viability.favorableSymbols.length > 0) {
+                    msg += `  ${viability.favorableSymbols.join("\n  ")}\n`;
+                }
+                msg += `\n💡 <b>Recomendación:</b> ${viability.recommendedAction}\n\n` +
+                    `👉 <code>/futuros_modo real</code> para pasar a Real\n` +
+                    `👉 <code>/futuros_modo sim</code> para mantener Simulación`;
+                return msg;
+            }
+            if (cmd === "/futuros_modo" || cmd === "futuros_modo") {
+                const mode = arg1?.toLowerCase();
+                if (mode === "real") {
+                    this.futuresEngine.setConfig({ isSimulated: false });
+                    return `🚀 <b>MODO FUTUROS CAMBIADO A: REAL</b> ⚠️\n\n` +
+                        `• El motor ahora ejecutará órdenes reales en Binance USD-M Futures con margen aislado ($10-$15 USDT por operación).\n` +
+                        `• Stop Loss activo: -1.2%\n` +
+                        `• Trailing Take Profit: +1.2%\n` +
+                        `👉 Para regresar a simulación: <code>/futuros_modo sim</code>`;
+                }
+                else if (mode === "sim" || mode === "simulacion") {
+                    this.futuresEngine.setConfig({ isSimulated: true });
+                    return `🛡️ <b>MODO FUTUROS CAMBIADO A: SIMULACIÓN (PAPER TRADING)</b> ✅\n\n` +
+                        `• Todas las operaciones se ejecutan de forma virtual sin arriesgar saldo real.`;
+                }
+                else {
+                    const st = this.futuresEngine.getState();
+                    return `⚙️ <b>MODO ACTUAL DE FUTUROS:</b> ${st.isSimulated ? "🛡️ SIMULACIÓN (Paper Trading)" : "🚀 REAL (Binance USD-M)"}\n\n` +
+                        `• Para activar Real: <code>/futuros_modo real</code>\n` +
+                        `• Para activar Simulación: <code>/futuros_modo sim</code>`;
+                }
+            }
+            if (cmd === "/liquidez" || cmd === "liquidez") {
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const freeUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                const lockedUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.locked || "0");
+                return `💼 <b>ESTADO DE LIQUIDEZ USDT</b> 💧\n\n` +
+                    `• <b>USDT Libre:</b> <b>${freeUsdt.toFixed(2)} USDT</b>\n` +
+                    `• <b>USDT Bloqueado en órdenes:</b> ${lockedUsdt.toFixed(2)} USDT\n` +
+                    `• <b>Meta de Liquidez (Centinela):</b> ≥ $50.00 USDT (${freeUsdt >= 50 ? "✅ Meta Superada" : "⏳ En Acumulación"})\n` +
+                    `• <b>Alerta Automática:</b> ${this.controls.notified50UsdtThreshold ? "Notificado previamente" : "Vigilando activamente"}\n\n` +
+                    `👉 Consulta la viabilidad de futuros con: <code>/viabilidad_futuros</code>`;
+            }
             if (cmd === "/cierre" || cmd === "cierre" || cmd === "/balance_diario" || cmd === "balance_diario") {
                 return await this.generateConsolidatedDailyReport();
             }
@@ -2670,6 +2722,68 @@ export class TrailingMasterBot {
             "• 🚀 <b>Salida:</b> El Trailing Take Profit (+0.80% a +3.5%) perseguirá el pico más alto (domingo noche/lunes o el día que más suba) para vender en la cima.");
         return true;
     }
+    // --- CENTINELA DE LIQUIDEZ (50 USDT) Y VIABILIDAD DE FUTUROS ---
+    isCheckingLiquidity = false;
+    async checkLiquidityAndFuturesViability(freeUsdt) {
+        if (this.isCheckingLiquidity)
+            return;
+        // Histéresis: Si el saldo cae por debajo de 35 USDT, reseteamos la bandera para poder alertar de nuevo
+        if (freeUsdt < 35.0) {
+            if (this.controls.notified50UsdtThreshold) {
+                console.log(`[LIQUIDEZ 💧] Saldo libre bajó a ${freeUsdt.toFixed(2)} USDT. Centinela de 50 USDT reactivado.`);
+                this.controls.notified50UsdtThreshold = false;
+                this.saveStrategyControls();
+            }
+            return;
+        }
+        // Si hay al menos 50 USDT libres y no hemos notificado
+        if (freeUsdt >= 50.0 && !this.controls.notified50UsdtThreshold) {
+            this.isCheckingLiquidity = true;
+            try {
+                this.controls.notified50UsdtThreshold = true;
+                this.saveStrategyControls();
+                console.log(`[LIQUIDEZ 💰] ¡Detectados ${freeUsdt.toFixed(2)} USDT libres! Evaluando viabilidad de Futuros...`);
+                const viability = await this.futuresEngine.evaluateMarketViability();
+                const timeStr = new Date().toLocaleTimeString("es-CO", { hour12: false });
+                let msg = `🔔 <b>¡LIQUIDEZ DISPONIBLE DETECTADA!</b> (${timeStr})\n\n`;
+                msg += `💼 <b>Saldo Libre:</b> <code>${freeUsdt.toFixed(2)} USDT</code> (Meta de ≥ $50 USDT alcanzada)\n\n`;
+                if (viability.isViable) {
+                    msg += `🎯 <b>Diagnóstico de Futuros:</b> 🟢 <b>MERCADO VIABLE (${viability.score}/100)</b>\n\n`;
+                    msg += `📊 <b>Condiciones del Mercado:</b>\n`;
+                    msg += `• <b>BTC Macro 1H:</b> ${viability.btcStatus}\n`;
+                    msg += `• <b>Tasas de Financiación:</b> ${viability.fundingStatus}\n`;
+                    msg += `• <b>Volatilidad:</b> ${viability.volatilityStatus}\n`;
+                    msg += `• <b>Oportunidades Técnicas:</b> ${viability.opportunitiesFound} pares con setup activo\n`;
+                    if (viability.favorableSymbols && viability.favorableSymbols.length > 0) {
+                        msg += `  <i>${viability.favorableSymbols.slice(0, 3).join("\n  ")}</i>\n`;
+                    }
+                    msg += `\n⚙️ <b>¿Deseas invertir en Futuros o continuar en Spot?</b>\n\n`;
+                    msg += `1️⃣ <b>Para activar Futuros Real ($10-$15 margen / 2x-4x apalancamiento / SL -1.2%):</b>\n`;
+                    msg += `   👉 Toca: <code>/futuros_modo real</code> (o actívalo en el Dashboard web)\n\n`;
+                    msg += `2️⃣ <b>Si prefieres no arriesgar en futuros:</b>\n`;
+                    msg += `   No necesitas hacer nada; el bot invertirá automáticamente estos <b>${freeUsdt.toFixed(2)} USDT</b> en las <b>estrategias Spot</b> (Cazador Trailing & Centinela Alpha) sin riesgo de liquidación.`;
+                }
+                else {
+                    msg += `⚠️ <b>Diagnóstico de Futuros:</b> 🔴 <b>NO RECOMENDADO / ALTO RIESGO (${viability.score}/100)</b>\n\n`;
+                    msg += `📊 <b>Condiciones Analizadas:</b>\n`;
+                    msg += `• <b>BTC Macro 1H:</b> ${viability.btcStatus}\n`;
+                    msg += `• <b>Tasas de Financiación:</b> ${viability.fundingStatus}\n`;
+                    msg += `• <b>Volatilidad:</b> ${viability.volatilityStatus}\n`;
+                    msg += `• <b>Diagnóstico:</b> ${viability.rationale}\n\n`;
+                    msg += `🛡️ <b>Decisión Automática Aplicada:</b>\n`;
+                    msg += `Como instruiste que solo se use futuros si el mercado es viable, estos fondos se mantendrán y desplegarán en las <b>estrategias Spot</b> (Cazador Trailing & Centinela Alpha) para operar con cero riesgo de liquidación.`;
+                }
+                await this.notifier.send(msg);
+                console.log("📢 Notificación de liquidez y viabilidad enviada a Telegram con éxito.");
+            }
+            catch (err) {
+                console.error("Error al notificar liquidez y viabilidad:", err.message);
+            }
+            finally {
+                this.isCheckingLiquidity = false;
+            }
+        }
+    }
     async runCycle() {
         if (this.isProcessing)
             return;
@@ -2744,7 +2858,9 @@ export class TrailingMasterBot {
             const acc = await this.client.account({ recvWindow: 60000 });
             const usdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
             const time = new Date().toLocaleTimeString();
-            console.log(`[${time}] Monitoreo... USDT libre: $${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
+            console.log(`[${time}] Monitoreo... USDT libre: ${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
+            // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
+            await this.checkLiquidityAndFuturesViability(usdt);
             // 2. Evaluar oportunidades si hay saldo libre y no hay oportunidad pendiente
             if (usdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
                 // A) Primero evaluar Smart DCA en posiciones activas que hayan caído

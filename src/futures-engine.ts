@@ -14,6 +14,19 @@ export const FUTURES_WATCHLIST = [
   "DOGEUSDT"
 ];
 
+
+export interface MarketViabilityReport {
+  isViable: boolean;
+  score: number;
+  btcStatus: string;
+  fundingStatus: string;
+  volatilityStatus: string;
+  opportunitiesFound: number;
+  favorableSymbols: string[];
+  rationale: string;
+  recommendedAction: string;
+}
+
 export interface FuturesPosition {
   id: string;
   symbol: string;
@@ -707,6 +720,137 @@ export class FuturesEngine {
   }
 
   // --- REPORTES Y ESTADÍSTICAS ---
+
+  
+  // --- EVALUACIÓN DE VIABILIDAD DEL MERCADO EN TIEMPO REAL ---
+  public async evaluateMarketViability(): Promise<MarketViabilityReport> {
+    try {
+      // 1. Analizar BTC 1H (Macro Salud & Volatilidad)
+      const btcKlines = await this.fetchKlines("BTCUSDT", "1h", 60);
+      let btcScore = 35;
+      let btcStatus = "Macro Estable";
+      let volatilityScore = 25;
+      let volatilityStatus = "Volatilidad Controlada";
+
+      if (btcKlines.length >= 50) {
+        const closes = btcKlines.map((k) => k.close);
+        const ema50 = this.calculateEMA(closes, 50);
+        const curPrice = closes[closes.length - 1];
+        const ratio = curPrice / ema50;
+
+        if (ratio >= 0.995) {
+          btcScore = 35;
+          btcStatus = `🟢 Alcista/Sólido (${curPrice.toFixed(0)} > EMA50 ${ema50.toFixed(0)})`;
+        } else if (ratio >= 0.975) {
+          btcScore = 20;
+          btcStatus = `🟡 Pullback controlado (${curPrice.toFixed(0)} en zona EMA50 ${ema50.toFixed(0)})`;
+        } else {
+          btcScore = 0;
+          btcStatus = `🔴 Debilidad bajista (${curPrice.toFixed(0)} bajo EMA50 ${ema50.toFixed(0)})`;
+        }
+
+        const recentCandles = btcKlines.slice(-5);
+        const avgRangePct = recentCandles.reduce((acc, c) => acc + ((c.high - c.low) / c.close) * 100, 0) / recentCandles.length;
+        if (avgRangePct <= 2.2) {
+          volatilityScore = 25;
+          volatilityStatus = `🟢 Volatilidad controlada (Promedio ${avgRangePct.toFixed(2)}%/hora)`;
+        } else if (avgRangePct <= 3.8) {
+          volatilityScore = 15;
+          volatilityStatus = `🟡 Volatilidad moderada (Promedio ${avgRangePct.toFixed(2)}%/hora)`;
+        } else {
+          volatilityScore = 0;
+          volatilityStatus = `🔴 Turbulencia extrema (Promedio ${avgRangePct.toFixed(2)}%/hora)`;
+        }
+      }
+
+      // 2. Analizar Tasas de Financiación (Funding Rates)
+      let fundingScore = 25;
+      let fundingStatus = "Tasas neutrales";
+      try {
+        const btcFunding = await this.fetchFundingRate("BTCUSDT");
+        const ethFunding = await this.fetchFundingRate("ETHUSDT");
+        const avgFundingPct = ((btcFunding + ethFunding) / 2) * 100;
+
+        if (Math.abs(avgFundingPct) <= 0.02) {
+          fundingScore = 25;
+          fundingStatus = `🟢 Equilibrada (Promedio ${avgFundingPct.toFixed(4)}% - Sin sobrecompra/venta)`;
+        } else if (Math.abs(avgFundingPct) <= 0.045) {
+          fundingScore = 15;
+          fundingStatus = `🟡 Ligera inclinación (Promedio ${avgFundingPct.toFixed(4)}%)`;
+        } else {
+          fundingScore = 0;
+          fundingStatus = `🔴 Sobrecalentada (Promedio ${avgFundingPct.toFixed(4)}% - Riesgo de squeeze)`;
+        }
+      } catch {
+        fundingScore = 15;
+        fundingStatus = "Tasas estables";
+      }
+
+      // 3. Evaluar oportunidades técnicas en la lista de seguimiento
+      const favorableSymbols: string[] = [];
+      let setupScore = 0;
+      for (const sym of FUTURES_WATCHLIST.slice(0, 5)) {
+        try {
+          const k15m = await this.fetchKlines(sym, "15m", 30);
+          if (k15m.length >= 14) {
+            const closes = k15m.map((k) => k.close);
+            const rsi = this.calculateRSI(closes, 14);
+            if (rsi <= 44) {
+              favorableSymbols.push(`${sym} (RSI 15M: ${rsi.toFixed(1)} en Sobreventa - Setup LONG)`);
+            } else if (rsi >= 58) {
+              favorableSymbols.push(`${sym} (RSI 15M: ${rsi.toFixed(1)} en Sobrecompra - Setup SHORT)`);
+            }
+          }
+        } catch {}
+      }
+
+      if (favorableSymbols.length >= 2) {
+        setupScore = 15;
+      } else if (favorableSymbols.length === 1) {
+        setupScore = 10;
+      } else {
+        setupScore = 5;
+      }
+
+      const totalScore = btcScore + volatilityScore + fundingScore + setupScore;
+      const isViable = totalScore >= 60;
+
+      let rationale = "";
+      if (isViable) {
+        rationale = `Mercado con estructura macro ordenada (${btcStatus}), volatilidad controlada y condiciones técnicas propicias en ${favorableSymbols.length} activos.`;
+      } else {
+        rationale = `Condiciones no óptimas para apalancamiento: ${btcStatus}, ${volatilityStatus}. Score ${totalScore}/100 insuficiente para asumir riesgo de apalancamiento.`;
+      }
+
+      const recommendedAction = isViable
+        ? "VIABLE: Se puede operar futuros en modo real con apalancamiento moderado (2x-4x) y stop-loss estricto (-1.2%)."
+        : "NO VIABLE: Se recomienda canalizar el capital libre hacia estrategias Spot convencionales sin apalancamiento.";
+
+      return {
+        isViable,
+        score: totalScore,
+        btcStatus,
+        fundingStatus,
+        volatilityStatus,
+        opportunitiesFound: favorableSymbols.length,
+        favorableSymbols,
+        rationale,
+        recommendedAction
+      };
+    } catch (e: any) {
+      return {
+        isViable: false,
+        score: 40,
+        btcStatus: "No disponible",
+        fundingStatus: "No disponible",
+        volatilityStatus: "No disponible",
+        opportunitiesFound: 0,
+        favorableSymbols: [],
+        rationale: "Error al consultar telemetría: " + e.message,
+        recommendedAction: "Mantener capital en estrategias Spot."
+      };
+    }
+  }
 
   public getSummaryReport(): string {
     const totalTrades = this.trades.length;
