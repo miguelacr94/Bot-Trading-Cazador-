@@ -37,6 +37,8 @@ export class TelegramCommands {
                 { command: "trailing", description: "🏹 Posiciones rastreando el pico más alto" },
                 { command: "cazando", description: "🔻 Monedas cazando piso (Trailing Buy)" },
                 { command: "reporte", description: "📈 Ganancias reales acumuladas (Binance)" },
+                { command: "balance_diario", description: "📅 Cierre diario y balance consolidado de todas las estrategias" },
+                { command: "cierre", description: "🏁 Cierre de jornada diario con PnL neto" },
                 { command: "futuros", description: "🧪 Estado del Bot de Futuros (Simulación)" },
                 { command: "reporte_futuros", description: "📊 Informe y efectividad de Futuros" },
                 { command: "toggle_futuros", description: "⚡ Activar / Pausar motor de Futuros" },

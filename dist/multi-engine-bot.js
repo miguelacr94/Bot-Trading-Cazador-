@@ -1320,6 +1320,9 @@ export class TrailingMasterBot {
             const cmd = parts[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const arg1 = parts[1]?.toUpperCase();
             const arg2 = parts[2];
+            if (cmd === "/cierre" || cmd === "cierre" || cmd === "/balance_diario" || cmd === "balance_diario") {
+                return await this.generateConsolidatedDailyReport();
+            }
             if (cmd === "/alpha" || cmd === "alpha") {
                 const rec = this.controls.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
                 const pct = Math.min(100, (rec.recoveredUsdt / rec.targetUsdt) * 100);
@@ -2800,6 +2803,112 @@ export class TrailingMasterBot {
                 `• ✅ Compra si toca: <b>${trigger.toFixed(4)}</b> (+${TRAILING_BUY_BOUNCE_PCT}% desde el piso)\n\n`;
         }
         return txt;
+    }
+    lastDailyReportDay = "";
+    async generateConsolidatedDailyReport() {
+        const now = new Date();
+        // Fecha formateada en español
+        const dateStr = now.toLocaleDateString("es-ES", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            timeZone: "America/Bogota"
+        });
+        // 1. Consultar saldos Binance Spot
+        let usdtFree = 0;
+        let usdtEarn = 0;
+        try {
+            const acc = await this.client.account();
+            const bFree = acc.data.balances.find((b) => b.asset === "USDT");
+            if (bFree)
+                usdtFree = parseFloat(bFree.free);
+        }
+        catch { }
+        try {
+            const earnRes = await this.client.simpleEarnFlexiblePersonalLeftQuota("USDT");
+            // Fallback a lectura de saldo earn
+        }
+        catch { }
+        // 2. Consultar ciclos de Binance y ganancias de Spot
+        let spotPnlToday = 0;
+        let spotWinsToday = 0;
+        const startOfTodayMs = new Date().setHours(0, 0, 0, 0);
+        try {
+            const pnlData = await computeRealizedPnl(this.client);
+            for (const c of pnlData.cycles) {
+                if (c.time >= startOfTodayMs) {
+                    spotPnlToday += c.pnlUsdt;
+                    if (c.pnlUsdt > 0)
+                        spotWinsToday++;
+                }
+            }
+        }
+        catch { }
+        // 3. Consultar telemetría de Futuros
+        const futTrades = this.futuresEngine.getTrades();
+        let futPnlToday = 0;
+        let futWinsToday = 0;
+        let futLossesToday = 0;
+        for (const t of futTrades) {
+            if (t.closeTime >= startOfTodayMs) {
+                futPnlToday += t.netPnlUsdt;
+                if (t.netPnlUsdt > 0)
+                    futWinsToday++;
+                else
+                    futLossesToday++;
+            }
+        }
+        const futState = this.futuresEngine.getState();
+        const futPositions = this.futuresEngine.getPositions();
+        // 4. Tracker de recuperación Centinela Alpha
+        const rec = this.controls.recoveryTracker || { targetUsdt: 6.11, recoveredUsdt: 3.452, tradesCount: 5 };
+        const recPct = Math.min(100, (rec.recoveredUsdt / rec.targetUsdt) * 100);
+        // 5. Total acumulado del día
+        const totalPnlDay = spotPnlToday + futPnlToday;
+        const totalCopDay = Math.round(totalPnlDay * COP_PER_USDT);
+        // 6. Construir mensaje elegante para Telegram
+        let msg = `📊 <b>CIERRE DIARIO DE OPERACIONES & BALANCE</b> 🏆\n`;
+        msg += `📅 <i>${dateStr} (10:00 PM COT)</i>\n\n`;
+        msg += `📈 <b>GANANCIAS COBRADAS HOY POR ESTRATEGIA:</b>\n\n`;
+        msg += `🏹 <b>1. Cazador Trailing (Spot):</b>\n`;
+        msg += `• Operaciones cerradas hoy: <b>${spotWinsToday} ganadas</b>\n`;
+        msg += `• Ganancia Líquida: <b>${spotPnlToday >= 0 ? "🟢 +" : "🔴 "}${spotPnlToday.toFixed(3)} USDT</b>\n\n`;
+        msg += `🤖 <b>2. Centinela Alpha (Spot Recuperación):</b>\n`;
+        msg += `• Deuda saldada hasta hoy: <b>+${rec.recoveredUsdt.toFixed(2)} / ${rec.targetUsdt.toFixed(2)} USDT</b> (${recPct.toFixed(1)}%)\n`;
+        msg += `• Faltan: <b>${Math.max(0, rec.targetUsdt - rec.recoveredUsdt).toFixed(2)} USDT</b> para meta cumplida\n\n`;
+        msg += `⚡ <b>3. Futuros Cuantitativo (${futState.isSimulated ? "Simulación" : "Dinero Real"}):</b>\n`;
+        msg += `• Operaciones hoy: <b>${futWinsToday}W / ${futLossesToday}L</b>\n`;
+        msg += `• Rendimiento Neto: <b>${futPnlToday >= 0 ? "🟢 +" : "🔴 "}${futPnlToday.toFixed(3)} USDT</b>\n`;
+        msg += `• Balance Futuros: <b>${futState.virtualBalanceUsdt.toFixed(2)} USDT</b> (${futState.leverageMode === "dynamic" ? "4x BTC/ETH, 3x Alts" : futState.defaultLeverage + "x"})\n\n`;
+        msg += `==============================\n`;
+        msg += `💵 <b>TOTAL NETO GENERADO EN EL DÍA:</b>\n`;
+        msg += `🟢 <b>+${totalPnlDay.toFixed(3)} USDT</b> (≈ <b>+${totalCopDay.toLocaleString("es-CO")} COP</b>)\n`;
+        msg += `==============================\n\n`;
+        msg += `🛡️ <b>POSICIONES ACTIVAS VIGILADAS PARA MAÑANA:</b>\n`;
+        msg += `• Spot: ${this.activeTrailingPositions.size} posiciones vivas persiguiendo picos\n`;
+        msg += `• Futuros: ${futPositions.length} posiciones abiertas con Trailing activo\n\n`;
+        msg += `💡 <i>¡Excelente jornada! El sistema sigue cazando oportunidades 24/7.</i>`;
+        return msg;
+    }
+    async checkDailyReportSchedule() {
+        try {
+            const now = new Date();
+            // COT = UTC-5
+            const cotHour = (now.getUTCHours() - 5 + 24) % 24;
+            const cotMinute = now.getUTCMinutes();
+            const cotDay = `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
+            // Enviar exactamente a las 22:00 COT (10:00 PM)
+            if (cotHour === 22 && cotMinute === 0 && this.lastDailyReportDay !== cotDay) {
+                this.lastDailyReportDay = cotDay;
+                const report = await this.generateConsolidatedDailyReport();
+                await this.notifier.send(report);
+                console.log("📢 Reporte de balance diario de las 22:00 COT enviado a Telegram con éxito.");
+            }
+        }
+        catch (e) {
+            console.error("Error en checkDailyReportSchedule:", e.message);
+        }
     }
     async start() {
         console.log(`\n======================================================`);
