@@ -62,7 +62,8 @@ export class DashboardServer {
   private trackedSymbols(): string[] {
     const pos = this.readJson(".trailing-positions.json").map(([s]) => s);
     const buys = this.readJson(".trailing-buys.json").map(([s]) => s);
-    return Array.from(new Set([...PNL_SYMBOLS, ...pos, ...buys]));
+    const allKnown = ["ETHUSDT","SOLUSDT","AVAXUSDT","BTCUSDT","BNBUSDT","XRPUSDT","PEPEUSDT","DOGEUSDT","BONKUSDT","SHIBUSDT","WIFUSDT"];
+    return Array.from(new Set([...PNL_SYMBOLS, ...allKnown, ...pos, ...buys]));
   }
 
   /** Ejecuta una tarea de refresco sin solaparla consigo misma */
@@ -139,7 +140,7 @@ export class DashboardServer {
         : [];
       let updated = false;
 
-      const candidates = ["BONK", "PEPE", "SOL", "ETH", "AVAX", "BTC", "BNB", "XRP", "DOGE", "SHIB"];
+      const candidates = ["ETH","SOL","AVAX","BTC","BNB","XRP","PEPE","DOGE","BONK","SHIB","WIF"];
       for (const base of candidates) {
         const sym = base + "USDT";
         if (diskPositions.some(([s]) => s === sym)) continue;
