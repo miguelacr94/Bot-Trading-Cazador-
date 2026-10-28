@@ -435,6 +435,8 @@ export class FuturesEngine {
 
   // --- ESCÁNER DE OPORTUNIDADES CUANTITATIVAS BI-DIRECCIONAL ---
 
+  private lastRadarLogTime = 0;
+
   public async scanMarket(): Promise<void> {
     if (!this.state.enabled) return;
     if (this.positions.length >= this.state.maxActivePositions) return;
@@ -443,6 +445,11 @@ export class FuturesEngine {
 
     try {
       this.state.lastScanTime = Date.now();
+      const shouldLogRadar = Date.now() - this.lastRadarLogTime > 45000;
+      if (shouldLogRadar) {
+        this.lastRadarLogTime = Date.now();
+        console.log(`[FUTUROS 📡 RADAR] Escaneando ${FUTURES_WATCHLIST.length} pares (2x ISOLATED)... Posiciones activas: ${this.positions.length}/${this.state.maxActivePositions}`);
+      }
 
       for (const symbol of FUTURES_WATCHLIST) {
         if (this.positions.length >= this.state.maxActivePositions) break;
@@ -495,7 +502,7 @@ export class FuturesEngine {
 
     // --- EVALUACIÓN DE SEÑAL LONG ---
     const isMacroBullish = curPrice1h >= ema50_1h * 0.995; // Macro neutral a alcista
-    const isRsiOversold = rsi15m >= 30 && rsi15m <= 42;
+    const isRsiOversold = rsi15m <= 42; // Captura cualquier sobreventa válida (incluso < 30)
     const isLowerAbsorption = lowerWickRatio >= 0.35;
     const isFundingSafeForLong = fundingRate < 0.0003;
 
@@ -507,7 +514,7 @@ export class FuturesEngine {
 
     // --- EVALUACIÓN DE SEÑAL SHORT ---
     const isMacroBearish = curPrice1h <= ema50_1h * 1.005; // Macro neutral a bajista
-    const isRsiOverbought = rsi15m >= 62 && rsi15m <= 75;
+    const isRsiOverbought = rsi15m >= 60; // Captura cualquier sobrecompra válida (incluso > 75)
     const isUpperRejection = upperWickRatio >= 0.35;
     const isFundingSafeForShort = fundingRate > -0.0003;
 
