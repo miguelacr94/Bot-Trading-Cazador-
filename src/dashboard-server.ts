@@ -516,23 +516,35 @@ export class DashboardServer {
       });
     }
 
-    // 2. Fusionar trades locales (garantiza que ninguna venta notificada por Telegram se pierda)
+    // 2. Fusionar trades locales con deduplicación inteligente contra Binance
     for (const l of localLedger) {
-      const key = String(l.orderId || (l.symbol + "_" + Math.round(l.time / 1000)));
-      if (!syncMap.has(key)) {
-        syncMap.set(key, {
-          symbol: l.symbol,
-          orderId: l.orderId,
-          time: l.time,
-          qty: l.qty,
-          avgBuy: l.buyPrice,
-          avgSell: l.sellPrice,
-          costUsdt: l.costUsdt,
-          proceedsUsdt: l.proceedsUsdt,
-          feesUsdt: l.feesUsdt,
-          pnlUsdt: l.pnlUsdt,
-          pnlPct: l.pnlPct
-        });
+      const alreadyInBinance = binanceCycles.some((c: any) => {
+        if (c.orderId && l.orderId && String(c.orderId) === String(l.orderId)) return true;
+        if (c.symbol === l.symbol) {
+          const priceDiff = Math.abs((c.avgSell || 0) - (l.sellPrice || 0)) / (c.avgSell || 1);
+          const timeDiff = Math.abs((c.time || 0) - (l.time || 0));
+          if (priceDiff < 0.01 && timeDiff < 6 * 3600 * 1000) return true;
+        }
+        return false;
+      });
+
+      if (!alreadyInBinance) {
+        const key = String(l.orderId || (l.symbol + "_" + Math.round(l.time / 1000)));
+        if (!syncMap.has(key)) {
+          syncMap.set(key, {
+            symbol: l.symbol,
+            orderId: l.orderId,
+            time: l.time,
+            qty: l.qty,
+            avgBuy: l.buyPrice,
+            avgSell: l.sellPrice,
+            costUsdt: l.costUsdt,
+            proceedsUsdt: l.proceedsUsdt,
+            feesUsdt: l.feesUsdt,
+            pnlUsdt: l.pnlUsdt,
+            pnlPct: l.pnlPct
+          });
+        }
       }
     }
 
