@@ -1026,8 +1026,8 @@ export class TrailingMasterBot {
                 if (!this.controls.recoveryTracker) {
                     this.controls.recoveryTracker = { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
                 }
-                if (pos.strategy === "centinela_alpha") {
-                    this.controls.recoveryTracker.recoveredUsdt += profitUsdt;
+                if (this.controls.recoveryTracker.recoveredUsdt < this.controls.recoveryTracker.targetUsdt) {
+                    this.controls.recoveryTracker.recoveredUsdt = Math.min(this.controls.recoveryTracker.targetUsdt, this.controls.recoveryTracker.recoveredUsdt + profitUsdt);
                     this.controls.recoveryTracker.tradesCount += 1;
                     this.saveStrategyControls();
                 }
