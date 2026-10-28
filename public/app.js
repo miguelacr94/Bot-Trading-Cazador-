@@ -1224,6 +1224,97 @@
     initCompactUI();
     initAutonomousStrategyControls();
 
+  // Controladores del Laboratorio de Futuros (lab-...)
+  const labModeSim = document.getElementById("lab-fut-mode-sim");
+  const labModeReal = document.getElementById("lab-fut-mode-real");
+  const labCapital = document.getElementById("lab-fut-capital");
+  const labMargin = document.getElementById("lab-fut-margin");
+  const labLev = document.getElementById("lab-fut-lev");
+  const labSaveBtn = document.getElementById("lab-btn-save-cfg");
+  const labResetBtn = document.getElementById("lab-btn-reset-100");
+
+  async function executeFuturesConfigChange(isSim, margin, capital, levMode) {
+    try {
+      const payload = {
+        isSimulated: isSim,
+        marginPerTrade: margin,
+        startingBalance: capital,
+        leverageMode: levMode
+      };
+      const res = await fetch("/api/futures/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (labSaveBtn) {
+          labSaveBtn.textContent = "✅ ¡Cambios Guardados!";
+          setTimeout(() => labSaveBtn.textContent = "💾 Guardar Cambios", 2000);
+        }
+        // Actualizar visualmente capital inicial y balance de inmediato
+        const initEl = document.getElementById("fut-dev-init-capital");
+        const curEl = document.getElementById("fut-dev-cur-balance");
+        if (initEl) initEl.textContent = "$" + capital.toFixed(2) + " USDT";
+        if (curEl && isSim) curEl.textContent = "$" + capital.toFixed(2) + " USDT";
+      }
+    } catch(e) {
+      console.error("Error guardando:", e);
+    }
+  }
+
+  if (labModeSim && labModeReal) {
+    labModeSim.addEventListener("click", () => {
+      labModeSim.style.background = "#8b5cf6";
+      labModeSim.style.color = "#fff";
+      labModeReal.style.background = "transparent";
+      labModeReal.style.color = "#94a3b8";
+      executeFuturesConfigChange(true, parseFloat(labMargin?.value || "15"), parseFloat(labCapital?.value || "100"), labLev?.value || "dynamic");
+    });
+
+    labModeReal.addEventListener("click", () => {
+      const ok = confirm("⚠️ ATENCIÓN: Vas a activar el modo REAL de Futuros en Binance.\n\nEl bot operará con dinero real a 2x-4x ISOLATED con margen de " + (labMargin?.value || "15") + " USDT.\n\n¿Deseas activar el modo REAL?");
+      if (ok) {
+        labModeReal.style.background = "#f59e0b";
+        labModeReal.style.color = "#000";
+        labModeSim.style.background = "transparent";
+        labModeSim.style.color = "#94a3b8";
+        executeFuturesConfigChange(false, parseFloat(labMargin?.value || "15"), parseFloat(labCapital?.value || "100"), labLev?.value || "dynamic");
+      }
+    });
+  }
+
+  if (labSaveBtn) {
+    labSaveBtn.addEventListener("click", () => {
+      const isSim = labModeSim && labModeSim.style.background === "rgb(139, 92, 246)";
+      executeFuturesConfigChange(isSim, parseFloat(labMargin?.value || "15"), parseFloat(labCapital?.value || "100"), labLev?.value || "dynamic");
+    });
+  }
+
+  if (labResetBtn) {
+    labResetBtn.addEventListener("click", async () => {
+      const ok = confirm("¿Deseas reiniciar la simulación con $100.00 USDT limpios y margen estándar de $15 USDT?");
+      if (ok) {
+        try {
+          await fetch("/api/futures/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reset: true, startingBalance: 100, marginPerTrade: 15, leverageMode: "dynamic" })
+          });
+          if (labCapital) labCapital.value = "100";
+          if (labMargin) labMargin.value = "15";
+          const initEl = document.getElementById("fut-dev-init-capital");
+          const curEl = document.getElementById("fut-dev-cur-balance");
+          if (initEl) initEl.textContent = "$100.00 USDT";
+          if (curEl) curEl.textContent = "$100.00 USDT";
+          labResetBtn.textContent = "✅ ¡Iniciado en $100!";
+          setTimeout(() => labResetBtn.textContent = "🔄 Iniciar con $100 USDT", 2000);
+        } catch(e) {}
+      }
+    });
+  }
+
+
   const btnReset100 = document.getElementById("btn-reset-fut-100");
   if (btnReset100) {
     btnReset100.addEventListener("click", async () => {

@@ -2681,6 +2681,61 @@
         </div>
       </div>
 
+
+      <!-- CENTRO DE CONTROL INTERACTIVO DE FUTUROS (MODIFICABLE EN VIVO) -->
+      <div style="margin-top:16px; background:rgba(30, 41, 59, 0.7); border:1px solid rgba(139, 92, 246, 0.4); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          
+          <!-- Selector Modo Simulación / Real -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:12px; font-weight:700; color:#fff;">Modo:</span>
+            <div style="display:inline-flex; border:1px solid rgba(255,255,255,0.2); border-radius:6px; overflow:hidden;">
+              <button id="lab-fut-mode-sim" type="button" style="background:#8b5cf6; color:#fff; border:none; padding:6px 14px; font-size:11px; font-weight:700; cursor:pointer;">🧪 Simulación (Paper)</button>
+              <button id="lab-fut-mode-real" type="button" style="background:transparent; color:#94a3b8; border:none; padding:6px 14px; font-size:11px; font-weight:700; cursor:pointer;">⚡ Dinero Real</button>
+            </div>
+          </div>
+
+          <!-- Capital Base -->
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:12px; font-weight:700; color:#e2e8f0;">💼 Capital Base:</span>
+            <input type="number" id="lab-fut-capital" min="10" max="10000" step="10" value="100" style="width:75px; background:#0f172a; border:1px solid #38bdf8; color:#38bdf8; font-weight:700; font-size:14px; text-align:center; padding:5px 8px; border-radius:6px;">
+            <span style="font-size:11px; color:#94a3b8; font-weight:600;">USDT</span>
+          </div>
+
+          <!-- Margen por Orden -->
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:12px; font-weight:700; color:#e2e8f0;">⚡ Margen/Orden:</span>
+            <input type="number" id="lab-fut-margin" min="5" max="500" step="5" value="15" style="width:65px; background:#0f172a; border:1px solid #34d399; color:#34d399; font-weight:700; font-size:14px; text-align:center; padding:5px 8px; border-radius:6px;">
+            <span style="font-size:11px; color:#94a3b8; font-weight:600;">USDT</span>
+          </div>
+
+          <!-- Selector de Apalancamiento -->
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:12px; font-weight:700; color:#e2e8f0;">🎯 Apalancamiento:</span>
+            <select id="lab-fut-lev" style="background:#0f172a; border:1px solid #a78bfa; color:#c4b5fd; font-weight:700; font-size:12px; padding:6px 10px; border-radius:6px;">
+              <option value="dynamic" selected>🤖 Dinámico (4x BTC/ETH / 3x Alts)</option>
+              <option value="fixed_2">Fijo 2x (Ultra Seguro)</option>
+              <option value="fixed_3">Fijo 3x (Balanceado)</option>
+              <option value="fixed_4">Fijo 4x (Rápido)</option>
+            </select>
+          </div>
+
+          <!-- Botones de Acción -->
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button id="lab-btn-save-cfg" type="button" style="background:#10b981; color:#fff; border:none; font-size:12px; font-weight:700; padding:6px 16px; border-radius:6px; cursor:pointer; box-shadow:0 0 12px rgba(16,185,129,0.3);">💾 Guardar Cambios</button>
+            <button id="lab-btn-reset-100" type="button" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; font-size:12px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer;" title="Reiniciar balance a $100.00 USDT limpios">🔄 Iniciar con $100 USDT</button>
+          </div>
+
+        </div>
+
+        <!-- Explicación Visual de la Recomendación de Apalancamiento -->
+        <div style="background:rgba(15, 23, 42, 0.5); border-left:3px solid #a78bfa; padding:8px 12px; border-radius:4px; font-size:11px; color:#cbd5e1; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <span>💡 <b>Recomendación Institucional del Bot:</b> <b>4x</b> en BTC/ETH (rocas de baja volatilidad), <b>3x</b> en SOL/BNB/XRP (volatilidad media) y <b>2x</b> en DOGE/AVAX. Stop-Loss fijo en <b>-1.2%</b>.</span>
+          <span style="color:#34d399; font-weight:700;">🎯 Trailing Take Profit al +1.20% (0.35% callback)</span>
+        </div>
+      </div>
+
+
       <!-- 1. Tabla de Posiciones Vivas de Futuros -->
       <div style="margin-top:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
