@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { FuturesEngine } from "./futures-engine.js";
 import { DashboardServer } from "./dashboard-server.js";
 import { Spot } from "@binance/connector";
@@ -1340,7 +1341,6 @@ export class TrailingMasterBot {
                 return msg;
             }
             if (cmd === "/futuros_real" || cmd === "futuros_real" || (cmd === "/futuros_modo" && arg1 === "REAL") || (cmd === "futuros_modo" && arg1 === "REAL")) {
-                // Verificar permisos de la API Key en Binance
                 let hasFuturesPermission = true;
                 try {
                     const perm = await this.client.apiPermissions();
@@ -1351,36 +1351,110 @@ export class TrailingMasterBot {
                 catch (e) { }
                 if (!hasFuturesPermission) {
                     return `⚠️ <b>TU API KEY DE BINANCE NO TIENE PERMISO DE FUTUROS ACTIVADO</b> 🔒\n\n` +
-                        `Para que Binance acepte órdenes reales en Futuros, debes dar el permiso en tu cuenta:\n\n` +
-                        `1️⃣ Entra a Binance ➡️ <b>Gestión de API</b>\n` +
-                        `2️⃣ En tu API Key, toca <b>Editar Restricciones</b>\n` +
-                        `3️⃣ Marca la casilla: ☑️ <b>Habilitar Futuros (Enable Futures)</b> y guarda los cambios\n` +
-                        `4️⃣ En tu Billetera de Binance, transfiere $15 a $20 USDT:\n` +
-                        `   <i>(Billetera ➡️ Transferir ➡️ De Spot a Futuros USD-M)</i>\n\n` +
-                        `🛡️ <i>Mientras realizas este paso, el bot continuará simulando las operaciones para proteger tu cuenta y seguirá invirtiendo tu saldo libre en las estrategias Spot (Cazador Trailing y Centinela).</i>\n\n` +
-                        `Una vez habilitado en Binance, vuelve a tocar: 👉 /futuros_real`;
+                        `Entra a Binance ➡️ <b>Gestión de API</b> y marca:\n` +
+                        `☑️ <b>Habilitar Futuros</b>\n` +
+                        `☑️ <b>Permitir Transferencia Universal</b>\n\n` +
+                        `Luego vuelve a presionar: 👉 /futuros_real`;
+                }
+                // Auto-transferir el margen acordado ($15 USDT) a la billetera de Futuros si es necesario
+                const agreedMargin = 15.0;
+                const futBal = await this.getFuturesBalance();
+                let transferNote = "";
+                if (futBal.available < 10.0) {
+                    const acc = await this.client.account({ recvWindow: 60000 });
+                    const spotUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                    if (spotUsdt >= agreedMargin) {
+                        const tr = await this.transferSpotToFutures(agreedMargin);
+                        if (tr.success) {
+                            transferNote = `\n💼 <b>Transferencia Automática:</b> Se transfirieron <b>$${agreedMargin.toFixed(2)} USDT</b> de Spot a Futuros USD-M.`;
+                        }
+                        else {
+                            transferNote = `\n⚠️ <i>Nota de transferencia: ${tr.msg}</i>`;
+                        }
+                    }
+                    else if (spotUsdt >= 5.0) {
+                        const tr = await this.transferSpotToFutures(Math.floor(spotUsdt));
+                        transferNote = `\n💼 <b>Transferencia Parcial:</b> Se transfirieron <b>$${Math.floor(spotUsdt)}.00 USDT</b> disponibles de Spot a Futuros.`;
+                    }
+                    else {
+                        transferNote = `\n⏳ <b>Aviso de Fondos:</b> Tienes $${spotUsdt.toFixed(2)} USDT libres en Spot (fondos activos en órdenes Spot). Tan pronto una orden cierre con ganancia, se fondearán los $${agreedMargin.toFixed(2)} USDT acordados.`;
+                    }
+                }
+                else {
+                    transferNote = `\n💼 <b>Saldo en Futuros USD-M:</b> Tienes <b>$${futBal.available.toFixed(2)} USDT</b> disponibles.`;
                 }
                 this.futuresEngine.setConfig({ isSimulated: false });
                 return `🚀 <b>MODO FUTUROS CAMBIADO A: REAL</b> ⚠️\n\n` +
-                    `• El motor ahora ejecutará órdenes reales en Binance USD-M Futures con margen aislado ($10-$15 USDT por operación).\n` +
-                    `• Stop Loss activo: -1.2%\n` +
-                    `• Trailing Take Profit: +1.2%\n` +
-                    `👉 Para regresar a simulación cuando quieras: /futuros_sim`;
+                    `• El motor ahora ejecutará órdenes reales en Binance USD-M con margen aislado ($10-$15 USDT por operación).\n` +
+                    `• Stop Loss activo: -1.2% | Trailing TP: +1.2%${transferNote}\n\n` +
+                    `🛡️ <i>Al finalizar o cambiar a simulación, el bot regresará automáticamente el saldo y ganancias a Spot.</i>\n\n` +
+                    `👉 Para pasar a simulación y regresar saldo a Spot: /futuros_sim\n` +
+                    `👉 O para regresar fondos a Spot manualmente: /pasar_a_spot`;
             }
             if (cmd === "/futuros_sim" || cmd === "futuros_sim" || (cmd === "/futuros_modo" && (arg1 === "SIM" || arg1 === "SIMULACION")) || (cmd === "futuros_modo" && (arg1 === "SIM" || arg1 === "SIMULACION"))) {
                 this.futuresEngine.setConfig({ isSimulated: true });
+                // Auto-transferir el saldo restante de Futuros a Spot si no hay posiciones abiertas
+                let returnNote = "";
+                const futPos = this.futuresEngine.getPositions();
+                if (futPos.length === 0) {
+                    const tr = await this.transferFuturesToSpot();
+                    if (tr.success) {
+                        returnNote = `\n\n💰 <b>Retorno Automático de Fondos:</b> ${tr.msg}`;
+                    }
+                }
+                else {
+                    returnNote = `\n\n⚠️ <i>Tienes ${futPos.length} posición(es) abierta(s). Los fondos se conservarán hasta que cierren, o puedes transferir con /pasar_a_spot.</i>`;
+                }
                 return `🛡️ <b>MODO FUTUROS CAMBIADO A: SIMULACIÓN (PAPER TRADING)</b> ✅\n\n` +
-                    `• Todas las operaciones se ejecutan de forma virtual sin arriesgar saldo real.\n` +
-                    `👉 Para cambiar a Real: /futuros_real`;
+                    `• Las operaciones de futuros ahora son virtuales sin arriesgar saldo real.${returnNote}\n\n` +
+                    `👉 Para volver a Real y transferir margen: /futuros_real`;
             }
-            if (cmd === "/reporte_futuros" || cmd === "reporte_futuros") {
-                return this.futuresEngine.getSummaryReport();
+            if (cmd === "/pasar_a_spot" || cmd === "pasar_a_spot" || cmd === "/retirar_a_spot" || cmd === "retirar_a_spot") {
+                const amt = arg1 ? parseFloat(arg1) : undefined;
+                const res = await this.transferFuturesToSpot(amt);
+                const futBal = await this.getFuturesBalance();
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const spotUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                if (res.success) {
+                    return `✅ <b>TRANSFERENCIA A SPOT EXITOSA</b> 💼\n\n` +
+                        `• ${res.msg}\n` +
+                        `• <b>Saldo Libre en Spot:</b> $${spotUsdt.toFixed(2)} USDT\n` +
+                        `• <b>Saldo Restante en Futuros:</b> $${futBal.available.toFixed(2)} USDT`;
+                }
+                else {
+                    return `⚠️ <b>NO SE PUDO TRANSFERIR A SPOT</b>\n\n` +
+                        `• ${res.msg}\n` +
+                        `• <b>Saldo Disponible en Futuros USD-M:</b> $${futBal.available.toFixed(2)} USDT\n\n` +
+                        `<i>Recuerda que si tienes posiciones abiertas en futuros, el margen asignado no se puede transferir hasta que cierren.</i>`;
+                }
             }
-            if (cmd === "/toggle_futuros" || cmd === "toggle_futuros") {
-                const isNowOn = this.futuresEngine.toggle();
-                return isNowOn
-                    ? "🟢 <b>Motor de Futuros ACTIVADO.</b> Comenzará a escanear el radar de 7 pares."
-                    : "🔴 <b>Motor de Futuros PAUSADO.</b> No abrirá nuevas posiciones ni rastreará entradas.";
+            if (cmd === "/pasar_a_futuros" || cmd === "pasar_a_futuros") {
+                const amt = arg1 ? parseFloat(arg1) : 15.0;
+                const res = await this.transferSpotToFutures(amt);
+                const futBal = await this.getFuturesBalance();
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const spotUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                if (res.success) {
+                    return `✅ <b>TRANSFERENCIA A FUTUROS EXITOSA</b> 🚀\n\n` +
+                        `• ${res.msg}\n` +
+                        `• <b>Saldo Libre en Futuros USD-M:</b> $${futBal.available.toFixed(2)} USDT\n` +
+                        `• <b>Saldo Restante en Spot:</b> $${spotUsdt.toFixed(2)} USDT`;
+                }
+                else {
+                    return `⚠️ <b>NO SE PUDO TRANSFERIR A FUTUROS</b>\n\n` +
+                        `• ${res.msg}\n` +
+                        `• <b>Saldo Disponible en Spot:</b> $${spotUsdt.toFixed(2)} USDT`;
+                }
+            }
+            if (cmd === "/saldo_futuros" || cmd === "saldo_futuros") {
+                const futBal = await this.getFuturesBalance();
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const spotUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                return `📊 <b>BALANCE COMPARATIVO SPOT VS FUTUROS</b> ⚖️\n\n` +
+                    `• 💼 <b>Billetera Spot:</b> $${spotUsdt.toFixed(2)} USDT (Libre)\n` +
+                    `• 🧪 <b>Billetera Futuros USD-M:</b> $${futBal.balance.toFixed(2)} USDT (Total) | $${futBal.available.toFixed(2)} USDT (Disponible)\n\n` +
+                    `👉 Pasar $15 a Futuros: <code>/pasar_a_futuros 15</code>\n` +
+                    `👉 Pasar todo a Spot: <code>/pasar_a_spot</code>`;
             }
             if (cmd === "/futuros" || cmd === "futuros") {
                 const st = this.futuresEngine.getState();
@@ -2751,6 +2825,66 @@ export class TrailingMasterBot {
             "• 🏹 Disparará compra al confirmar rebote de <b>+0.35%</b> desde el piso.\n" +
             "• 🚀 <b>Salida:</b> El Trailing Take Profit (+0.80% a +3.5%) perseguirá el pico más alto (domingo noche/lunes o el día que más suba) para vender en la cima.");
         return true;
+    }
+    // --- MÉTODOS DE TRANSFERENCIA UNIVERSAL SPOT <-> FUTUROS USD-M ---
+    async getFuturesBalance() {
+        try {
+            const ts = Date.now();
+            const query = `timestamp=${ts}`;
+            const sig = crypto.createHmac("sha256", process.env.BINANCE_API_SECRET || "").update(query).digest("hex");
+            const url = `https://fapi.binance.com/fapi/v2/balance?${query}&signature=${sig}`;
+            const res = await fetch(url, {
+                headers: { "X-MBX-APIKEY": process.env.BINANCE_API_KEY || "" }
+            });
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                const item = data.find((b) => b.asset === "USDT");
+                if (item) {
+                    return {
+                        balance: parseFloat(item.balance || "0"),
+                        available: parseFloat(item.availableBalance || "0")
+                    };
+                }
+            }
+            return { balance: 0, available: 0 };
+        }
+        catch {
+            return { balance: 0, available: 0 };
+        }
+    }
+    async transferSpotToFutures(amount) {
+        try {
+            const cleanAmt = Math.floor(amount * 100) / 100;
+            if (cleanAmt <= 0)
+                return { success: false, msg: "Monto inválido para transferir." };
+            const res = await this.client.userUniversalTransfer("MAIN_UMFUTURE", "USDT", cleanAmt);
+            return { success: true, msg: `Transferidos ${cleanAmt.toFixed(2)} USDT de Spot a Futuros USD-M (TranId: ${res.data.tranId}).` };
+        }
+        catch (e) {
+            const errMsg = e.response?.data?.msg || e.message;
+            return { success: false, msg: `Error en transferencia a Futuros: ${errMsg}` };
+        }
+    }
+    async transferFuturesToSpot(amount) {
+        try {
+            let targetAmt = amount;
+            if (!targetAmt || targetAmt <= 0) {
+                const futBal = await this.getFuturesBalance();
+                targetAmt = Math.floor(futBal.available * 100) / 100;
+            }
+            else {
+                targetAmt = Math.floor(targetAmt * 100) / 100;
+            }
+            if (targetAmt <= 0.01) {
+                return { success: false, msg: "No hay saldo disponible en Futuros USD-M para transferir a Spot." };
+            }
+            const res = await this.client.userUniversalTransfer("UMFUTURE_MAIN", "USDT", targetAmt);
+            return { success: true, msg: `Transferidos ${targetAmt.toFixed(2)} USDT de Futuros USD-M de regreso a Spot (TranId: ${res.data.tranId}).` };
+        }
+        catch (e) {
+            const errMsg = e.response?.data?.msg || e.message;
+            return { success: false, msg: `Error en transferencia a Spot: ${errMsg}` };
+        }
     }
     // --- CENTINELA DE LIQUIDEZ (50 USDT) Y VIABILIDAD DE FUTUROS ---
     isCheckingLiquidity = false;
