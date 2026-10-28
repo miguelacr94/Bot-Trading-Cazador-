@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "symbol": "AVAXUSDT",
+    "orderId": 5905545697,
+    "time": 1793217766879,
+    "buyPrice": 8.987,
+    "sellPrice": 9.114,
+    "qty": 3.19,
+    "costUsdt": 28.668529999999997,
+    "proceedsUsdt": 29.07366,
+    "feesUsdt": 0,
+    "pnlUsdt": 0.4051300000000033,
+    "pnlPct": 1.413152331144999,
+    "strategy": "trailing_rebound",
+    "source": "bot_execution"
+  },
+  {
+    "symbol": "PEPEUSDT",
+    "orderId": 5459558695,
+    "time": 1793217956331,
+    "buyPrice": 0.00000496,
+    "sellPrice": 0.0000051700000000000005,
+    "qty": 10040353,
+    "costUsdt": 49.800150880000004,
+    "proceedsUsdt": 51.85671638,
+    "feesUsdt": 0.05190863,
+    "pnlUsdt": 2.056565499999998,
+    "pnlPct": 4.129637086754139,
+    "strategy": "trailing_rebound",
+    "source": "bot_execution"
+  }
+]

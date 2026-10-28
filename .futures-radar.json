@@ -1,79 +1,79 @@
 [
   {
     "symbol": "BTCUSDT",
-    "price": 81564.7,
-    "ema50": 80577.19153231643,
+    "price": 81165.9,
+    "ema50": 80560.70525780662,
     "trend": "ALCISTA",
-    "rsi15m": 69.6,
-    "lowerWickPct": 4,
-    "upperWickPct": 16,
+    "rsi15m": 54.3,
+    "lowerWickPct": 1,
+    "upperWickPct": 41,
     "fundingRate": "0.0100%",
-    "status": "POSICIÓN VIVA (LONG 2x)"
+    "status": "⏳ EN COOLDOWN"
   },
   {
     "symbol": "ETHUSDT",
-    "price": 2374,
-    "ema50": 2337.9827036846464,
+    "price": 2359.99,
+    "ema50": 2337.5274095669993,
     "trend": "ALCISTA",
-    "rsi15m": 73.8,
-    "lowerWickPct": 11,
-    "upperWickPct": 4,
+    "rsi15m": 57.5,
+    "lowerWickPct": 3,
+    "upperWickPct": 80,
     "fundingRate": "0.0100%",
-    "status": "🔴 ZONA RECHAZO BAJISTA"
+    "status": "VIGILANDO"
   },
   {
     "symbol": "SOLUSDT",
-    "price": 103.11,
-    "ema50": 101.320145851961,
+    "price": 102.43,
+    "ema50": 101.2923027147061,
     "trend": "ALCISTA",
-    "rsi15m": 69.9,
-    "lowerWickPct": 18,
-    "upperWickPct": 2,
+    "rsi15m": 56.9,
+    "lowerWickPct": 3,
+    "upperWickPct": 67,
     "fundingRate": "0.0100%",
-    "status": "🔴 ZONA RECHAZO BAJISTA"
+    "status": "VIGILANDO"
   },
   {
     "symbol": "BNBUSDT",
-    "price": 755.9,
-    "ema50": 747.2163786601149,
+    "price": 754.64,
+    "ema50": 747.1708884640365,
     "trend": "ALCISTA",
-    "rsi15m": 64.2,
-    "lowerWickPct": 8,
-    "upperWickPct": 2,
-    "fundingRate": "0.0058%",
-    "status": "🔴 ZONA RECHAZO BAJISTA"
+    "rsi15m": 58,
+    "lowerWickPct": 1,
+    "upperWickPct": 94,
+    "fundingRate": "0.0066%",
+    "status": "VIGILANDO"
   },
   {
     "symbol": "AVAXUSDT",
-    "price": 9.046,
-    "ema50": 8.909303568288731,
+    "price": 8.978,
+    "ema50": 8.906911411425986,
     "trend": "ALCISTA",
-    "rsi15m": 68,
-    "lowerWickPct": 2,
-    "upperWickPct": 5,
+    "rsi15m": 56.6,
+    "lowerWickPct": 1,
+    "upperWickPct": 79,
     "fundingRate": "0.0100%",
-    "status": "🔴 ZONA RECHAZO BAJISTA"
+    "status": "VIGILANDO"
   },
   {
     "symbol": "XRPUSDT",
-    "price": 1.3361,
-    "ema50": 1.31415568438401,
+    "price": 1.3285,
+    "ema50": 1.3138380373251866,
     "trend": "ALCISTA",
-    "rsi15m": 71.2,
-    "lowerWickPct": 13,
-    "upperWickPct": 2,
+    "rsi15m": 57.3,
+    "lowerWickPct": 1,
+    "upperWickPct": 69,
     "fundingRate": "0.0100%",
-    "status": "🔴 ZONA RECHAZO BAJISTA"
+    "status": "VIGILANDO"
   },
   {
     "symbol": "DOGEUSDT",
-    "price": 0.08021,
-    "ema50": 0.07857536954468114,
+    "price": 0.07991,
+    "ema50": 0.07856360483879879,
     "trend": "ALCISTA",
-    "rsi15m": 65.3,
-    "lowerWickPct": 7,
-    "upperWickPct": 5,
+    "rsi15m": 57.7,
+    "lowerWickPct": 2,
+    "upperWickPct": 90,
     "fundingRate": "0.0100%",
-    "status": "🔴 ZONA RECHAZO BAJISTA"
+    "status": "VIGILANDO"
   }
 ]

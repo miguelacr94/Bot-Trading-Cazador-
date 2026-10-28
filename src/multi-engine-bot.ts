@@ -3055,7 +3055,7 @@ export class TrailingMasterBot {
         const timeStr = new Date().toLocaleTimeString("es-CO", { hour12: false });
 
         let msg = `🔔 <b>¡LIQUIDEZ DISPONIBLE DETECTADA!</b> (${timeStr})\n\n`;
-        msg += `💼 <b>Saldo Libre:</b> <code>${freeUsdt.toFixed(2)} USDT</code> (Meta de ≥ $50 USDT alcanzada)\n\n`;
+        msg += `💼 <b>Saldo Libre:</b> <code>${freeUsdt.toFixed(2)} USDT</code> (Meta de ≥ 50 USDT alcanzada)\n\n`;
 
         if (viability.isViable) {
           msg += `🎯 <b>Diagnóstico de Futuros:</b> 🟢 <b>MERCADO VIABLE (${viability.score}/100)</b>\n\n`;
@@ -3068,7 +3068,7 @@ export class TrailingMasterBot {
             msg += `  <i>${viability.favorableSymbols.slice(0, 3).join("\n  ")}</i>\n`;
           }
           msg += `\n⚙️ <b>¿Deseas invertir en Futuros o continuar en Spot?</b>\n\n`;
-          msg += `1️⃣ <b>Para activar Futuros Real ($10-$15 margen / 2x-4x apalancamiento / SL -1.2%):</b>\n`;
+          msg += `1️⃣ <b>Para activar Futuros Real (10-15 USDT margen / 2x-4x apalancamiento / SL -1.2%):</b>\n`;
           msg += `   👉 Toca: <code>/futuros_modo real</code> (o actívalo en el Dashboard web)\n\n`;
           msg += `2️⃣ <b>Si prefieres no arriesgar en futuros:</b>\n`;
           msg += `   No necesitas hacer nada; el bot invertirá automáticamente estos <b>${freeUsdt.toFixed(2)} USDT</b> en las <b>estrategias Spot</b> (Cazador Trailing & Centinela Alpha) sin riesgo de liquidación.`;

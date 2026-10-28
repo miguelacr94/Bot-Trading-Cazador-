@@ -16,5 +16,23 @@
     "feesUsdt": 0.010042350325576287,
     "netPnlUsdt": 0.07465830082699715,
     "roePct": 1.493166016539943
+  },
+  {
+    "id": "sim_fut_1793203077759",
+    "symbol": "BTCUSDT",
+    "side": "LONG",
+    "entryPrice": 80523.40146000001,
+    "exitPrice": 81537.6,
+    "marginUsdt": 5,
+    "leverage": 2,
+    "notionalUsdt": 10,
+    "openTime": 1793203077759,
+    "closeTime": 1793217931659,
+    "durationMin": 248,
+    "exitReason": "TRAILING_TP",
+    "grossPnlUsdt": 0.12595078220879688,
+    "feesUsdt": 0.010062975391104399,
+    "netPnlUsdt": 0.11588780681769248,
+    "roePct": 2.3177561363538497
   }
 ]

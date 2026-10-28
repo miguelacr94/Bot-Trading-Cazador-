@@ -12,18 +12,6 @@
     }
   ],
   [
-    "AVAXUSDT",
-    {
-      "symbol": "AVAXUSDT",
-      "buyPrice": 8.987,
-      "qty": 3.19743938,
-      "investedUsdt": 28.73538770806,
-      "highestPrice": 8.987,
-      "activated": false,
-      "buyTime": 1793173496609
-    }
-  ],
-  [
     "XRPUSDT",
     {
       "symbol": "XRPUSDT",
@@ -37,28 +25,28 @@
     }
   ],
   [
-    "PEPEUSDT",
-    {
-      "symbol": "PEPEUSDT",
-      "buyPrice": 0.00000496,
-      "qty": 10040353.11,
-      "investedUsdt": 49.8001514256,
-      "highestPrice": 0.00000496,
-      "activated": false,
-      "buyTime": 1793184359688
-    }
-  ],
-  [
     "DOGEUSDT",
     {
       "symbol": "DOGEUSDT",
       "buyPrice": 0.07994,
       "qty": 148,
       "investedUsdt": 11.83112,
-      "highestPrice": 0.07994,
-      "activated": false,
+      "highestPrice": 0.08086,
+      "activated": true,
       "buyTime": 1793189225126,
       "customCallbackPct": 0.45
+    }
+  ],
+  [
+    "PEPEUSDT",
+    {
+      "symbol": "PEPEUSDT",
+      "buyPrice": 0.00000507,
+      "qty": 17347606.13,
+      "investedUsdt": 87.9523630791,
+      "highestPrice": 0.00000507,
+      "activated": false,
+      "buyTime": 1793218548962
     }
   ]
 ]

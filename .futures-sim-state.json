@@ -1,7 +1,7 @@
 {
   "isSimulated": true,
   "enabled": true,
-  "virtualBalanceUsdt": 100,
+  "virtualBalanceUsdt": 100.1158878068177,
   "startingBalanceUsdt": 100,
   "maxActivePositions": 2,
   "defaultMarginPerTrade": 15,
