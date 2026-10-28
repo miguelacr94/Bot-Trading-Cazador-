@@ -1223,6 +1223,60 @@
 
     initCompactUI();
     initAutonomousStrategyControls();
+
+  // Control de Modo Simulado vs Real y Margen de Futuros
+  const btnModeSim = document.getElementById("btn-fut-mode-sim");
+  const btnModeReal = document.getElementById("btn-fut-mode-real");
+  const inputFutMargin = document.getElementById("input-fut-margin");
+  const btnSaveFutCfg = document.getElementById("btn-save-fut-config");
+
+  async function updateFuturesConfig(isSim, margin) {
+    try {
+      const res = await fetch("/api/futures/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isSimulated: isSim, marginPerTrade: margin })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (btnSaveFutCfg) {
+          btnSaveFutCfg.textContent = "✅ Guardado";
+          setTimeout(() => btnSaveFutCfg.textContent = "💾 Aplicar", 2000);
+        }
+      }
+    } catch (e) {
+      console.error("Error guardando config de futuros:", e);
+    }
+  }
+
+  if (btnModeSim && btnModeReal) {
+    btnModeSim.addEventListener("click", () => {
+      btnModeSim.style.background = "#8b5cf6";
+      btnModeSim.style.color = "#fff";
+      btnModeReal.style.background = "transparent";
+      btnModeReal.style.color = "#94a3b8";
+      updateFuturesConfig(true, parseFloat(inputFutMargin?.value || "10"));
+    });
+
+    btnModeReal.addEventListener("click", () => {
+      const ok = confirm("⚠️ ATENCIÓN: Vas a activar el modo REAL de Futuros en Binance.\n\nEl bot operará con dinero real de tu billetera de Futuros a 2x ISOLATED con margen estándar de " + (inputFutMargin?.value || "10") + " USDT.\n\n¿Deseas activar el modo REAL?");
+      if (ok) {
+        btnModeReal.style.background = "#f59e0b";
+        btnModeReal.style.color = "#000";
+        btnModeSim.style.background = "transparent";
+        btnModeSim.style.color = "#94a3b8";
+        updateFuturesConfig(false, parseFloat(inputFutMargin?.value || "10"));
+      }
+    });
+  }
+
+  if (btnSaveFutCfg) {
+    btnSaveFutCfg.addEventListener("click", () => {
+      const isSim = btnModeSim && btnModeSim.style.background === "rgb(139, 92, 246)";
+      updateFuturesConfig(isSim, parseFloat(inputFutMargin?.value || "10"));
+    });
+  }
+
   }, 1000);
 
   // Renderizar Telemetría del Laboratorio de Futuros (Modo Dev)

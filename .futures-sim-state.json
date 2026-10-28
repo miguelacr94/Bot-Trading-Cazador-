@@ -4,7 +4,7 @@
   "virtualBalanceUsdt": 30,
   "startingBalanceUsdt": 30,
   "maxActivePositions": 2,
-  "defaultMarginPerTrade": 5,
+  "defaultMarginPerTrade": 10,
   "defaultLeverage": 2,
   "stopLossPct": 1.2,
   "trailingTriggerPct": 0.8,

@@ -9,7 +9,7 @@
   },
   "autoPilot": true,
   "approvalTimeoutSec": 180,
-  "updatedAt": 1793205336907,
+  "updatedAt": 1793205712005,
   "allocations": {
     "trailing_rebound": 25,
     "smart_dca": 25,
@@ -66,18 +66,18 @@
     "trailing_rebound": {
       "timeframe": "1h",
       "stopLossPct": 4,
-      "reason": "BTC comprimido (1.8%), pero Memes activas (5.5%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
+      "reason": "BTC comprimido (1.8%), pero Memes activas (5.4%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
       "criterios": [
         "Rango Macro Bitcoin: 1.77% (Calma y absorción institucional)",
-        "Rango Canasta Memecoins: 5.52% (Líder: PEPE 14.5%)",
+        "Rango Canasta Memecoins: 5.42% (Líder: PEPE 14.0%)",
         "Sesión: Wall Street / New York (Máxima Liquidez y Volumen)",
         "Estrategia Híbrida: 1H para filtrar ruido en clásicas y Trailing Buy ágil en Memecoins"
       ],
       "porQue": "En días donde Bitcoin se mueve en canales planos (< 2.0%), la liquidez institucional descansa en las monedas grandes pero la especulación se concentra en memecoins (PEPE). Mantener 1H en clásicas protege el capital contra trampas, mientras el escáner de velas aprovecha los rebotes en la canasta meme.",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 1.77352079937172,
-      "updatedAt": 1793205336906,
-      "expiresAt": 1793208936906,
+      "updatedAt": 1793205712004,
+      "expiresAt": 1793209312004,
       "isCurrent": true,
       "status": "applied"
     },
@@ -93,8 +93,8 @@
       "porQue": "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 1.77352079937172,
-      "updatedAt": 1793205336906,
-      "expiresAt": 1793208936906,
+      "updatedAt": 1793205712004,
+      "expiresAt": 1793209312004,
       "isCurrent": true,
       "status": "applied"
     },
@@ -110,8 +110,8 @@
       "porQue": "En días planos donde no hay tendencias grandes, la única forma de generar dólares es con una rejilla de micro-rebotes (+0.45% a +0.60%) en 15m. El Stop-Loss estricto de -2.0% es obligatorio: si el precio rompe el canal hacia abajo, la estrategia debe cortar de inmediato para no quedar atrapada en una caída direccional.",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 1.77352079937172,
-      "updatedAt": 1793205336906,
-      "expiresAt": 1793208936906,
+      "updatedAt": 1793205712004,
+      "expiresAt": 1793209312004,
       "isCurrent": true,
       "status": "applied"
     },
@@ -126,8 +126,8 @@
       "porQue": "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 1.77352079937172,
-      "updatedAt": 1793205336906,
-      "expiresAt": 1793208936906,
+      "updatedAt": 1793205712004,
+      "expiresAt": 1793209312004,
       "isCurrent": true,
       "status": "applied"
     }

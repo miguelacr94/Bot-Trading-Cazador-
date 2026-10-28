@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { TelegramNotifier } from "./notifier.js";
@@ -156,6 +157,70 @@ export class FuturesEngine {
     } catch (e: any) {
       console.error("Error guardando .futures-sim-trades.json:", e.message);
     }
+  }
+
+  
+  public setConfig(cfg: { isSimulated?: boolean; marginPerTrade?: number }): FuturesState {
+    if (cfg.isSimulated !== undefined) this.state.isSimulated = !!cfg.isSimulated;
+    if (cfg.marginPerTrade !== undefined && cfg.marginPerTrade >= 5) {
+      this.state.defaultMarginPerTrade = parseFloat(String(cfg.marginPerTrade));
+    }
+    this.saveState();
+    return this.state;
+  }
+
+  // --- EJECUCIÓN PRIVADA BINANCE FUTURES (MODO REAL) ---
+  private signQuery(params: Record<string, any>, secret: string): string {
+    const query = Object.entries(params)
+      .filter(([_, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join("&");
+    const signature = crypto.createHmac("sha256", secret).update(query).digest("hex");
+    return `${query}&signature=${signature}`;
+  }
+
+  public async privateFuturesRequest(endpoint: string, method = "GET", params: Record<string, any> = {}): Promise<any> {
+    const apiKey = process.env.BINANCE_API_KEY || "";
+    const secret = process.env.BINANCE_API_SECRET || "";
+    if (!apiKey || !secret) throw new Error("API Key o Secret no configurados en .env");
+
+    const timestamp = Date.now();
+    const fullParams = { ...params, timestamp, recvWindow: 60000 };
+    const querySigned = this.signQuery(fullParams, secret);
+
+    let url = `https://fapi.binance.com${endpoint}`;
+    let options: RequestInit = {
+      method,
+      headers: {
+        "X-MBX-APIKEY": apiKey,
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
+    };
+
+    if (method === "GET") {
+      url += `?${querySigned}`;
+    } else {
+      options.body = querySigned;
+    }
+
+    const res = await fetch(url, options);
+    return res.json();
+  }
+
+  // Precisión de decimales de cantidad por símbolo en Binance Futures
+  private roundLotSize(symbol: string, qty: number): number {
+    const precisionMap: Record<string, number> = {
+      BTCUSDT: 3,
+      ETHUSDT: 3,
+      SOLUSDT: 2,
+      BNBUSDT: 2,
+      AVAXUSDT: 1,
+      XRPUSDT: 1,
+      DOGEUSDT: 0
+    };
+    const p = precisionMap[symbol] !== undefined ? precisionMap[symbol] : 2;
+    const factor = Math.pow(10, p);
+    return Math.floor(qty * factor) / factor;
   }
 
   public getState(): FuturesState {
