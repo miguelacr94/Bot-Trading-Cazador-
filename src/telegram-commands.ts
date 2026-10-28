@@ -1,3 +1,4 @@
+import fs from "fs";
 type Handler = (cmd: string) => Promise<string>;
 
 /**
@@ -134,7 +135,10 @@ export class TelegramCommands {
 
           let reply = "";
           try {
-            reply = await this.handler(cleanedText);
+            const logLine = `[${new Date().toISOString()}] RECV: "${cleanedText}"\n`;
+          try { fs.appendFileSync('.telegram-debug.log', logLine); } catch {}
+          reply = await this.handler(cleanedText);
+          try { fs.appendFileSync('.telegram-debug.log', `[${new Date().toISOString()}] REPLY: "${reply.slice(0, 100)}"\n`); } catch {}
           } catch (handlerErr: any) {
             console.error("Error en handler de Telegram:", handlerErr.message);
             reply = `⚠️ Error procesando comando: ${handlerErr.message}`;

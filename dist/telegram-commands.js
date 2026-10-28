@@ -1,3 +1,4 @@
+import fs from "fs";
 /**
  * Escucha mensajes de Telegram (long polling) y responde comandos.
  * SOLO responde al TELEGRAM_CHAT_ID configurado; ignora a cualquier otra persona.
@@ -128,7 +129,16 @@ export class TelegramCommands {
                     console.log(`📱 Telegram comando recibido: ${cleanedText}`);
                     let reply = "";
                     try {
+                        const logLine = `[${new Date().toISOString()}] RECV: "${cleanedText}"\n`;
+                        try {
+                            fs.appendFileSync('.telegram-debug.log', logLine);
+                        }
+                        catch { }
                         reply = await this.handler(cleanedText);
+                        try {
+                            fs.appendFileSync('.telegram-debug.log', `[${new Date().toISOString()}] REPLY: "${reply.slice(0, 100)}"\n`);
+                        }
+                        catch { }
                     }
                     catch (handlerErr) {
                         console.error("Error en handler de Telegram:", handlerErr.message);
