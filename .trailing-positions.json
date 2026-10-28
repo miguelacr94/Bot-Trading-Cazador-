@@ -48,5 +48,17 @@
       "activated": false,
       "buyTime": 1793218548962
     }
+  ],
+  [
+    "BONKUSDT",
+    {
+      "symbol": "BONKUSDT",
+      "buyPrice": 0.00000318,
+      "qty": 11168065.95,
+      "investedUsdt": 35.514449721,
+      "highestPrice": 0.00000318,
+      "activated": false,
+      "buyTime": 1793218864890
+    }
   ]
 ]

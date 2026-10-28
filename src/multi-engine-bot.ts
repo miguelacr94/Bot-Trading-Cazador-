@@ -1515,30 +1515,56 @@ export class TrailingMasterBot {
           msg += `  ${viability.favorableSymbols.join("\n  ")}\n`;
         }
         msg += `\n💡 <b>Recomendación:</b> ${viability.recommendedAction}\n\n` +
-          `👉 <code>/futuros_modo real</code> para pasar a Real\n` +
-          `👉 <code>/futuros_modo sim</code> para mantener Simulación`;
+          `👉 <code>/futuros_real</code> para pasar a Real\n` +
+          `👉 <code>/futuros_sim</code> para mantener Simulación`;
         return msg;
       }
 
-      if (cmd === "/futuros_modo" || cmd === "futuros_modo") {
-        const mode = arg1?.toLowerCase();
-        if (mode === "real") {
-          this.futuresEngine.setConfig({ isSimulated: false });
-          return `🚀 <b>MODO FUTUROS CAMBIADO A: REAL</b> ⚠️\n\n` +
-            `• El motor ahora ejecutará órdenes reales en Binance USD-M Futures con margen aislado ($10-$15 USDT por operación).\n` +
-            `• Stop Loss activo: -1.2%\n` +
-            `• Trailing Take Profit: +1.2%\n` +
-            `👉 Para regresar a simulación: <code>/futuros_modo sim</code>`;
-        } else if (mode === "sim" || mode === "simulacion") {
-          this.futuresEngine.setConfig({ isSimulated: true });
-          return `🛡️ <b>MODO FUTUROS CAMBIADO A: SIMULACIÓN (PAPER TRADING)</b> ✅\n\n` +
-            `• Todas las operaciones se ejecutan de forma virtual sin arriesgar saldo real.`;
-        } else {
-          const st = this.futuresEngine.getState();
-          return `⚙️ <b>MODO ACTUAL DE FUTUROS:</b> ${st.isSimulated ? "🛡️ SIMULACIÓN (Paper Trading)" : "🚀 REAL (Binance USD-M)"}\n\n` +
-            `• Para activar Real: <code>/futuros_modo real</code>\n` +
-            `• Para activar Simulación: <code>/futuros_modo sim</code>`;
+      if (cmd === "/futuros_real" || cmd === "futuros_real" || (cmd === "/futuros_modo" && arg1 === "REAL") || (cmd === "futuros_modo" && arg1 === "REAL")) {
+        // Verificar permisos de la API Key en Binance
+        let hasFuturesPermission = true;
+        try {
+          const perm = await this.client.apiPermissions();
+          if (perm.data && perm.data.enableFutures === false) {
+            hasFuturesPermission = false;
+          }
+        } catch(e) {}
+
+        if (!hasFuturesPermission) {
+          return `⚠️ <b>TU API KEY DE BINANCE NO TIENE PERMISO DE FUTUROS ACTIVADO</b> 🔒\n\n` +
+            `Para que Binance acepte órdenes reales en Futuros, debes dar el permiso en tu cuenta:\n\n` +
+            `1️⃣ Entra a Binance ➡️ <b>Gestión de API</b>\n` +
+            `2️⃣ En tu API Key, toca <b>Editar Restricciones</b>\n` +
+            `3️⃣ Marca la casilla: ☑️ <b>Habilitar Futuros (Enable Futures)</b> y guarda los cambios\n` +
+            `4️⃣ En tu Billetera de Binance, transfiere $15 a $20 USDT:\n` +
+            `   <i>(Billetera ➡️ Transferir ➡️ De Spot a Futuros USD-M)</i>\n\n` +
+            `🛡️ <i>Mientras realizas este paso, el bot continuará simulando las operaciones para proteger tu cuenta y seguirá invirtiendo tu saldo libre en las estrategias Spot (Cazador Trailing y Centinela).</i>\n\n` +
+            `Una vez habilitado en Binance, vuelve a tocar: 👉 /futuros_real`;
         }
+
+        this.futuresEngine.setConfig({ isSimulated: false });
+        return `🚀 <b>MODO FUTUROS CAMBIADO A: REAL</b> ⚠️\n\n` +
+          `• El motor ahora ejecutará órdenes reales en Binance USD-M Futures con margen aislado ($10-$15 USDT por operación).\n` +
+          `• Stop Loss activo: -1.2%\n` +
+          `• Trailing Take Profit: +1.2%\n` +
+          `👉 Para regresar a simulación cuando quieras: /futuros_sim`;
+      }
+
+      if (cmd === "/futuros_sim" || cmd === "futuros_sim" || (cmd === "/futuros_modo" && (arg1 === "SIM" || arg1 === "SIMULACION")) || (cmd === "futuros_modo" && (arg1 === "SIM" || arg1 === "SIMULACION"))) {
+        this.futuresEngine.setConfig({ isSimulated: true });
+        return `🛡️ <b>MODO FUTUROS CAMBIADO A: SIMULACIÓN (PAPER TRADING)</b> ✅\n\n` +
+          `• Todas las operaciones se ejecutan de forma virtual sin arriesgar saldo real.\n` +
+          `👉 Para cambiar a Real: /futuros_real`;
+      }
+
+      if (cmd === "/futuros" || cmd === "futuros") {
+        const st = this.futuresEngine.getState();
+        return `⚙️ <b>ESTADO DEL MOTOR DE FUTUROS:</b> ${st.isSimulated ? "🛡️ SIMULACIÓN (Paper Trading)" : "🚀 REAL (Binance USD-M)"}\n\n` +
+          `• Balance Virtual: $${st.virtualBalanceUsdt.toFixed(2)} USDT\n` +
+          `• Margen por Operación: $${st.defaultMarginPerTrade} USDT\n` +
+          `• Apalancamiento Dinámico: 2x a 4x (Aislado)\n\n` +
+          `👉 Activar Real: /futuros_real\n` +
+          `👉 Activar Simulación: /futuros_sim`;
       }
 
       if (cmd === "/liquidez" || cmd === "liquidez") {
@@ -3069,7 +3095,7 @@ export class TrailingMasterBot {
           }
           msg += `\n⚙️ <b>¿Deseas invertir en Futuros o continuar en Spot?</b>\n\n`;
           msg += `1️⃣ <b>Para activar Futuros Real (10-15 USDT margen / 2x-4x apalancamiento / SL -1.2%):</b>\n`;
-          msg += `   👉 Toca: <code>/futuros_modo real</code> (o actívalo en el Dashboard web)\n\n`;
+          msg += `   👉 Toca: <code>/futuros_real</code> (o actívalo en el Dashboard web)\n\n`;
           msg += `2️⃣ <b>Si prefieres no arriesgar en futuros:</b>\n`;
           msg += `   No necesitas hacer nada; el bot invertirá automáticamente estos <b>${freeUsdt.toFixed(2)} USDT</b> en las <b>estrategias Spot</b> (Cazador Trailing & Centinela Alpha) sin riesgo de liquidación.`;
         } else {
