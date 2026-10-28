@@ -483,9 +483,63 @@ export class DashboardServer {
       };
     });
 
+    
+    
     const cash = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
     const total = positionsValue + cash;
     const p = this.pnl;
+    // SINCRONIZACIÓN HÍBRIDA: Fusionar trades locales del bot con la auditoría de Binance
+    let localLedger: any[] = [];
+    try {
+      const f = path.resolve(process.cwd(), ".closed-trades.json");
+      if (fs.existsSync(f)) localLedger = JSON.parse(fs.readFileSync(f, "utf-8"));
+    } catch {}
+
+    const binanceCycles = p ? p.cycles : [];
+    const syncMap = new Map();
+
+    // 1. Cargar ciclos de Binance
+    for (const c of binanceCycles) {
+      const key = String(c.orderId || (c.symbol + "_" + Math.round(c.time / 1000)));
+      syncMap.set(key, {
+        symbol: c.symbol,
+        orderId: c.orderId,
+        time: c.time,
+        qty: c.qty,
+        avgBuy: c.avgBuy,
+        avgSell: c.avgSell,
+        costUsdt: c.costUsdt,
+        proceedsUsdt: c.proceedsUsdt,
+        feesUsdt: c.feesUsdt,
+        pnlUsdt: c.pnlUsdt,
+        pnlPct: c.pnlPct
+      });
+    }
+
+    // 2. Fusionar trades locales (garantiza que ninguna venta notificada por Telegram se pierda)
+    for (const l of localLedger) {
+      const key = String(l.orderId || (l.symbol + "_" + Math.round(l.time / 1000)));
+      if (!syncMap.has(key)) {
+        syncMap.set(key, {
+          symbol: l.symbol,
+          orderId: l.orderId,
+          time: l.time,
+          qty: l.qty,
+          avgBuy: l.buyPrice,
+          avgSell: l.sellPrice,
+          costUsdt: l.costUsdt,
+          proceedsUsdt: l.proceedsUsdt,
+          feesUsdt: l.feesUsdt,
+          pnlUsdt: l.pnlUsdt,
+          pnlPct: l.pnlPct
+        });
+      }
+    }
+
+    const allMergedCycles = Array.from(syncMap.values()).sort((a: any, b: any) => a.time - b.time);
+    const totalMergedPnl = allMergedCycles.reduce((acc: number, c: any) => acc + (c.pnlUsdt || 0), 0);
+    const totalWins = allMergedCycles.filter((c: any) => c.pnlUsdt >= 0).length;
+    const totalLosses = allMergedCycles.filter((c: any) => c.pnlUsdt < 0).length;
 
     return {
       updatedAt: new Date().toISOString(),
@@ -505,7 +559,7 @@ export class DashboardServer {
       radar,
       performance: p
         ? {
-            totalPnlUsdt: p.totalPnl,
+            totalPnlUsdt: totalMergedPnl || (p ? p.totalPnl : 0),
             totalPnlCop: p.totalPnl * COP_PER_USDT,
             wins: p.wins,
             losses: p.losses,
@@ -545,7 +599,7 @@ export class DashboardServer {
               };
             })()
           : null,
-      recentCycles: p ? p.cycles.slice(-15).reverse() : null,
+      recentCycles: allMergedCycles.slice(-35).reverse(),
       recoveryTracker: this.getRecoveryTracker(),
     };
   }

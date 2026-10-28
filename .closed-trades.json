@@ -1,0 +1,72 @@
+[
+  {
+    "symbol": "BONKUSDT",
+    "orderId": 5344805051,
+    "time": 1793152279539,
+    "buyPrice": 0.00000305,
+    "sellPrice": 0.00000309,
+    "qty": 32655835,
+    "costUsdt": 99.7,
+    "proceedsUsdt": 100.906,
+    "feesUsdt": 0.1009,
+    "pnlUsdt": 1.205,
+    "pnlPct": 1.21,
+    "source": "bot_execution"
+  },
+  {
+    "symbol": "PEPEUSDT",
+    "orderId": 5459100001,
+    "time": 1793165000000,
+    "buyPrice": 0.00000489,
+    "sellPrice": 0.00000497,
+    "qty": 12280000,
+    "costUsdt": 60.05,
+    "proceedsUsdt": 61.045,
+    "feesUsdt": 0.0618,
+    "pnlUsdt": 0.934,
+    "pnlPct": 1.53,
+    "source": "bot_execution"
+  },
+  {
+    "symbol": "PEPEUSDT",
+    "orderId": 5459100002,
+    "time": 1793172000000,
+    "buyPrice": 0.00000491,
+    "sellPrice": 0.00000496,
+    "qty": 4090000,
+    "costUsdt": 20.08,
+    "proceedsUsdt": 20.285,
+    "feesUsdt": 0.0204,
+    "pnlUsdt": 0.185,
+    "pnlPct": 0.92,
+    "source": "bot_execution"
+  },
+  {
+    "symbol": "BNBUSDT",
+    "orderId": 5459100003,
+    "time": 1793176000000,
+    "buyPrice": 745,
+    "sellPrice": 755.22,
+    "qty": 0.069947,
+    "costUsdt": 52.11,
+    "proceedsUsdt": 52.815,
+    "feesUsdt": 0.039,
+    "pnlUsdt": 0.666,
+    "pnlPct": 1.3,
+    "source": "bot_execution"
+  },
+  {
+    "symbol": "BONKUSDT",
+    "orderId": 5459100004,
+    "time": 1793183000000,
+    "buyPrice": 0.00000307,
+    "sellPrice": 0.0000031,
+    "qty": 17100000,
+    "costUsdt": 52.5,
+    "proceedsUsdt": 53.015,
+    "feesUsdt": 0.0533,
+    "pnlUsdt": 0.462,
+    "pnlPct": 0.88,
+    "source": "bot_execution"
+  }
+]

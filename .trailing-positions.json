@@ -12,35 +12,15 @@
     }
   ],
   [
-    "BONKUSDT_lot_1",
+    "BNBUSDT",
     {
-      "id": "BONKUSDT_lot_1",
-      "symbol": "BONKUSDT",
-      "lotIndex": 1,
-      "buyPrice": 0.00000305,
-      "qty": 16327917.74,
-      "investedUsdt": 49.85,
-      "highestPrice": 0.00000307,
+      "symbol": "BNBUSDT",
+      "buyPrice": 745,
+      "qty": 0.0699475,
+      "investedUsdt": 52.1108875,
+      "highestPrice": 745,
       "activated": false,
-      "buyTime": 1793139153247,
-      "strategy": "trailing_rebound",
-      "customCallbackPct": 0.45
-    }
-  ],
-  [
-    "BONKUSDT_lot_2",
-    {
-      "id": "BONKUSDT_lot_2",
-      "symbol": "BONKUSDT",
-      "lotIndex": 2,
-      "buyPrice": 0.00000305,
-      "qty": 16327917.87,
-      "investedUsdt": 49.85,
-      "highestPrice": 0.00000307,
-      "activated": false,
-      "buyTime": 1793139155035,
-      "strategy": "trailing_rebound",
-      "customCallbackPct": 0.45
+      "buyTime": 1793150683729
     }
   ]
 ]

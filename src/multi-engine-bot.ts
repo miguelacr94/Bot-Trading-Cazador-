@@ -683,7 +683,9 @@ export class TrailingMasterBot {
       `👉 /ignorar — <i>Descartar oportunidad</i>\n\n` +
       `🤖 <i>${this.controls.autoPilot ? `Modo Autónomo ACTIVO: Si no respondes en ${mins} min, el bot ejecutará automáticamente la recomendación.` : "Modo Manual ACTIVO: Esperará tu aprobación explícita."}</i>`;
 
-    await this.notifier.send(alertMsg);
+    
+      
+      await this.notifier.send(alertMsg);
     console.log(alertMsg.replace(/<[^>]*>/g, ""));
   }
 
@@ -1193,6 +1195,29 @@ export class TrailingMasterBot {
         }
       }
       const netPct = (profitUsdt / costBasis) * 100;
+      // SINCRONIZACIÓN HÍBRIDA: Guardar venta inmediatamente en .closed-trades.json
+      try {
+        const ledgerF = path.resolve(process.cwd(), ".closed-trades.json");
+        const list: any[] = fs.existsSync(ledgerF) ? JSON.parse(fs.readFileSync(ledgerF, "utf-8")) : [];
+        list.push({
+          symbol: pos.symbol,
+          orderId: sellRes.data.orderId || Date.now(),
+          time: Date.now(),
+          buyPrice: pos.buyPrice,
+          sellPrice: avgSell,
+          qty: sellQty,
+          costUsdt: costBasis,
+          proceedsUsdt: grossUsdt - sellFee,
+          feesUsdt: sellFee,
+          pnlUsdt: profitUsdt,
+          pnlPct: netPct,
+          strategy: pos.strategy || "trailing_rebound",
+          source: "bot_execution"
+        });
+        fs.writeFileSync(ledgerF, JSON.stringify(list.slice(-200), null, 2), "utf-8");
+      } catch (e: any) {
+        console.error("Error guardando venta en .closed-trades.json:", e.message);
+      }
       const sign = profitUsdt >= 0 ? "+" : "";
 
       let alertMsg = "";

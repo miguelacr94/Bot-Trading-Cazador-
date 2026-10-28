@@ -20,7 +20,8 @@ export const PNL_SYMBOLS = [
   "WIFUSDT"
 ];
 // Inicio del bot: ignorar trades anteriores
-export const PNL_SINCE = new Date("2026-10-14T00:00:00-05:00").getTime();
+// Ventana rodante para no agotar el límite de 1000 trades por consulta
+export const PNL_SINCE = Date.now() - 14 * 86400 * 1000;
 
 export interface ClosedCycle {
   symbol: string;
@@ -55,8 +56,13 @@ export async function computeRealizedPnl(client: any, since = PNL_SINCE): Promis
     const base = symbol.replace("USDT", "");
     let trades: any[] = [];
     try {
-      const res = await client.myTrades(symbol, { startTime: since, limit: 1000, recvWindow: 60000 });
-      trades = res.data;
+      let res;
+      try {
+        res = await client.myTrades(symbol, { startTime: since, limit: 1000, recvWindow: 60000 });
+      } catch {
+        res = await client.myTrades(symbol, { limit: 1000, recvWindow: 60000 });
+      }
+      trades = res ? res.data : [];
     } catch { continue; }
     if (!trades.length) continue;
     trades.sort((a, b) => a.time - b.time || a.id - b.id);
