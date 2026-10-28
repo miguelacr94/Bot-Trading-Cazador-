@@ -19,7 +19,9 @@
     "cazador": "tsx src/cazador-completo.ts",
     "motores": "tsx src/multi-engine-bot.ts",
     "start:prod": "node --max-old-space-size=64 dist/multi-engine-bot.js",
-    "dashboard": "tsx src/dashboard-server.ts"
+    "dashboard": "tsx src/dashboard-server.ts",
+    "futures": "tsx src/futures-engine.ts",
+    "futures:sim": "tsx src/futures-engine.ts"
   },
   "dependencies": {
     "@binance/connector": "^3.3.0",

@@ -1,0 +1,536 @@
+import * as fs from "fs";
+import * as path from "path";
+import { TelegramNotifier } from "./notifier.js";
+// Símbolos de alta liquidez seleccionados para Futuros
+export const FUTURES_WATCHLIST = [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "AVAXUSDT",
+    "XRPUSDT",
+    "DOGEUSDT"
+];
+export class FuturesEngine {
+    notifier;
+    stateFile;
+    positionsFile;
+    tradesFile;
+    state;
+    positions = [];
+    trades = [];
+    symbolCooldowns = new Map();
+    isScanning = false;
+    intervalHandle = null;
+    constructor() {
+        this.notifier = new TelegramNotifier();
+        const basePath = process.cwd();
+        this.stateFile = path.resolve(basePath, ".futures-sim-state.json");
+        this.positionsFile = path.resolve(basePath, ".futures-sim-positions.json");
+        this.tradesFile = path.resolve(basePath, ".futures-sim-trades.json");
+        this.state = this.loadState();
+        this.positions = this.loadPositions();
+        this.trades = this.loadTrades();
+    }
+    loadState() {
+        const defaults = {
+            isSimulated: true,
+            enabled: true,
+            virtualBalanceUsdt: 30.0,
+            startingBalanceUsdt: 30.0,
+            maxActivePositions: 2,
+            defaultMarginPerTrade: 5.0,
+            defaultLeverage: 2,
+            stopLossPct: 1.2,
+            trailingTriggerPct: 0.8,
+            trailingCallbackPct: 0.25,
+            lastScanTime: 0
+        };
+        try {
+            if (fs.existsSync(this.stateFile)) {
+                return { ...defaults, ...JSON.parse(fs.readFileSync(this.stateFile, "utf-8")) };
+            }
+        }
+        catch { }
+        this.saveState(defaults);
+        return defaults;
+    }
+    saveState(st) {
+        try {
+            fs.writeFileSync(this.stateFile, JSON.stringify(st || this.state, null, 2), "utf-8");
+        }
+        catch (e) {
+            console.error("Error guardando .futures-sim-state.json:", e.message);
+        }
+    }
+    loadPositions() {
+        try {
+            if (fs.existsSync(this.positionsFile)) {
+                return JSON.parse(fs.readFileSync(this.positionsFile, "utf-8"));
+            }
+        }
+        catch { }
+        return [];
+    }
+    savePositions() {
+        try {
+            fs.writeFileSync(this.positionsFile, JSON.stringify(this.positions, null, 2), "utf-8");
+        }
+        catch (e) {
+            console.error("Error guardando .futures-sim-positions.json:", e.message);
+        }
+    }
+    loadTrades() {
+        try {
+            if (fs.existsSync(this.tradesFile)) {
+                return JSON.parse(fs.readFileSync(this.tradesFile, "utf-8"));
+            }
+        }
+        catch { }
+        return [];
+    }
+    saveTrades() {
+        try {
+            fs.writeFileSync(this.tradesFile, JSON.stringify(this.trades, null, 2), "utf-8");
+        }
+        catch (e) {
+            console.error("Error guardando .futures-sim-trades.json:", e.message);
+        }
+    }
+    getState() {
+        return this.state;
+    }
+    getPositions() {
+        return this.positions;
+    }
+    getTrades() {
+        return this.trades;
+    }
+    toggle() {
+        this.state.enabled = !this.state.enabled;
+        this.saveState();
+        return this.state.enabled;
+    }
+    // --- API BINANCE FUTURES (PUBLIC ENDPOINTS) ---
+    async fetchFuturesTicker(symbol) {
+        try {
+            const res = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`);
+            if (!res.ok)
+                return null;
+            const data = await res.json();
+            return parseFloat(data.price);
+        }
+        catch {
+            return null;
+        }
+    }
+    async fetchFundingRate(symbol) {
+        try {
+            const res = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`);
+            if (!res.ok)
+                return 0;
+            const data = await res.json();
+            return parseFloat(data.lastFundingRate || "0");
+        }
+        catch {
+            return 0;
+        }
+    }
+    async fetchKlines(symbol, interval, limit = 100) {
+        try {
+            const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+            if (!res.ok)
+                return [];
+            const raw = await res.json();
+            return raw.map((k) => ({
+                openTime: k[0],
+                open: parseFloat(k[1]),
+                high: parseFloat(k[2]),
+                low: parseFloat(k[3]),
+                close: parseFloat(k[4]),
+                volume: parseFloat(k[5]),
+                closeTime: k[6]
+            }));
+        }
+        catch {
+            return [];
+        }
+    }
+    // --- INDICADORES MATEMÁTICOS ---
+    calculateRSI(closes, period = 14) {
+        if (closes.length < period + 1)
+            return 50;
+        let gains = 0;
+        let losses = 0;
+        for (let i = 1; i <= period; i++) {
+            const diff = closes[i] - closes[i - 1];
+            if (diff >= 0)
+                gains += diff;
+            else
+                losses += Math.abs(diff);
+        }
+        let avgGain = gains / period;
+        let avgLoss = losses / period;
+        for (let i = period + 1; i < closes.length; i++) {
+            const diff = closes[i] - closes[i - 1];
+            if (diff >= 0) {
+                avgGain = (avgGain * (period - 1) + diff) / period;
+                avgLoss = (avgLoss * (period - 1)) / period;
+            }
+            else {
+                avgGain = (avgGain * (period - 1)) / period;
+                avgLoss = (avgLoss * (period - 1) + Math.abs(diff)) / period;
+            }
+        }
+        if (avgLoss === 0)
+            return 100;
+        const rs = avgGain / avgLoss;
+        return 100 - (100 / (1 + rs));
+    }
+    calculateEMA(closes, period) {
+        if (closes.length < period)
+            return closes[closes.length - 1] || 0;
+        const k = 2 / (period + 1);
+        let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+        for (let i = period; i < closes.length; i++) {
+            ema = closes[i] * k + ema * (1 - k);
+        }
+        return ema;
+    }
+    // --- MOTOR DE MONITOREO DE POSICIONES ABIERTAS ---
+    async updatePositions() {
+        if (this.positions.length === 0)
+            return;
+        for (let i = this.positions.length - 1; i >= 0; i--) {
+            const pos = this.positions[i];
+            const curPrice = await this.fetchFuturesTicker(pos.symbol);
+            if (!curPrice)
+                continue;
+            if (pos.side === "LONG") {
+                await this.handleLongTick(pos, curPrice, i);
+            }
+            else {
+                await this.handleShortTick(pos, curPrice, i);
+            }
+        }
+    }
+    async handleLongTick(pos, curPrice, index) {
+        // 1. Verificar Stop-Loss Innegociable
+        if (curPrice <= pos.stopLossPrice) {
+            await this.closePosition(index, curPrice, "STOP_LOSS");
+            return;
+        }
+        // 2. Activar Trailing si llega al gatillo (+0.8%)
+        if (!pos.trailingActive && curPrice >= pos.trailingTriggerPrice) {
+            pos.trailingActive = true;
+            pos.peakPrice = curPrice;
+            pos.trailingStopPrice = curPrice * (1 - pos.trailingCallbackPct / 100);
+            this.savePositions();
+            const gainPct = ((curPrice - pos.entryPrice) / pos.entryPrice) * 100;
+            await this.notifier.send(`🎯 [FUTUROS SIMULACIÓN: TRAILING ACTIVADO] 🚀\n\n` +
+                `• Moneda: <b>${pos.symbol}</b> (LONG ${pos.leverage}x)\n` +
+                `• Precio actual: <b>${curPrice}</b> (+${gainPct.toFixed(2)}%)\n` +
+                `• 🛡️ Ganancia mínima asegurada (+${pos.trailingTriggerPct}%)\n` +
+                `• 🏹 El bot ahora persigue el pico más alto hacia arriba...`);
+            return;
+        }
+        // 3. Si Trailing ya está activo, rastrear el pico
+        if (pos.trailingActive) {
+            if (curPrice > pos.peakPrice) {
+                pos.peakPrice = curPrice;
+                pos.trailingStopPrice = curPrice * (1 - pos.trailingCallbackPct / 100);
+                this.savePositions();
+            }
+            else if (pos.trailingStopPrice && curPrice <= pos.trailingStopPrice) {
+                // Venta en la cima del rebote
+                await this.closePosition(index, curPrice, "TRAILING_TP");
+            }
+        }
+    }
+    async handleShortTick(pos, curPrice, index) {
+        // 1. Verificar Stop-Loss Innegociable (en SHORT, stop es por arriba)
+        if (curPrice >= pos.stopLossPrice) {
+            await this.closePosition(index, curPrice, "STOP_LOSS");
+            return;
+        }
+        // 2. Activar Trailing si cae hasta el gatillo (+0.8% de ganancia en corto)
+        if (!pos.trailingActive && curPrice <= pos.trailingTriggerPrice) {
+            pos.trailingActive = true;
+            pos.peakPrice = curPrice;
+            pos.trailingStopPrice = curPrice * (1 + pos.trailingCallbackPct / 100);
+            this.savePositions();
+            const gainPct = ((pos.entryPrice - curPrice) / pos.entryPrice) * 100;
+            await this.notifier.send(`🎯 [FUTUROS SIMULACIÓN: TRAILING ACTIVADO] 🚀\n\n` +
+                `• Moneda: <b>${pos.symbol}</b> (SHORT ${pos.leverage}x)\n` +
+                `• Precio actual: <b>${curPrice}</b> (+${gainPct.toFixed(2)}% neto en corto)\n` +
+                `• 🛡️ Ganancia mínima asegurada (+${pos.trailingTriggerPct}%)\n` +
+                `• 🏹 El bot ahora persigue el piso más profundo hacia abajo...`);
+            return;
+        }
+        // 3. Si Trailing está activo en SHORT, rastrear el piso más bajo
+        if (pos.trailingActive) {
+            if (curPrice < pos.peakPrice) {
+                pos.peakPrice = curPrice;
+                pos.trailingStopPrice = curPrice * (1 + pos.trailingCallbackPct / 100);
+                this.savePositions();
+            }
+            else if (pos.trailingStopPrice && curPrice >= pos.trailingStopPrice) {
+                // Cierre en el piso de la caída
+                await this.closePosition(index, curPrice, "TRAILING_TP");
+            }
+        }
+    }
+    async closePosition(index, exitPrice, reason) {
+        const pos = this.positions[index];
+        this.positions.splice(index, 1);
+        this.savePositions();
+        // Cálculo PnL
+        let grossPnl = 0;
+        if (pos.side === "LONG") {
+            grossPnl = (exitPrice - pos.entryPrice) * pos.contracts;
+        }
+        else {
+            grossPnl = (pos.entryPrice - exitPrice) * pos.contracts;
+        }
+        // Comisión oficial de Binance Futures Taker (0.05% por lado = 0.10% total sobre notional)
+        const feesUsdt = (pos.notionalUsdt + (exitPrice * pos.contracts)) * 0.0005;
+        const netPnlUsdt = grossPnl - feesUsdt;
+        const roePct = (netPnlUsdt / pos.marginUsdt) * 100;
+        const durationMin = Math.round((Date.now() - pos.openTime) / 60000);
+        // Actualizar balance simulado
+        this.state.virtualBalanceUsdt += netPnlUsdt;
+        this.saveState();
+        const closedRecord = {
+            id: pos.id,
+            symbol: pos.symbol,
+            side: pos.side,
+            entryPrice: pos.entryPrice,
+            exitPrice,
+            marginUsdt: pos.marginUsdt,
+            leverage: pos.leverage,
+            notionalUsdt: pos.notionalUsdt,
+            openTime: pos.openTime,
+            closeTime: Date.now(),
+            durationMin,
+            exitReason: reason,
+            grossPnlUsdt: grossPnl,
+            feesUsdt,
+            netPnlUsdt,
+            roePct
+        };
+        this.trades.push(closedRecord);
+        this.saveTrades();
+        // Establecer cooldown de 30 min en esta moneda
+        this.symbolCooldowns.set(pos.symbol, Date.now() + 30 * 60 * 1000);
+        // Notificación Telegram
+        if (reason === "TRAILING_TP") {
+            await this.notifier.send(`🏆 [FUTUROS SIMULACIÓN: GANANCIA COBRADA] 🎉\n\n` +
+                `• Moneda: <b>${pos.symbol}</b> (${pos.side} ${pos.leverage}x)\n` +
+                `• Precio Entrada: ${pos.entryPrice.toFixed(4)}\n` +
+                `• Precio Salida: <b>${exitPrice.toFixed(4)}</b>\n` +
+                `• Duración: ${durationMin} min\n` +
+                `• Comisiones estimadas: ${feesUsdt.toFixed(4)} USDT\n` +
+                `• 💵 Ganancia Líquida: 🟢 <b>+${netPnlUsdt.toFixed(3)} USDT</b> (+${roePct.toFixed(2)}% ROE)\n\n` +
+                `💼 Balance Simulado: <b>${this.state.virtualBalanceUsdt.toFixed(2)} USDT</b>\n` +
+                `📊 Escribe /reporte_futuros para ver el balance acumulado.`);
+        }
+        else {
+            await this.notifier.send(`🛡️ [FUTUROS SIMULACIÓN: STOP-LOSS EJECUTADO] 🛑\n\n` +
+                `• Moneda: <b>${pos.symbol}</b> (${pos.side} ${pos.leverage}x)\n` +
+                `• Entrada: ${pos.entryPrice.toFixed(4)} | Salida Stop: ${exitPrice.toFixed(4)}\n` +
+                `• Duración: ${durationMin} min\n` +
+                `• 💵 Pérdida Controlada: 🔴 <b>${netPnlUsdt.toFixed(3)} USDT</b> (${roePct.toFixed(2)}% ROE)\n` +
+                `• Capital protegido: ${(pos.marginUsdt + netPnlUsdt).toFixed(2)} USDT devueltos al margen.\n\n` +
+                `💼 Balance Simulado: <b>${this.state.virtualBalanceUsdt.toFixed(2)} USDT</b>`);
+        }
+    }
+    // --- ESCÁNER DE OPORTUNIDADES CUANTITATIVAS BI-DIRECCIONAL ---
+    async scanMarket() {
+        if (!this.state.enabled)
+            return;
+        if (this.positions.length >= this.state.maxActivePositions)
+            return;
+        if (this.isScanning)
+            return;
+        this.isScanning = true;
+        try {
+            this.state.lastScanTime = Date.now();
+            for (const symbol of FUTURES_WATCHLIST) {
+                if (this.positions.length >= this.state.maxActivePositions)
+                    break;
+                // Verificar si ya tenemos posición abierta en esta moneda
+                if (this.positions.some((p) => p.symbol === symbol))
+                    continue;
+                // Verificar Cooldown
+                const cd = this.symbolCooldowns.get(symbol);
+                if (cd && Date.now() < cd)
+                    continue;
+                await this.evaluateSymbol(symbol);
+            }
+        }
+        catch (e) {
+            console.error("Error en scanMarket Futuros:", e.message);
+        }
+        finally {
+            this.isScanning = false;
+        }
+    }
+    async evaluateSymbol(symbol) {
+        // 1. Obtener velas 1H (Macro) y 15M (Gatillo)
+        const [klines1h, klines15m] = await Promise.all([
+            this.fetchKlines(symbol, "1h", 60),
+            this.fetchKlines(symbol, "15m", 40)
+        ]);
+        if (klines1h.length < 50 || klines15m.length < 20)
+            return;
+        const closes1h = klines1h.map((k) => k.close);
+        const closes15m = klines15m.map((k) => k.close);
+        const ema50_1h = this.calculateEMA(closes1h, 50);
+        const curPrice1h = closes1h[closes1h.length - 1];
+        const rsi15m = this.calculateRSI(closes15m, 14);
+        const lastCandle15m = klines15m[klines15m.length - 2]; // última vela cerrada
+        const curPrice = closes15m[closes15m.length - 1];
+        const totalRange = lastCandle15m.high - lastCandle15m.low;
+        if (totalRange <= 0)
+            return;
+        const lowerWick = Math.min(lastCandle15m.open, lastCandle15m.close) - lastCandle15m.low;
+        const upperWick = lastCandle15m.high - Math.max(lastCandle15m.open, lastCandle15m.close);
+        const lowerWickRatio = lowerWick / totalRange;
+        const upperWickRatio = upperWick / totalRange;
+        // Obtener Funding Rate para protección
+        const fundingRate = await this.fetchFundingRate(symbol);
+        // --- EVALUACIÓN DE SEÑAL LONG ---
+        const isMacroBullish = curPrice1h >= ema50_1h * 0.995; // Macro neutral a alcista
+        const isRsiOversold = rsi15m >= 30 && rsi15m <= 42;
+        const isLowerAbsorption = lowerWickRatio >= 0.35;
+        const isFundingSafeForLong = fundingRate < 0.0003;
+        if (isMacroBullish && isRsiOversold && isLowerAbsorption && isFundingSafeForLong) {
+            const rationale = `Macro 1H alcista (>EMA50) + RSI 15M (${rsi15m.toFixed(1)}) en sobreventa con mecha de absorción del ${(lowerWickRatio * 100).toFixed(0)}%`;
+            await this.openPosition(symbol, "LONG", curPrice, rationale);
+            return;
+        }
+        // --- EVALUACIÓN DE SEÑAL SHORT ---
+        const isMacroBearish = curPrice1h <= ema50_1h * 1.005; // Macro neutral a bajista
+        const isRsiOverbought = rsi15m >= 62 && rsi15m <= 75;
+        const isUpperRejection = upperWickRatio >= 0.35;
+        const isFundingSafeForShort = fundingRate > -0.0003;
+        if (isMacroBearish && isRsiOverbought && isUpperRejection && isFundingSafeForShort) {
+            const rationale = `Macro 1H bajista (<EMA50) + RSI 15M (${rsi15m.toFixed(1)}) en sobrecompra con rechazo superior del ${(upperWickRatio * 100).toFixed(0)}%`;
+            await this.openPosition(symbol, "SHORT", curPrice, rationale);
+            return;
+        }
+    }
+    async openPosition(symbol, side, price, rationale) {
+        const margin = this.state.defaultMarginPerTrade;
+        const leverage = this.state.defaultLeverage;
+        const notional = margin * leverage;
+        // Simular un pequeño slippage de entrada del 0.02%
+        const slippage = side === "LONG" ? 1.0002 : 0.9998;
+        const entryPrice = price * slippage;
+        const contracts = notional / entryPrice;
+        const stopLossPct = this.state.stopLossPct;
+        const trailingTriggerPct = this.state.trailingTriggerPct;
+        const stopLossPrice = side === "LONG"
+            ? entryPrice * (1 - stopLossPct / 100)
+            : entryPrice * (1 + stopLossPct / 100);
+        const trailingTriggerPrice = side === "LONG"
+            ? entryPrice * (1 + trailingTriggerPct / 100)
+            : entryPrice * (1 - trailingTriggerPct / 100);
+        const newPos = {
+            id: `sim_fut_${Date.now()}`,
+            symbol,
+            side,
+            entryPrice,
+            marginUsdt: margin,
+            leverage,
+            notionalUsdt: notional,
+            contracts,
+            stopLossPrice,
+            stopLossPct,
+            trailingTriggerPrice,
+            trailingTriggerPct,
+            trailingCallbackPct: this.state.trailingCallbackPct,
+            trailingActive: false,
+            peakPrice: entryPrice,
+            trailingStopPrice: null,
+            openTime: Date.now(),
+            status: "OPEN",
+            rationale
+        };
+        this.positions.push(newPos);
+        this.savePositions();
+        const maxRiskUsdt = (margin * (stopLossPct / 100) * leverage);
+        const sideEmoji = side === "LONG" ? "🟢 LONG" : "🔴 SHORT";
+        await this.notifier.send(`🧪 [FUTUROS SIMULACIÓN: ENTRADA ${sideEmoji}] 🎯\n\n` +
+            `• Moneda: <b>${symbol}</b>\n` +
+            `• Margen asignado: <b>${margin.toFixed(2)} USDT</b> (${leverage}x ISOLATED)\n` +
+            `• Tamaño posición: <b>${notional.toFixed(2)} USDT</b> (~${contracts.toFixed(4)} contratos)\n` +
+            `• 🎯 Entrada: <b>${entryPrice.toFixed(4)}</b>\n` +
+            `• 🛡️ Stop-Loss fijo: <b>${stopLossPrice.toFixed(4)}</b> (-${stopLossPct}% | Máx riesgo: -$${maxRiskUsdt.toFixed(2)} USDT)\n` +
+            `• 🏹 Gatillo Trailing: <b>${trailingTriggerPrice.toFixed(4)}</b> (+${trailingTriggerPct}%)\n` +
+            `• 📊 Fundamento del Centinela:\n<i>${rationale}</i>\n\n` +
+            `🔒 <i>Margen Aislado: Cero riesgo de liquidación.</i>`);
+    }
+    // --- REPORTES Y ESTADÍSTICAS ---
+    getSummaryReport() {
+        const totalTrades = this.trades.length;
+        const wins = this.trades.filter((t) => t.netPnlUsdt > 0).length;
+        const losses = this.trades.filter((t) => t.netPnlUsdt <= 0).length;
+        const winRate = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : "0.0";
+        const totalPnl = this.trades.reduce((acc, t) => acc + t.netPnlUsdt, 0);
+        let report = `📊 <b>INFORME CUANTITATIVO FUTUROS (SIMULACIÓN)</b>\n\n`;
+        report += `💼 <b>Balance Simulado:</b> ${this.state.virtualBalanceUsdt.toFixed(2)} USDT (Inicio: ${this.state.startingBalanceUsdt.toFixed(2)} USDT)\n`;
+        report += `📈 <b>PnL Total Neto:</b> ${totalPnl >= 0 ? "🟢 +" : "🔴 "}${totalPnl.toFixed(3)} USDT\n`;
+        report += `🎯 <b>Efectividad (Win Rate):</b> ${winRate}% (${wins} Ganadas / ${losses} Pérdidas)\n`;
+        report += `🛡️ <b>Apalancamiento:</b> ${this.state.defaultLeverage}x (Margen Aislado $${this.state.defaultMarginPerTrade} USDT)\n`;
+        report += `🔄 <b>Posiciones Abiertas:</b> ${this.positions.length} / ${this.state.maxActivePositions}\n\n`;
+        if (this.positions.length > 0) {
+            report += `📍 <b>POSICIONES ACTIVAS:</b>\n`;
+            for (const p of this.positions) {
+                report += `• <b>${p.symbol}</b> (${p.side} ${p.leverage}x): Entrada $${p.entryPrice.toFixed(4)} | Stop: $${p.stopLossPrice.toFixed(4)}\n`;
+            }
+            report += `\n`;
+        }
+        if (totalTrades > 0) {
+            report += `📜 <b>ÚLTIMAS 5 OPERACIONES CERRADAS:</b>\n`;
+            const recent = this.trades.slice(-5).reverse();
+            for (const t of recent) {
+                const icon = t.netPnlUsdt >= 0 ? "🟢" : "🔴";
+                const sign = t.netPnlUsdt >= 0 ? "+" : "";
+                report += `${icon} <b>${t.symbol}</b> (${t.side}): ${sign}${t.netPnlUsdt.toFixed(3)} USDT (${sign}${t.roePct.toFixed(1)}% ROE) [${t.exitReason}]\n`;
+            }
+        }
+        else {
+            report += `<i>Aún no hay operaciones cerradas. El escáner está vigilando oportunidades óptimas.</i>`;
+        }
+        return report;
+    }
+    // --- ARRANQUE Y CICLO PERIÓDICO ---
+    start(pollIntervalMs = 4000) {
+        if (this.intervalHandle)
+            return;
+        console.log("🚀 Motor Cuantitativo de Futuros (Simulación Estricta) INICIADO.");
+        this.intervalHandle = setInterval(async () => {
+            try {
+                await this.updatePositions();
+                await this.scanMarket();
+            }
+            catch (e) {
+                console.error("Error en ciclo de FuturosEngine:", e.message);
+            }
+        }, pollIntervalMs);
+    }
+    stop() {
+        if (this.intervalHandle) {
+            clearInterval(this.intervalHandle);
+            this.intervalHandle = null;
+            console.log("⏸️ Motor de Futuros detenido.");
+        }
+    }
+}
+// Si se ejecuta directamente vía CLI: `npx tsx src/futures-engine.ts`
+if (import.meta.url === `file://${process.argv[1]}`) {
+    const engine = new FuturesEngine();
+    engine.start(3500);
+    console.log("📡 Escaneando Binance Futures USD-M en modo simulación estricta...");
+}

@@ -1,3 +1,4 @@
+import { FuturesEngine } from "./futures-engine.js";
 import { DashboardServer } from "./dashboard-server.js";
 import { Spot } from "@binance/connector";
 import { AiCopilot } from "./ai-copilot.js";
@@ -62,6 +63,7 @@ export class TrailingMasterBot {
     client;
     notifier;
     telegramCommands;
+    futuresEngine;
     isProcessing = false;
     autoPilot = true;
     minUsdtToTrade = 10;
@@ -269,6 +271,7 @@ export class TrailingMasterBot {
     constructor() {
         this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
         this.notifier = new TelegramNotifier();
+        this.futuresEngine = new FuturesEngine();
         this.telegramCommands = new TelegramCommands((cmd) => this.handleTelegramCommand(cmd));
         this.loadTrailingPositions();
         this.loadBuyWatches();
@@ -2804,6 +2807,7 @@ export class TrailingMasterBot {
         console.log(`🎯 Trailing Buy: +${TRAILING_BUY_BOUNCE_PCT}% desde el piso | Trailing TP: +${TRAILING_ACTIVATION_PCT}% / callback ${TRAILING_CALLBACK_PCT}%`);
         console.log(`======================================================\n`);
         await this.telegramCommands.start();
+        this.futuresEngine.start(4000);
         console.log(`📱 Telegram listo para recibir órdenes por chat.`);
         await this.syncOrphanPositions();
         await this.runCycle();
