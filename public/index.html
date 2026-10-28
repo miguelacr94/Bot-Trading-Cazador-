@@ -2127,6 +2127,63 @@
           </div>
         </div>
 
+
+        <!-- 5. Futuros USD-M (Simulación Cuantitativa) -->
+        <div class="strategy-item active-strat" id="card-strat-futures">
+          <div class="strategy-card-header">
+            <div class="strategy-title-group">
+              <span class="strategy-type-tag" style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4);">Derivados & Hedging</span>
+              <div class="strategy-name">⚡ 5. Futuros Cuantitativo</div>
+            </div>
+            <div class="strategy-card-header-actions">
+              <button class="btn-card-toggle" data-target="details-futures" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <label class="switch">
+                <input type="checkbox" id="toggle-futures" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="strategy-details-section" id="details-futures">
+            <div class="strategy-mechanics">
+              <strong>Mecánica:</strong> Estrategia bi-direccional <b>(LONG / SHORT)</b> en Binance Futures con apalancamiento <b>2x ISOLATED</b>. Filtra con EMA 50 (1H) y ejecuta en sobreventa/sobrecompra con mechas de rechazo en 15M.
+            </div>
+            <div class="strategy-pills-row">
+              <span class="strat-pill logic">⏱️ 15M / 1H</span>
+              <span class="strat-pill logic" style="border-color: #a78bfa; color: #a78bfa;">⚡ 2x ISOLATED</span>
+              <span class="strat-pill target">🎯 Trailing +0.8%</span>
+              <span class="strat-pill risk">🛑 SL -1.2% Fijo</span>
+              <span class="strat-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">🧪 Simulación en Vivo</span>
+            </div>
+          </div>
+
+          <!-- Presupuesto In-Card -->
+          <div class="strategy-bottom-budget">
+            <div class="strategy-alloc-row">
+              <span class="alloc-badge" id="alloc-futures-badge" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4);">10% Asignado</span>
+              <span class="alloc-amount" id="alloc-futures-amount">-- USDT (Margen)</span>
+              <div class="strategy-slider-ctrl">
+                <span>Base:</span> <b class="slider-ctrl-val" style="color: #a78bfa;" id="slider-futures-val">10%</b>
+              </div>
+            </div>
+            <input type="range" class="strat-budget-slider" id="slider-futures" min="0" max="100" step="5" value="10">
+            <div class="alloc-bar-bg"><div class="alloc-bar-fill" id="alloc-futures-bar" style="width:10%; background: linear-gradient(90deg, #8b5cf6, #a78bfa);"></div></div>
+          </div>
+
+          <!-- Caja de Estado Futuros -->
+          <div class="strat-sugg-box" id="status-box-futures" style="border-left: 3px solid #8b5cf6;">
+            <div class="strat-sugg-header">
+              <div class="strat-sugg-header-left">
+                <span>🧪 Centinela Futuros:</span>
+                <span class="sugg-status-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">MODO PAPER TRADING</span>
+              </div>
+            </div>
+            <div class="strat-sugg-desc" id="futures-live-status">
+              💼 Balance Simulado: <b>30.00 USDT</b> | Posiciones abiertas: <b>0 / 2</b> | Riesgo: <b>-$0.12 USDT máx</b>
+            </div>
+          </div>
+        </div>
+
         <!-- 2. Smart DCA -->
         <div class="strategy-item" id="card-strat-dca">
           <div class="strategy-card-header">

@@ -624,7 +624,8 @@ export class DashboardServer {
                         let d = Math.max(0, parseInt(data.dca || "0", 10));
                         let g = Math.max(0, parseInt(data.grid || "0", 10));
                         let w = Math.max(0, parseInt(data.weekend || "0", 10));
-                        const sum = t + d + g + w;
+                        let f = Math.max(0, parseInt(data.futures || "0", 10));
+                        const sum = t + d + g + w + f;
                         if (sum === 0) {
                             t = 50;
                             d = 30;
@@ -655,6 +656,7 @@ export class DashboardServer {
                             smart_dca: d,
                             micro_grid: g,
                             cazador_weekend: w,
+                            futures: f,
                         };
                         const isW = this.isWeekendMode();
                         if (!isW) {
@@ -663,6 +665,7 @@ export class DashboardServer {
                                 smart_dca: d,
                                 micro_grid: g,
                                 cazador_weekend: 0,
+                                futures: f,
                             };
                             controls.strategies.cazador_weekend = false;
                         }
@@ -672,6 +675,7 @@ export class DashboardServer {
                                 smart_dca: d,
                                 micro_grid: g,
                                 cazador_weekend: w,
+                                futures: f,
                             };
                             controls.strategies.cazador_weekend = true;
                         }
@@ -1075,6 +1079,17 @@ export class DashboardServer {
                             controls.strategies[data.strategy] !== undefined) {
                             controls.strategies[data.strategy] =
                                 !controls.strategies[data.strategy];
+                            if (data.strategy === "futures") {
+                                try {
+                                    const futStateF = path.resolve(process.cwd(), ".futures-sim-state.json");
+                                    if (fs.existsSync(futStateF)) {
+                                        const futSt = JSON.parse(fs.readFileSync(futStateF, "utf-8"));
+                                        futSt.enabled = controls.strategies.futures;
+                                        fs.writeFileSync(futStateF, JSON.stringify(futSt, null, 2), "utf-8");
+                                    }
+                                }
+                                catch { }
+                            }
                         }
                         else if (data.autoPilot !== undefined) {
                             controls.autoPilot = !!data.autoPilot;

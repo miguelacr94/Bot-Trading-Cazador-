@@ -470,8 +470,9 @@
     const sD = parseInt(document.getElementById("slider-dca")?.value || "0", 10);
     const sG = parseInt(document.getElementById("slider-grid")?.value || "0", 10);
     const sW = parseInt(document.getElementById("slider-weekend")?.value || "0", 10);
+    const sF = parseInt(document.getElementById("slider-futures")?.value || "0", 10);
 
-    const sum = sT + sD + sG + sW;
+    const sum = sT + sD + sG + sW + sF;
     const badge = document.getElementById("budget-sum-badge");
     const saveBtn = document.getElementById("btn-save-alloc");
 
@@ -488,9 +489,10 @@
     }
   }
 
-  async function saveAllocations(t, d, g, w) {
+  async function saveAllocations(t, d, g, w, f) {
     try {
-      const payload = { trailing: t, dca: d, grid: g, weekend: w };
+      if (f === undefined) f = parseInt(document.getElementById("slider-futures")?.value || "0", 10);
+      const payload = { trailing: t, dca: d, grid: g, weekend: w, futures: f };
       const res = await fetch("/api/strategies/allocation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -918,6 +920,15 @@
       const tDca = document.getElementById("toggle-dca");
       const tGrid = document.getElementById("toggle-grid");
       const tWeekend = document.getElementById("toggle-weekend");
+      const tFutures = document.getElementById("toggle-futures");
+      const cardFutures = document.getElementById("card-strat-futures");
+      if (tFutures && strats.futures !== undefined) {
+        tFutures.checked = !!strats.futures;
+        if (cardFutures) {
+          if (strats.futures) cardFutures.classList.add("active-strat");
+          else cardFutures.classList.remove("active-strat");
+        }
+      }
       const tAuto = document.getElementById("toggle-autopilot");
       const modeLabel = document.getElementById("mode-label");
 
@@ -1119,6 +1130,16 @@
     document.getElementById("toggle-dca")?.addEventListener("change", () => toggleStrategy("smart_dca"));
     document.getElementById("toggle-grid")?.addEventListener("change", () => toggleStrategy("micro_grid"));
     document.getElementById("toggle-weekend")?.addEventListener("change", () => toggleStrategy("cazador_weekend"));
+    document.getElementById("toggle-futures")?.addEventListener("change", () => toggleStrategy("futures"));
+
+    const sF = document.getElementById("slider-futures");
+    if (sF) {
+      sF.addEventListener("input", () => {
+        userHasUnsavedBudgetChanges = true;
+        document.getElementById("slider-futures-val").textContent = sF.value + "%";
+        updateBudgetSum();
+      });
+    }
     document.getElementById("toggle-autopilot")?.addEventListener("change", () => toggleStrategy(null, true));
 
     document.getElementById("btn-opp-approve")?.addEventListener("click", () => handleOpportunityAction("approve"));
