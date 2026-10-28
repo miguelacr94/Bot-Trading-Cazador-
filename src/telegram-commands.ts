@@ -18,37 +18,42 @@ export class TelegramCommands {
   async start() {
     if (!this.token || !this.chatId) return;
     try {
-      // Registrar menú de comandos en Telegram
-      // Registrar menú completo de 29 comandos en Telegram
+      // Registrar menú completo de comandos en Telegram
       const commands = [
-        // Menú y Estrategias
+        // Menú y Diagnóstico
         { command: "menu", description: "📋 Centro de comandos completo" },
+        { command: "informe", description: "📑 Diagnóstico en tiempo real y PnL" },
+        { command: "balance", description: "💼 Consultar saldos en Binance Spot" },
+        { command: "liquidez", description: "💧 Consultar saldo libre y meta de 50 USDT" },
+        { command: "reporte", description: "📈 Ganancias reales acumuladas netas" },
+        { command: "cierre", description: "🏁 Cierre de jornada diario consolidado" },
+        { command: "balance_diario", description: "📅 Balance diario de todas las estrategias" },
+
+        // Futuros USD-M
+        { command: "futuros", description: "🧪 Estado del motor de Futuros" },
+        { command: "futuros_real", description: "🚀 Activar Futuros en Modo Real" },
+        { command: "futuros_sim", description: "🛡️ Activar Futuros en Simulación" },
+        { command: "viabilidad_futuros", description: "🎯 Diagnóstico de viabilidad en vivo" },
+        { command: "reporte_futuros", description: "📊 Informe cuantitativo de Futuros" },
+        { command: "toggle_futuros", description: "⚡ Activar / Pausar motor de Futuros" },
+
+        // Estrategias y Operación
+        { command: "estrategias", description: "⚙️ Panel y switches de estrategias" },
+        { command: "alpha", description: "🤖 Centinela Alpha (Recuperación autónoma)" },
+        { command: "lotes", description: "📦 Registro de Lotes 100% aislados" },
+        { command: "trailing", description: "🏹 Posiciones vivas con Trailing Take Profit" },
+        { command: "cazando", description: "🔻 Monedas cazando piso (Trailing Buy)" },
+        { command: "radar", description: "📡 Escáner de suelos y RSI en vivo" },
         { command: "memes", description: "🐕 Canasta y radar de Memecoins" },
         { command: "callback", description: "🎯 Ver y ajustar callback de salida (ej: /callback PEPE 0.45)" },
-        { command: "alpha", description: "🤖 Centinela Alpha (Recuperación y Caza 20%)" },
-        { command: "lotes", description: "📦 Registro de Lotes 100% aislados (Cero mezcla)" },
-        { command: "sugerencias", description: "🧠 Sugerencias Centinela (aplicar/rechazar)" },
-        { command: "rechazar", description: "❌ Descartar sugerencia activa" },
-        { command: "estrategias", description: "⚙️ Panel y switches de estrategias" },
         { command: "presupuesto", description: "💼 Presupuesto auto-graduado y saldos" },
         { command: "asignar", description: "🎯 Configurar % (ej: /asignar 40 25 0 35)" },
         { command: "regimen", description: "🧭 Diagnóstico volatilidad y Día Quieto" },
         { command: "weekend", description: "🏖️ Diagnóstico Cazador Weekend" },
-        { command: "informe", description: "📑 Diagnóstico en tiempo real y PnL" },
-        { command: "trailing", description: "🏹 Posiciones rastreando el pico más alto" },
-        { command: "cazando", description: "🔻 Monedas cazando piso (Trailing Buy)" },
-        { command: "reporte", description: "📈 Ganancias reales acumuladas (Binance)" },
-        { command: "balance_diario", description: "📅 Cierre diario y balance consolidado de todas las estrategias" },
-        { command: "cierre", description: "🏁 Cierre de jornada diario con PnL neto" },
-        { command: "futuros", description: "🧪 Estado del Bot de Futuros (Simulación)" },
-        { command: "reporte_futuros", description: "📊 Informe y efectividad de Futuros" },
-        { command: "toggle_futuros", description: "⚡ Activar / Pausar motor de Futuros" },
         { command: "estado", description: "📊 Órdenes vivas y precios en Binance" },
-        { command: "radar", description: "📡 Escáner de suelos y RSI en vivo" },
-        { command: "balance", description: "💼 Consultar saldos en Binance Spot" },
         { command: "motores", description: "⚙️ Parámetros técnicos de los motores" },
 
-        // Interruptores (Switches)
+        // Switches y Parámetros
         { command: "toggle_trailing", description: "🏹 Activar / Pausar Cazador Trailing" },
         { command: "toggle_dca", description: "🛡️ Activar / Pausar Smart DCA" },
         { command: "toggle_grid", description: "🌐 Activar / Pausar Micro-Grid" },
@@ -58,23 +63,22 @@ export class TelegramCommands {
         { command: "toggle_stoploss", description: "🛡️ Activar / Desactivar Stop-Loss" },
         { command: "set_stoploss", description: "🛡️ Fijar % Stop-Loss (ej: /set_stoploss 4.0)" },
         { command: "timeframe", description: "⏱️ Ver o cambiar temporalidad (15m, 1h, 4h)" },
+        { command: "sugerencias", description: "🧠 Sugerencias Centinela (aplicar/rechazar)" },
+        { command: "rechazar", description: "❌ Descartar sugerencia activa" },
 
-        // Aprobaciones interactivas
+        // Aprobaciones y Control
         { command: "aprobar", description: "✅ Aprobar oportunidad recomendada" },
         { command: "ignorar", description: "❌ Descartar oportunidad de compra" },
         { command: "aprobar_grid", description: "🌐 Activar Micro-Grid en Día Quieto" },
         { command: "ignorar_grid", description: "❌ Descartar activación Micro-Grid" },
-
-        // Modos y Control
         { command: "modo", description: "🤖 Ver o cambiar modo (/modo auto | manual)" },
         { command: "pausa", description: "⏸️ Pausar compras automáticas" },
         { command: "reanudar", description: "▶️ Reanudar compras automáticas" },
-
-        // Operaciones manuales e IA
         { command: "comprar", description: "🛒 Compra manual (ej: /comprar eth)" },
         { command: "vender", description: "💰 Venta manual a mercado (ej: /vender sol)" },
         { command: "ai", description: "🧠 Consultar a Gemini AI (ej: /ai mercado)" }
       ];
+
       await fetch(this.api("setMyCommands"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -90,6 +94,29 @@ export class TelegramCommands {
     }
   }
 
+  private async sendMessageChunk(text: string): Promise<void> {
+    if (!text || !text.trim()) return;
+    try {
+      const res = await fetch(this.api("sendMessage"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: this.chatId, text, parse_mode: "HTML" }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        // Si falló el parseo HTML, reenviar texto plano
+        const plain = text.replace(/<[^>]*>/g, "");
+        await fetch(this.api("sendMessage"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: this.chatId, text: plain }),
+        });
+      }
+    } catch (err: any) {
+      console.error("Error enviando mensaje a Telegram:", err.message);
+    }
+  }
+
   private async loop() {
     while (true) {
       try {
@@ -99,26 +126,41 @@ export class TelegramCommands {
           this.offset = u.update_id + 1;
           const msg = u.message;
           if (!msg?.text || String(msg.chat.id) !== this.chatId) continue;
-          const cmd = msg.text.trim().toLowerCase().split("@")[0];
-          console.log(`📱 Telegram comando recibido: ${cmd}`);
-          const reply = await this.handler(cmd);
-          
-          const sendRes = await fetch(this.api("sendMessage"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: this.chatId, text: reply, parse_mode: "HTML" }),
-          });
-          const sendData = await sendRes.json();
-          if (!sendData.ok) {
-            // Reintentar sin formato HTML por si contiene caracteres especiales
-            await fetch(this.api("sendMessage"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ chat_id: this.chatId, text: reply.replace(/<[^>]*>/g, "") }),
-            });
+
+          // Limpiar mención al bot SOLO en el comando inicial (ej: "/comprar@MiBot eth" -> "/comprar eth")
+          const rawText = msg.text.trim();
+          const cleanedText = rawText.replace(/^(\/[a-zA-Z0-9_]+)@[a-zA-Z0-9_]+/i, "$1");
+          console.log(`📱 Telegram comando recibido: ${cleanedText}`);
+
+          let reply = "";
+          try {
+            reply = await this.handler(cleanedText);
+          } catch (handlerErr: any) {
+            console.error("Error en handler de Telegram:", handlerErr.message);
+            reply = `⚠️ Error procesando comando: ${handlerErr.message}`;
+          }
+
+          if (!reply || !reply.trim()) {
+            reply = "👍 Orden procesada.";
+          }
+
+          // Dividir mensajes si exceden el límite de 4000 caracteres de Telegram
+          if (reply.length > 4000) {
+            const chunks = [];
+            let rem = reply;
+            while (rem.length > 0) {
+              chunks.push(rem.slice(0, 4000));
+              rem = rem.slice(4000);
+            }
+            for (const chunk of chunks) {
+              await this.sendMessageChunk(chunk);
+            }
+          } else {
+            await this.sendMessageChunk(reply);
           }
         }
-      } catch {
+      } catch (loopErr: any) {
+        console.error("Error en loop de TelegramCommands:", loopErr.message);
         await new Promise((r) => setTimeout(r, 4000));
       }
     }

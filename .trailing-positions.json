@@ -44,8 +44,8 @@
       "buyPrice": 0.00000507,
       "qty": 17347606.13,
       "investedUsdt": 87.9523630791,
-      "highestPrice": 0.00000507,
-      "activated": false,
+      "highestPrice": 0.00000513,
+      "activated": true,
       "buyTime": 1793218548962
     }
   ],
@@ -56,9 +56,21 @@
       "buyPrice": 0.00000318,
       "qty": 11168065.95,
       "investedUsdt": 35.514449721,
-      "highestPrice": 0.00000318,
-      "activated": false,
+      "highestPrice": 0.00000322,
+      "activated": true,
       "buyTime": 1793218864890
+    }
+  ],
+  [
+    "AVAXUSDT",
+    {
+      "symbol": "AVAXUSDT",
+      "buyPrice": 9.044,
+      "qty": 7.26017938,
+      "investedUsdt": 65.66106231272,
+      "highestPrice": 9.044,
+      "activated": false,
+      "buyTime": 1793221470154
     }
   ]
 ]

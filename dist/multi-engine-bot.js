@@ -1373,6 +1373,15 @@ export class TrailingMasterBot {
                     `• Todas las operaciones se ejecutan de forma virtual sin arriesgar saldo real.\n` +
                     `👉 Para cambiar a Real: /futuros_real`;
             }
+            if (cmd === "/reporte_futuros" || cmd === "reporte_futuros") {
+                return this.futuresEngine.getSummaryReport();
+            }
+            if (cmd === "/toggle_futuros" || cmd === "toggle_futuros") {
+                const isNowOn = this.futuresEngine.toggle();
+                return isNowOn
+                    ? "🟢 <b>Motor de Futuros ACTIVADO.</b> Comenzará a escanear el radar de 7 pares."
+                    : "🔴 <b>Motor de Futuros PAUSADO.</b> No abrirá nuevas posiciones ni rastreará entradas.";
+            }
             if (cmd === "/futuros" || cmd === "futuros") {
                 const st = this.futuresEngine.getState();
                 return `⚙️ <b>ESTADO DEL MOTOR DE FUTUROS:</b> ${st.isSimulated ? "🛡️ SIMULACIÓN (Paper Trading)" : "🚀 REAL (Binance USD-M)"}\n\n` +

@@ -9,7 +9,7 @@
   },
   "autoPilot": true,
   "approvalTimeoutSec": 180,
-  "updatedAt": 1793218935811,
+  "updatedAt": 1793222211636,
   "allocations": {
     "trailing_rebound": 25,
     "smart_dca": 25,
@@ -35,9 +35,9 @@
   "maxPerCoinPct": 30,
   "strategySettings": {
     "trailing_rebound": {
-      "timeframe": "1h",
+      "timeframe": "15m",
       "stopLossEnabled": false,
-      "stopLossPct": 4
+      "stopLossPct": 3.5
     },
     "smart_dca": {
       "timeframe": "4h",
@@ -66,20 +66,20 @@
     "trailing_rebound": {
       "timeframe": "15m",
       "stopLossPct": 3.5,
-      "reason": "Alta velocidad detectada (BTC 1.8%, Memes 7.6%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
+      "reason": "Alta velocidad detectada (BTC 1.8%, Memes 7.6%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
       "criterios": [
         "Rango Bitcoin: 1.77% (Fuerza direccional)",
-        "Rango Memecoins: 7.58% (Líder PEPE con 17.0%)",
-        "Sesión: Wall Street / New York (Máxima Liquidez y Volumen)",
+        "Rango Memecoins: 7.56% (Líder PEPE con 17.0%)",
+        "Sesión: Asia / Tokio (Consolidación y Rango Lateral)",
         "Flujo de órdenes dinámico con ciclos de rebote veloces"
       ],
       "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m permite capturar rebotes rápidos (+1.2% a +2.0%) varias veces al día sin dejar capital atrapado.",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "btcRange24h": 1.77352079937172,
-      "updatedAt": 1793218935811,
-      "expiresAt": 1793222535811,
-      "isCurrent": false,
-      "status": "pending"
+      "updatedAt": 1793222211636,
+      "expiresAt": 1793225811636,
+      "isCurrent": true,
+      "status": "applied"
     },
     "smart_dca": {
       "timeframe": "4h",
@@ -91,10 +91,10 @@
         "Cooldown de 2 horas entre compras consecutivas"
       ],
       "porQue": "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "btcRange24h": 1.77352079937172,
-      "updatedAt": 1793218935811,
-      "expiresAt": 1793222535811,
+      "updatedAt": 1793222211636,
+      "expiresAt": 1793225811636,
       "isCurrent": true,
       "status": "applied"
     },
@@ -108,10 +108,10 @@
         "Micro-oscilaciones constantes en canales de ±0.5%"
       ],
       "porQue": "En días planos donde no hay tendencias grandes, la única forma de generar dólares es con una rejilla de micro-rebotes (+0.45% a +0.60%) en 15m. El Stop-Loss estricto de -2.0% es obligatorio: si el precio rompe el canal hacia abajo, la estrategia debe cortar de inmediato para no quedar atrapada en una caída direccional.",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "btcRange24h": 1.77352079937172,
-      "updatedAt": 1793218935811,
-      "expiresAt": 1793222535811,
+      "updatedAt": 1793222211636,
+      "expiresAt": 1793225811636,
       "isCurrent": true,
       "status": "applied"
     },
@@ -124,10 +124,10 @@
         "Capital trabajando al 100% en Cazador Trailing"
       ],
       "porQue": "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "btcRange24h": 1.77352079937172,
-      "updatedAt": 1793218935811,
-      "expiresAt": 1793222535811,
+      "updatedAt": 1793222211636,
+      "expiresAt": 1793225811636,
       "isCurrent": true,
       "status": "applied"
     }
@@ -158,5 +158,5 @@
       "pepeLoss": 0.233
     }
   },
-  "notified50UsdtThreshold": true
+  "notified50UsdtThreshold": false
 }
