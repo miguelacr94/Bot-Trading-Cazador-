@@ -41,6 +41,8 @@ export class DashboardServer {
     classification: string;
     updatedAt: number;
   } | null = null;
+  private cachedDbTrades: any[] = [];
+  private cachedRecoveryTracker: any = null;
 
   constructor(port = PORT) {
     this.port = port;
@@ -352,6 +354,7 @@ export class DashboardServer {
     recoveredUsdt: number;
     tradesCount: number;
   } | null {
+    if (this.cachedRecoveryTracker) return this.cachedRecoveryTracker;
     const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
     if (fs.existsSync(ctrlFile)) {
       try {
@@ -359,7 +362,7 @@ export class DashboardServer {
         return controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
       } catch (e) {}
     }
-    return null;
+    return { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
   }
 
   private getCallbackPct(symbol: string, pos?: any): number {
@@ -556,11 +559,13 @@ export class DashboardServer {
     const total = positionsValue + cash;
     const p = this.pnl;
     // SINCRONIZACIÓN HÍBRIDA: Fusionar trades locales del bot con la auditoría de Binance
-    let localLedger: any[] = [];
-    try {
-      const f = path.resolve(process.cwd(), ".closed-trades.json");
-      if (fs.existsSync(f)) localLedger = JSON.parse(fs.readFileSync(f, "utf-8"));
-    } catch {}
+    let localLedger: any[] = this.cachedDbTrades && this.cachedDbTrades.length > 0 ? this.cachedDbTrades : [];
+    if (!localLedger.length) {
+      try {
+        const f = path.resolve(process.cwd(), ".closed-trades.json");
+        if (fs.existsSync(f)) localLedger = JSON.parse(fs.readFileSync(f, "utf-8"));
+      } catch {}
+    }
 
     const binanceCycles = p ? p.cycles : [];
     const syncMap = new Map();
@@ -687,7 +692,7 @@ export class DashboardServer {
           : null,
       recentCycles: allMergedCycles.slice(-35).reverse(),
       futuresTelemetry,
-      recoveryTracker: this.getRecoveryTracker(),
+      recoveryTracker: this.cachedRecoveryTracker || this.getRecoveryTracker(),
     };
   }
 

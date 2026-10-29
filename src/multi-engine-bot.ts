@@ -3613,6 +3613,13 @@ export class TrailingMasterBot {
   }
 
   async runCycle() {
+    // Sincronizar periódicamente controles desde Supabase
+    if (Date.now() % 35000 < 7500) {
+      try {
+        const freshCtrl = await supabaseDb.loadStrategyControls();
+        if (freshCtrl) this.controls = freshCtrl;
+      } catch(e) {}
+    }
     if (this.isProcessing) return;
     this.isProcessing = true;
 
@@ -3902,11 +3909,44 @@ export class TrailingMasterBot {
     }
   }
 
+  async syncFromSupabase() {
+    try {
+      if (!supabaseDb.isAvailable()) {
+        console.warn("⚠️ Supabase no disponible en este momento. Usando estado en memoria.");
+        return;
+      }
+      // 1. Consumir Controles y Plan de Recuperación desde la DB
+      const dbCtrl = await supabaseDb.loadStrategyControls();
+      if (dbCtrl && dbCtrl.strategies) {
+        this.controls = dbCtrl;
+        this.autoPilot = this.controls.autoPilot !== false;
+        console.log(`☁️ [SUPABASE DB] Controles cargados exitosamente desde la nube.`);
+        console.log(`🎯 [SUPABASE DB] Meta de Deuda: ${(this.controls.recoveryTracker?.targetUsdt || 100).toFixed(2)} USDT | Recuperado: +${(this.controls.recoveryTracker?.recoveredUsdt || 0).toFixed(2)} USDT`);
+        console.log(`🛡️ [SUPABASE DB] Stop-Loss Spot: ${this.controls.stopLossEnabled ? "Activo" : "DESACTIVADO (Blindaje Seguro)"}`);
+      }
+
+      // 2. Consumir Posiciones Activas desde la DB
+      const dbPos = await supabaseDb.loadActivePositions();
+      if (dbPos && dbPos.size > 0) {
+        this.activeTrailingPositions = dbPos;
+        console.log(`☁️ [SUPABASE DB] ${this.activeTrailingPositions.size} posiciones activas cargadas desde la nube.`);
+        for (const [sym, p] of this.activeTrailingPositions.entries()) {
+          console.log(`   • ${sym}: ${p.qty} unidades compradas a ${p.buyPrice} (Invertido: ${p.investedUsdt.toFixed(2)} USDT)`);
+        }
+      }
+    } catch (e: any) {
+      console.error("⚠️ Error consumiendo datos de Supabase:", e.message);
+    }
+  }
+
   async start() {
     console.log(`\n======================================================`);
     console.log(`🏛️ BOT DE TRADING CON TRAILING TAKE PROFIT INTELIGENTE`);
     console.log(`🎯 Trailing Buy: +${TRAILING_BUY_BOUNCE_PCT}% desde el piso | Trailing TP: +${TRAILING_ACTIVATION_PCT}% / callback ${TRAILING_CALLBACK_PCT}%`);
     console.log(`======================================================\n`);
+
+    // 🌐 CONSUMIR DATOS PRIORITARIOS DESDE SUPABASE CLOUD DB
+    await this.syncFromSupabase();
 
     await this.telegramCommands.start();
     this.futuresEngine.start(4000);
