@@ -13,21 +13,29 @@ export class SupabaseDbService {
   private isConnected = false;
 
   constructor() {
-    if (SUPABASE_URL && SUPABASE_KEY) {
+    this.init();
+  }
+
+  private init() {
+    const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "https://wfpcvuzzopjfgdtdhobp.supabase.co";
+    const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+    if (url && key) {
       try {
-        this.client = createClient(SUPABASE_URL, SUPABASE_KEY, {
+        this.client = createClient(url, key, {
           auth: { persistSession: false }
         });
         this.isConnected = true;
       } catch (err: any) {
         console.error("⚠️ Error inicializando cliente Supabase:", err.message);
       }
-    } else {
-      console.warn("⚠️ Credenciales de Supabase no configuradas en .env");
     }
   }
 
   isAvailable(): boolean {
+    if (!this.isConnected || !this.client) {
+      this.init();
+    }
     return this.isConnected && this.client !== null;
   }
 
