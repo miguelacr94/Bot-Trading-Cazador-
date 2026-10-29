@@ -35,9 +35,10 @@ const TRAILING_CALLBACK_PCT = 0.30; // Base callback
 const TRAILING_HARD_CAP_PCT = 15.0; // Techo ultra amplio (+15%) para perseguir el alza hasta la cima sin corte artificial
 // PARÁMETROS DEL TRAILING BUY (espejo del trailing de venta, para cazar el piso)
 const TRAILING_BUY_BOUNCE_PCT = 0.25; // Compra cuando rebota +0.25% desde el piso más bajo
-const TRAILING_BUY_MAX_AGE_MS = 3 * 60 * 60 * 1000; // Vigilancia máxima: 3 horas
+const TRAILING_BUY_MAX_AGE_MS = 45 * 60 * 1000; // Vigilancia máxima: 45 minutos (permite refrescar suelos dinámicos)
 export class TrailingMasterBot {
     controls = {
+        maxPositions: 7,
         strategies: {
             trailing_rebound: true,
             smart_dca: true,
@@ -330,6 +331,8 @@ export class TrailingMasterBot {
                 const dbCtrl = await supabaseDb.loadStrategyControls();
                 if (dbCtrl && dbCtrl.strategies) {
                     this.controls = dbCtrl;
+                    if (this.controls.maxPositions === undefined)
+                        this.controls.maxPositions = 7;
                     this.autoPilot = this.controls.autoPilot !== false;
                     console.log("☁️ [SUPABASE CLOUD] Controles y estrategia leídos desde Supabase DB.");
                     return;
@@ -350,6 +353,8 @@ export class TrailingMasterBot {
                     this.controls.timeframe = "1h";
                 if (!this.controls.rejectedSuggestions)
                     this.controls.rejectedSuggestions = {};
+                if (this.controls.maxPositions === undefined)
+                    this.controls.maxPositions = 7;
                 if (this.controls.cashReservePct === undefined)
                     this.controls.cashReservePct = 25;
                 if (this.controls.maxPerCoinPct === undefined)
@@ -1008,7 +1013,7 @@ export class TrailingMasterBot {
                         if (sold) {
                             const strat = pos.strategy;
                             this.activeTrailingPositions.delete(symbol);
-                            this.recentlySoldSymbols.set(symbol, Date.now());
+                            this.recentlySoldSymbols.set(symbol, { time: Date.now(), sellPrice: curPrice });
                             this.saveTrailingPositions();
                             if (strat === "cazador_weekend") {
                                 await this.onWeekendTradeCompleted(symbol);
@@ -1368,15 +1373,11 @@ export class TrailingMasterBot {
         }
         for (const sym of WATCHLIST) {
             const isMeme = MEME_WATCHLIST.includes(sym);
-            // REGLA DE ORO DE RIESGO: Máximo 1 memecoin activa a la vez
-            if (isMeme && activeMemeCount >= 1) {
+            // REGLA DE RIESGO DINÁMICA: Hasta 3 memecoins activas concurrentes (desbloquea oportunidades)
+            if (isMeme && activeMemeCount >= 3) {
                 continue;
             }
             try {
-                const lastSold = this.recentlySoldSymbols.get(sym);
-                if (lastSold && (Date.now() - lastSold) < 20 * 60 * 1000) {
-                    continue; // Cooldown post-venta de 20 min: evitar recomprar en el mismo techo
-                }
                 if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
                     continue; // No acumular en la misma moneda ni duplicar vigilancias
                 }
@@ -1387,6 +1388,23 @@ export class TrailingMasterBot {
                 const highs = data.map((k) => parseFloat(k[2]));
                 const lows = data.map((k) => parseFloat(k[3]));
                 const closes = data.map((k) => parseFloat(k[4]));
+                const curPrice = closes[closes.length - 1];
+                // Cooldown post-venta inteligente: Si cayó >= 2.5% respecto a la salida, se levanta de inmediato
+                const lastSold = this.recentlySoldSymbols.get(sym);
+                if (lastSold) {
+                    const elapsed = Date.now() - lastSold.time;
+                    if (elapsed < 20 * 60 * 1000) {
+                        const droppedFromExit = lastSold.sellPrice && lastSold.sellPrice > 0
+                            ? ((lastSold.sellPrice - curPrice) / lastSold.sellPrice) * 100
+                            : 0;
+                        if (droppedFromExit < 2.5) {
+                            continue; // Cooldown post-venta activo: evitar recomprar en el mismo techo
+                        }
+                        else {
+                            console.log(`🎯 [COOLDOWN LEVANTADO] ${sym} cayó ${droppedFromExit.toFixed(2)}% tras la salida. Re-entrada autorizada.`);
+                        }
+                    }
+                }
                 const rsi = this.calculateRSI(closes, 14);
                 // Centinela Nocturno: En ventana nocturna (20:00 - 02:30 COT) exigir sobreventa extrema (RSI <= 26)
                 const isNight = this.isNightWindow();
@@ -1395,7 +1413,6 @@ export class TrailingMasterBot {
                     // Filtrar compras en la noche para no comprar caídas tempranas en libros delgados
                     continue;
                 }
-                const curPrice = closes[closes.length - 1];
                 const maxRecent = Math.max(...highs.slice(-20));
                 const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
                 // 🧠 ANÁLISIS DE ACCIÓN DEL PRECIO Y COMPORTAMIENTO DE VELAS (PRICE ACTION)
@@ -2427,7 +2444,7 @@ export class TrailingMasterBot {
                     `• <b>Detección:</b> Caída ≥ 1.5% con RSI ≤ 58 (o RSI ≤ 48 con caída ≥ 0.8%, o RSI ≤ 40).\n` +
                     `• <b>Persecución del piso:</b> Registra el precio más bajo tick a tick (cada 7s).\n` +
                     `• <b>Compra:</b> Cuando rebota +${TRAILING_BUY_BOUNCE_PCT}% desde el piso.\n` +
-                    `• <b>Expiración:</b> ${TRAILING_BUY_MAX_AGE_MS / 3600000}h sin rebote.\n\n` +
+                    `• <b>Expiración:</b> ${Math.round(TRAILING_BUY_MAX_AGE_MS / 60000)} min sin rebote.\n\n` +
                     `🏹 <b>Motor Trailing Take Profit (ACTIVO):</b>\n` +
                     `• <b>Gatillo de activación:</b> +${TRAILING_ACTIVATION_PCT}% (Asegura ganancia rápida).\n` +
                     `• <b>Persecución de pico:</b> Sube el piso de venta detrás del precio sin límite.\n` +
@@ -3116,8 +3133,10 @@ export class TrailingMasterBot {
             }
         }
         else if (totalFreeUsdt >= this.minUsdtToTrade) {
-            // Si el capital libre es pequeño (entre 10 y 20 USDT), en sesiones defensivas protegerlo al 100%
-            if (reservePct >= 0.35) {
+            // Si el capital libre es entre 10 y 20 USDT:
+            // En noche profunda (20:00-03:00 COT), blindar al 100% para Londres (03:00 COT)
+            // En horario diurno / de mercado, permitir 1 micro-lote de alta convicción (mínimo de Binance $10)
+            if (isNight) {
                 reservedUsdt = totalFreeUsdt;
                 spendableUsdt = 0;
             }
@@ -3405,16 +3424,16 @@ export class TrailingMasterBot {
                 }
                 // C) Si estamos en Fin de Semana y Cazador Weekend está activo:
                 let weekendTriggered = false;
-                if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && this.activeTrailingPositions.size < 5) {
+                if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && this.activeTrailingPositions.size < (this.controls?.maxPositions || 7)) {
                     weekendTriggered = await this.evaluateCazadorWeekend(sessionPlan.spendableUsdt, activeSymbols);
                 }
                 // D) Si Micro-Grid está activo (en días quietos): operar canales laterales
                 let gridTriggered = false;
-                if (!dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && this.activeTrailingPositions.size < 5) {
+                if (!dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && this.activeTrailingPositions.size < (this.controls?.maxPositions || 7)) {
                     gridTriggered = await this.evaluateMicroGrid(sessionPlan.spendableUsdt, activeSymbols);
                 }
                 // E) Si no hay DCA, Weekend ni Grid y Trailing Rebound está activo: vigilar caídas y suelos
-                if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && this.activeTrailingPositions.size < 5) {
+                if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && this.activeTrailingPositions.size < (this.controls?.maxPositions || 7)) {
                     await this.scanForDips(activeSymbols);
                     if (this.buyWatches.size > 0) {
                         await this.checkBuyWatches(sessionPlan.spendableUsdt);

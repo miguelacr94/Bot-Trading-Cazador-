@@ -65,13 +65,15 @@ export class SupabaseDbService {
       }
       if (!data) return null;
 
+      const settings = data.strategy_settings || {};
       return {
         strategies: data.strategies,
-        autoPilot: data.auto_pilot ?? true,
+        autoPilot: settings.autoPilot ?? data.auto_pilot ?? true,
         approvalTimeoutSec: data.approval_timeout_sec ?? 180,
+        maxPositions: settings.maxPositions ?? 7,
         allocations: data.allocations,
         baseAllocations: data.base_allocations,
-        strategySettings: data.strategy_settings,
+        strategySettings: settings,
         suggestions: data.suggestions,
         trailingCallbacks: data.trailing_callbacks,
         recoveryTracker: data.recovery_tracker,
@@ -79,8 +81,8 @@ export class SupabaseDbService {
         stopLossPct: data.stop_loss_pct ?? 4.0,
         timeframe: data.timeframe ?? "1h",
         cashReservePct: data.cash_reserve_pct ?? 25.0,
-        maxPerCoinPct: data.max_per_coin_pct ?? 30.0,
-        aiEnabled: data.ai_enabled ?? false,
+        maxPerCoinPct: settings.maxPerCoinPct ?? data.max_per_coin_pct ?? 30.0,
+        aiEnabled: settings.aiEnabled ?? data.ai_enabled ?? false,
         updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : Date.now()
       };
     } catch (err: any) {
@@ -92,12 +94,20 @@ export class SupabaseDbService {
   async saveStrategyControls(controls: any): Promise<boolean> {
     if (!this.client) return false;
     try {
+      const strategySettingsPayload = {
+        ...(controls.strategySettings || {}),
+        maxPositions: controls.maxPositions ?? 7,
+        maxPerCoinPct: controls.maxPerCoinPct ?? 30.0,
+        autoPilot: controls.autoPilot !== false,
+        aiEnabled: controls.aiEnabled === true
+      };
+
       const record = {
         id: "current",
         strategies: controls.strategies,
         allocations: controls.allocations,
         base_allocations: controls.baseAllocations || controls.allocations,
-        strategy_settings: controls.strategySettings,
+        strategy_settings: strategySettingsPayload,
         suggestions: controls.suggestions,
         trailing_callbacks: controls.trailingCallbacks,
         recovery_tracker: controls.recoveryTracker,
@@ -105,9 +115,6 @@ export class SupabaseDbService {
         stop_loss_pct: controls.stopLossPct ?? 4.0,
         timeframe: controls.timeframe ?? "1h",
         cash_reserve_pct: controls.cashReservePct ?? 25.0,
-        max_per_coin_pct: controls.maxPerCoinPct ?? 30.0,
-        auto_pilot: controls.autoPilot !== false,
-        ai_enabled: controls.aiEnabled === true,
         updated_at: new Date().toISOString()
       };
 
