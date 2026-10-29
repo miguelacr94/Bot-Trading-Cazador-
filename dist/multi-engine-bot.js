@@ -177,7 +177,7 @@ export class TrailingMasterBot {
         return this.getSuggestedTimeframe(symbol).timeframe;
     }
     getCallbackPct(symbol, pos) {
-        // 1. Prioridad: Callback individual configurado en la posición activa
+        // 1. Prioridad: Callback individual configurado manualmente en la posición
         if (pos && typeof pos.customCallbackPct === "number" && pos.customCallbackPct > 0) {
             return pos.customCallbackPct;
         }
@@ -189,15 +189,28 @@ export class TrailingMasterBot {
         if (this.controls.trailingCallbacks && typeof this.controls.trailingCallbacks["default"] === "number") {
             return this.controls.trailingCallbacks["default"];
         }
-        // 4. Valores por defecto adaptados por volatilidad y categoría de activo:
-        // • Memecoins: 0.45% (balance óptimo entre absorber micro-ruido de velas y amarrar ganancias)
-        // • Medias (AVAX/SOL): 0.35%
-        // • Clásicas (ETH/BTC): 0.25%
-        if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE"))
-            return 0.45;
-        if (symbol.includes("AVAX") || symbol.includes("SOL"))
-            return 0.35;
-        return 0.25;
+        // 4. 🚀 TRAILING CEÑIDO ESCALONADO DINÁMICO (Tiered Dynamic Callback)
+        // A medida que la ganancia sube, el lazo se ciñe automáticamente para capturar la cima intacta
+        const isMeme = MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF");
+        const isMid = symbol.includes("AVAX") || symbol.includes("SOL");
+        const baseCb = isMeme ? 0.45 : (isMid ? 0.35 : 0.25);
+        if (pos && pos.buyPrice > 0 && pos.highestPrice > 0) {
+            const peakGainPct = ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100;
+            if (peakGainPct >= 3.0) {
+                // Fase 4: Parapeto Extremo (> +3.0%) -> Candado ultra-ceñido
+                return isMeme ? 0.15 : 0.12;
+            }
+            else if (peakGainPct >= 2.2) {
+                // Fase 3: Techo Inminente / Euforia (+2.2% a +3.0%) -> Ceñir a 0.20% (Caso PEPE)
+                return isMeme ? 0.20 : 0.15;
+            }
+            else if (peakGainPct >= 1.4) {
+                // Fase 2: Consolidación (+1.4% a +2.2%) -> Ceñir a 0.30%
+                return isMeme ? 0.30 : 0.22;
+            }
+            // Fase 1: Despegue inicial (+0.8% a +1.4%) -> Mantener respiro completo (0.45%) para tolerar micro-ruido
+        }
+        return baseCb;
     }
     /**
      * Reconstruye y adopta posiciones existentes en Binance Spot que no estén registradas en memoria/disco.
@@ -927,11 +940,13 @@ export class TrailingMasterBot {
                         const callback = this.getCallbackPct(symbol, pos);
                         const stopPrice = curPrice * (1 - callback / 100);
                         const minLockedGain = ((stopPrice - pos.buyPrice) / pos.buyPrice) * 100;
+                        const tierDesc = gainPct >= 3.0 ? "Candado Extremo (0.15%)" : (gainPct >= 2.2 ? "Ceñido Euforia (0.20%)" : (gainPct >= 1.4 ? "Consolidación (0.30%)" : "Respiro Normal (0.45%)"));
                         const peakAlert = `📈 <b>¡NUEVO PICO ALCANZADO: ${symbol}!</b> 🚀\n\n` +
                             `• <b>Nuevo techo:</b> ${fmtPrice(curPrice)} (<b>+${gainPct.toFixed(2)}%</b>)\n` +
-                            `• 🛡️ <b>Nuevo piso de venta garantizado:</b> ${fmtPrice(stopPrice)}\n` +
-                            `• 💵 <b>Ganancia amarrada:</b> +${minLockedGain.toFixed(2)}% NETO\n\n` +
-                            `🏹 <i>El bot sigue persiguiendo la cima hacia arriba...</i>`;
+                            `• 🛡️ <b>Nuevo piso garantizado:</b> ${fmtPrice(stopPrice)}\n` +
+                            `• 💵 <b>Ganancia amarrada:</b> +${minLockedGain.toFixed(2)}% NETO\n` +
+                            `• ⚡ <b>Trailing Dinámico:</b> ${callback.toFixed(2)}% (${tierDesc})\n\n` +
+                            `🏹 <i>El bot persigue la cima con candado dinámico...</i>`;
                         await this.notifier.send(peakAlert);
                     }
                 }

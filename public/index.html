@@ -1971,6 +1971,216 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
+  
+    /* =====================================================
+       📱 ULTRA-OPTIMIZED MOBILE RESPONSIVE SYSTEM (< 768px)
+       ===================================================== */
+    @media (max-width: 768px) {
+      body {
+        padding: 0;
+        background: #090d16;
+      }
+      .container {
+        padding: 12px 14px 28px 14px;
+        width: 100%;
+        max-width: 100%;
+      }
+      header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding-bottom: 14px;
+      }
+      .brand-icon {
+        width: 38px;
+        height: 38px;
+        font-size: 20px;
+      }
+      .brand-text h1 {
+        font-size: 19px;
+        line-height: 1.2;
+      }
+      .brand-text p {
+        font-size: 11px;
+      }
+      .header-actions {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: space-between;
+      }
+      .header-actions > * {
+        font-size: 11px;
+        padding: 5px 10px;
+      }
+
+      /* Banner de Sesiones en Móvil */
+      #session-orchestrator-banner {
+        padding: 12px 14px;
+        margin-bottom: 16px;
+      }
+      #session-orchestrator-banner > div {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      #session-orchestrator-banner > div > div:last-child {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      #session-rec-box {
+        max-width: 100% !important;
+        width: 100%;
+      }
+
+      /* Grid 2x2 para KPIs en móvil */
+      .kpi-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      .kpi-card {
+        padding: 14px 12px;
+        border-radius: 12px;
+      }
+      .kpi-title {
+        font-size: 11px;
+      }
+      .kpi-value {
+        font-size: 20px;
+        margin: 6px 0 2px 0;
+      }
+      .kpi-sub {
+        font-size: 10px;
+      }
+      .kpi-badge {
+        font-size: 9px;
+        padding: 2px 5px;
+      }
+
+      /* Navegación de Pestañas Táctil en Móvil */
+      .main-tabs-nav {
+        gap: 6px;
+        margin: 12px 0 16px 0;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+      }
+      .main-tab-btn {
+        padding: 8px 14px;
+        font-size: 12px;
+        border-radius: 8px;
+        gap: 6px;
+      }
+      .main-tab-btn .tab-icon {
+        font-size: 14px;
+      }
+
+      /* Tarjetas de Posición en Móvil */
+      .positions-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .position-card {
+        padding: 16px;
+        border-radius: 14px;
+      }
+      .pos-top {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .pos-metrics {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      /* Tablas con scroll horizontal suave */
+      .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 10px;
+      }
+      .radar-table, .history-table {
+        min-width: 580px;
+      }
+
+      /* Controles de Estrategia */
+      .strategy-hub-card {
+        padding: 16px;
+        border-radius: 14px;
+      }
+      .hub-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .hub-header-right {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .presets-mini-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .btn-preset {
+        width: 100%;
+        text-align: center;
+        padding: 7px 10px;
+        font-size: 11px;
+      }
+      .strategies-grid {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      .strategy-item {
+        padding: 14px;
+      }
+      .strat-ctrl-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .mini-sl-group {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      /* Panel de Futuros */
+      .futures-dev-panel {
+        padding: 14px;
+      }
+      .futures-dev-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+    }
+
+    /* Móviles muy compactos (< 420px) */
+    @media (max-width: 420px) {
+      .kpi-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .main-tab-btn {
+        padding: 7px 11px;
+        font-size: 11px;
+      }
+      .brand-text h1 {
+        font-size: 17px;
+      }
+    }
+
   </style>
 </head>
 <body>
