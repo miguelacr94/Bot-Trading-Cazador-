@@ -3,6 +3,12 @@ import * as dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 dotenv.config();
+try {
+    const f = path.resolve(process.cwd(), ".env");
+    if (fs.existsSync(f))
+        dotenv.config({ path: f });
+}
+catch { }
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://wfpcvuzzopjfgdtdhobp.supabase.co";
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
 export class SupabaseDbService {
