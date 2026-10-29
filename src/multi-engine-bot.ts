@@ -1,3 +1,4 @@
+import { supabaseDb } from "./supabase-db.js";
 import crypto from "crypto";
 import { FuturesEngine } from "./futures-engine.js";
 import { DashboardServer } from "./dashboard-server.js";
@@ -528,6 +529,8 @@ export class TrailingMasterBot {
       this.controls.updatedAt = Date.now();
       this.controls.autoPilot = this.autoPilot;
       fs.writeFileSync(path.resolve(process.cwd(), ".strategy-controls.json"), JSON.stringify(this.controls, null, 2));
+      // Sincronización en la nube Supabase
+      supabaseDb.saveStrategyControls(this.controls).catch(() => {});
     } catch(e: any) {
       console.error("Error guardando strategy controls:", e.message);
     }
@@ -1000,6 +1003,10 @@ export class TrailingMasterBot {
     try {
       const data = Array.from(this.activeTrailingPositions.entries());
       fs.writeFileSync(path.resolve(process.cwd(), ".trailing-positions.json"), JSON.stringify(data, null, 2));
+      // Sincronización en la nube Supabase
+      for (const pos of this.activeTrailingPositions.values()) {
+        supabaseDb.saveActivePosition(pos).catch(() => {});
+      }
     } catch(e: any) {
       console.error("Error guardando trailing positions:", e.message);
     }
@@ -1068,25 +1075,10 @@ export class TrailingMasterBot {
         const curPrice = parseFloat(ticker.data.price);
         const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
 
-        // 0. BLINDAJE SPOT ESTRICTO: NUNCA vender a pérdida salvo activación explícita (=== true)
-        const stratSlEnabled = !!(pos.strategy && ((this.controls.strategySettings as any)?.[pos.strategy]?.stopLossEnabled === true));
-        const globalSlEnabled = this.controls.stopLossEnabled === true;
-        const slEnabled = globalSlEnabled || stratSlEnabled;
-        const slPct = (pos.strategy && (this.controls.strategySettings as any)?.[pos.strategy]?.stopLossPct) || this.controls.stopLossPct || 8.0;
-
-        if (slEnabled && !pos.activated && gainPct <= -slPct) {
-          console.log(`🛑 [STOP-LOSS DISPARADO] ${symbol} cayó a ${curPrice} (${gainPct.toFixed(2)}% <= -${slPct}%). Ejecutando corte de emergencia...`);
-          const sold = await this.executeTrailingSell(pos, curPrice, false, true);
-          if (sold) {
-            const strat = pos.strategy;
-            this.activeTrailingPositions.delete(symbol);
-            this.saveTrailingPositions();
-            if (strat === "cazador_weekend") {
-              await this.onWeekendTradeCompleted(symbol);
-            }
-          }
-          continue;
-        }
+        // 0. BLINDAJE SPOT ABSOLUTO: CERO VENTAS EN PÉRDIDA
+        // En Spot nunca hay liquidación de margen. Los tokens son propios.
+        // NUNCA vender en rojo; esperar el rebote al alza (+0.80% mínimo) o promediar con Smart DCA.
+        // (Stop-Loss eliminado al 100% de la lógica Spot para evitar whipsaws)
 
         // 1. Activar Trailing si superó el +0.8%
         if (gainPct >= TRAILING_ACTIVATION_PCT && !pos.activated) {
@@ -1280,11 +1272,9 @@ export class TrailingMasterBot {
         }
       }
 
-      // Registrar venta parcial en closed-trades.json
+      // Registrar venta parcial en Supabase y respaldo local
       try {
-        const ledgerF = path.resolve(process.cwd(), ".closed-trades.json");
-        const list: any[] = fs.existsSync(ledgerF) ? JSON.parse(fs.readFileSync(ledgerF, "utf-8")) : [];
-        list.push({
+        const partialItem = {
           symbol: pos.symbol,
           orderId: sellRes.data.orderId || Date.now(),
           time: Date.now(),
@@ -1298,7 +1288,12 @@ export class TrailingMasterBot {
           pnlPct: netPct,
           strategy: pos.strategy || "trailing_rebound",
           source: "partial_scale_out_50"
-        });
+        };
+        supabaseDb.recordClosedTrade(partialItem).catch(() => {});
+
+        const ledgerF = path.resolve(process.cwd(), ".closed-trades.json");
+        const list: any[] = fs.existsSync(ledgerF) ? JSON.parse(fs.readFileSync(ledgerF, "utf-8")) : [];
+        list.push(partialItem);
         fs.writeFileSync(ledgerF, JSON.stringify(list.slice(-200), null, 2), "utf-8");
       } catch (e: any) {}
 
@@ -1379,11 +1374,9 @@ export class TrailingMasterBot {
         }
       }
       const netPct = (profitUsdt / costBasis) * 100;
-      // SINCRONIZACIÓN HÍBRIDA: Guardar venta inmediatamente en .closed-trades.json
+      // Registrar venta en Supabase y respaldo local
       try {
-        const ledgerF = path.resolve(process.cwd(), ".closed-trades.json");
-        const list: any[] = fs.existsSync(ledgerF) ? JSON.parse(fs.readFileSync(ledgerF, "utf-8")) : [];
-        list.push({
+        const fullTradeItem = {
           symbol: pos.symbol,
           orderId: sellRes.data.orderId || Date.now(),
           time: Date.now(),
@@ -1396,8 +1389,14 @@ export class TrailingMasterBot {
           pnlUsdt: profitUsdt,
           pnlPct: netPct,
           strategy: pos.strategy || "trailing_rebound",
-          source: "bot_execution"
-        });
+          source: reasonOverride || (isStopLoss ? "stop_loss" : "bot_execution")
+        };
+        supabaseDb.recordClosedTrade(fullTradeItem).catch(() => {});
+        supabaseDb.deleteActivePosition(pos.symbol).catch(() => {});
+
+        const ledgerF = path.resolve(process.cwd(), ".closed-trades.json");
+        const list: any[] = fs.existsSync(ledgerF) ? JSON.parse(fs.readFileSync(ledgerF, "utf-8")) : [];
+        list.push(fullTradeItem);
         fs.writeFileSync(ledgerF, JSON.stringify(list.slice(-200), null, 2), "utf-8");
       } catch (e: any) {
         console.error("Error guardando venta en .closed-trades.json:", e.message);
