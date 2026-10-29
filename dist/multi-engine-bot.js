@@ -950,23 +950,46 @@ export class TrailingMasterBot {
                         await this.notifier.send(peakAlert);
                     }
                 }
-                // 3. Evaluar Salida por Retroceso (Callback) desde el pico más alto
+                // 💎 PASO A: VENTA PARCIAL 50/50 AL TOCAR PICO ALTO (>= +2.20%)
+                if (pos.activated && gainPct >= 2.20 && !pos.partialProfitTaken) {
+                    try {
+                        await this.executePartialSell(pos, curPrice, 0.50);
+                    }
+                    catch (e) { }
+                }
+                // 3. Evaluar Salida por Retroceso (Callback) o por Mecha de Rechazo (Agotamiento)
                 if (pos.activated) {
                     const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
                     const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
                     let callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol, pos);
                     let minGain = pos.strategy === "micro_grid" ? 0.35 : 0.80; // Blindado a +0.80% mínimo para no cerrar con migajas
                     // 🌆 COSECHA PRE-NOCTURNA (16:00 - 19:30 COT):
-                    // Si estamos en la ventana de cosecha y la posición ya tiene ganancia (>= +0.65%),
-                    // ceñimos el callback a 0.20% para amarrar la ganancia antes del drenaje de las 20:00 COT
                     if (this.isPreNightHarvestWindow() && gainPct >= 0.65) {
                         callback = Math.min(callback, 0.20);
                         minGain = 0.65;
                     }
+                    // 🕯️ CENTINELA DE MECHA DE RECHAZO (AGOTAMIENTO INSTITUCIONAL EN CIMA)
+                    let isRejectionWick = false;
+                    if (gainPct >= 1.20 && dropFromPeak >= 0.12) {
+                        try {
+                            const klines = await this.client.klines(symbol, "15m", { limit: 2 });
+                            const lastK = klines.data[klines.data.length - 1];
+                            const o = parseFloat(lastK[1]), h = parseFloat(lastK[2]), l = parseFloat(lastK[3]), c = parseFloat(lastK[4]);
+                            const totRange = h - l;
+                            const upperWick = h - Math.max(o, c);
+                            const upperWickRatio = totRange > 0 ? (upperWick / totRange) : 0;
+                            if (upperWickRatio >= 0.35) {
+                                isRejectionWick = true;
+                                console.log(`🕯️ [MECHA DE RECHAZO EN CIMA] ${symbol}: mecha superior ${(upperWickRatio * 100).toFixed(0)}% >= 35%. Gatillando venta inmediata.`);
+                            }
+                        }
+                        catch (e) { }
+                    }
                     const hitCallback = dropFromPeak >= callback && gainPct >= minGain;
-                    if (hitCallback || hitHardCap) {
-                        console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a $${curPrice} (Pico: $${pos.highestPrice})`);
-                        const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap);
+                    if (hitCallback || hitHardCap || isRejectionWick) {
+                        const reasonOverride = isRejectionWick ? "RECHAZO_MECHA" : undefined;
+                        console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a ${curPrice} (Pico: ${pos.highestPrice}) [${reasonOverride || 'TRAILING'}]`);
+                        const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap, false, reasonOverride);
                         // Solo se elimina la posición si Binance confirmó la venta
                         if (sold) {
                             const strat = pos.strategy;
@@ -1019,7 +1042,103 @@ export class TrailingMasterBot {
         }
         return fee;
     }
-    async executeTrailingSell(pos, exitPrice, hitHardCap, isStopLoss = false) {
+    /**
+     * VENTA PARCIAL ESCALONADA 50/50 EN LA CIMA (SCALE-OUT TAKE PROFIT)
+     * Al tocar un pico alto (>= +2.20%), vende el 50% de la orden para asegurar USDT en el bolsillo
+     * y deja correr el 50% restante con Trailing Stop para cazar subidas mayores.
+     */
+    async executePartialSell(pos, exitPrice, ratio = 0.5) {
+        try {
+            if (pos.partialProfitTaken)
+                return false;
+            const asset = pos.symbol.replace("USDT", "");
+            let freeBal = await this.getFreeBalance(asset);
+            if (freeBal < pos.qty * ratio * 0.95) {
+                await this.redeemFromEarnIfNeeded(asset, pos.qty * ratio);
+                freeBal = await this.getFreeBalance(asset);
+            }
+            const exInfo = await this.client.exchangeInfo({ symbol: pos.symbol });
+            const sInfo = exInfo.data.symbols[0];
+            const stepSize = parseFloat(sInfo.filters.find((f) => f.filterType === "LOT_SIZE").stepSize);
+            const minNotional = parseFloat(sInfo.filters.find((f) => f.filterType === "NOTIONAL" || f.filterType === "MIN_NOTIONAL")?.minNotional || "10.0");
+            const qtyDec = Math.max(0, Math.round(-Math.log10(stepSize)));
+            const targetSellQty = pos.qty * ratio;
+            const sellQty = Math.floor(targetSellQty / stepSize) * stepSize;
+            const sellQtyStr = sellQty.toFixed(qtyDec);
+            const estimatedValue = sellQty * exitPrice;
+            const remainingValue = (pos.qty - sellQty) * exitPrice;
+            // Salvaguarda: Verificar que ambas partes cumplan con el mínimo notional de Binance (>= $10 USDT)
+            if (estimatedValue < minNotional || remainingValue < minNotional) {
+                console.log(`⚠️ [Venta Parcial 50%] Saldo de ${pos.symbol} insuficiente para fraccionar sin violar minNotional (${minNotional} USDT). Manteniendo 100% en Trailing.`);
+                return false;
+            }
+            console.log(`🎯 [Venta Parcial 50%] Vendiendo ${sellQtyStr} ${asset} en ${pos.symbol} a ~${exitPrice} para asegurar ganancia en la cima...`);
+            const sellRes = await this.client.newOrder(pos.symbol, "SELL", "MARKET", {
+                quantity: sellQtyStr,
+                newOrderRespType: "FULL",
+                recvWindow: 60000
+            });
+            const grossUsdt = parseFloat(sellRes.data.cummulativeQuoteQty);
+            const sellFee = this.feesToUsdt(sellRes.data.fills, asset);
+            const avgSell = grossUsdt / parseFloat(sellRes.data.executedQty);
+            const costBasis = pos.investedUsdt * (sellQty / pos.qty);
+            const profitUsdt = grossUsdt - sellFee - costBasis;
+            const netPct = costBasis > 0 ? (profitUsdt / costBasis) * 100 : 0;
+            // Actualizar recovery tracker si aplica
+            if (profitUsdt > 0 && this.controls.recoveryTracker) {
+                if (this.controls.recoveryTracker.recoveredUsdt < this.controls.recoveryTracker.targetUsdt) {
+                    this.controls.recoveryTracker.recoveredUsdt = Math.min(this.controls.recoveryTracker.targetUsdt, this.controls.recoveryTracker.recoveredUsdt + profitUsdt);
+                    this.controls.recoveryTracker.tradesCount += 1;
+                    this.saveStrategyControls();
+                }
+            }
+            // Registrar venta parcial en closed-trades.json
+            try {
+                const ledgerF = path.resolve(process.cwd(), ".closed-trades.json");
+                const list = fs.existsSync(ledgerF) ? JSON.parse(fs.readFileSync(ledgerF, "utf-8")) : [];
+                list.push({
+                    symbol: pos.symbol,
+                    orderId: sellRes.data.orderId || Date.now(),
+                    time: Date.now(),
+                    buyPrice: pos.buyPrice,
+                    sellPrice: avgSell,
+                    qty: sellQty,
+                    costUsdt: costBasis,
+                    proceedsUsdt: grossUsdt - sellFee,
+                    feesUsdt: sellFee,
+                    pnlUsdt: profitUsdt,
+                    pnlPct: netPct,
+                    strategy: pos.strategy || "trailing_rebound",
+                    source: "partial_scale_out_50"
+                });
+                fs.writeFileSync(ledgerF, JSON.stringify(list.slice(-200), null, 2), "utf-8");
+            }
+            catch (e) { }
+            // Actualizar posición viva con el 50% restante
+            pos.qty = Math.max(0, pos.qty - sellQty);
+            pos.investedUsdt = Math.max(0, pos.investedUsdt - costBasis);
+            pos.partialProfitTaken = true;
+            pos.partialProfitUsdt = (pos.partialProfitUsdt || 0) + profitUsdt;
+            pos.highestPrice = avgSell;
+            this.saveTrailingPositions();
+            const sign = profitUsdt >= 0 ? "+" : "";
+            const partialAlert = `🎯 <b>¡TOMA DE GANANCIA PARCIAL (50%) EN LA CIMA!</b> 💎\n\n` +
+                `• <b>Moneda:</b> ${pos.symbol}\n` +
+                `• <b>Precio de compra:</b> ${fmtPrice(pos.buyPrice)}\n` +
+                `• <b>Precio cobrado (50%):</b> ${fmtPrice(avgSell)}\n` +
+                `• 💵 <b>Ganancia líquida asegurada:</b> 🟢 <b>${sign}${profitUsdt.toFixed(3)} USDT</b> (<b>+${netPct.toFixed(2)}% NETO</b>)\n` +
+                `• 💼 <b>Capital cobrado:</b> ${(grossUsdt - sellFee).toFixed(2)} USDT limpios en caja\n\n` +
+                `🏹 <i>¡El 50% restante (${pos.qty.toFixed(4)} ${asset}) sigue corriendo con Trailing Stop para cazar una subida mayor sin riesgo!</i>`;
+            await this.notifier.send(partialAlert);
+            console.log(`✅ [Venta Parcial 50%] ${pos.symbol}: cobrados +${profitUsdt.toFixed(3)} USDT en la cima. Resto en trailing.`);
+            return true;
+        }
+        catch (e) {
+            console.error(`Error en executePartialSell ${pos.symbol}:`, e.response?.data?.msg || e.message);
+            return false;
+        }
+    }
+    async executeTrailingSell(pos, exitPrice, hitHardCap, isStopLoss = false, reasonOverride) {
         try {
             const asset = pos.symbol.replace("USDT", "");
             let freeBal = await this.getFreeBalance(asset);
@@ -1094,6 +1213,17 @@ export class TrailingMasterBot {
                     `• 💵 <b>Capital rescatado:</b> <b>${(grossUsdt - sellFee).toFixed(2)} USDT líquidos</b>\n` +
                     `• 📉 Pérdida controlada asumida: 🔴 <b>${profitUsdt.toFixed(3)} USDT</b> (<b>${netPct.toFixed(2)}%</b>) ≈ ${Math.round(profitUsdt * COP_PER_USDT).toLocaleString("es-CO")} COP\n\n` +
                     `💡 <i>Posición cerrada para proteger tu dinero y tener pólvora lista para la siguiente ola.</i>`;
+            }
+            else if (reasonOverride === "RECHAZO_MECHA") {
+                alertMsg = `🕯️ <b>¡VENTA POR AGOTAMIENTO Y MECHA DE RECHAZO!</b> 🛑\n\n` +
+                    `• <b>Moneda:</b> ${pos.symbol}\n` +
+                    `• <b>Precio de compra:</b> ${fmtPrice(pos.buyPrice)}\n` +
+                    `• <b>Pico alcanzado:</b> ${fmtPrice(pos.highestPrice)}\n` +
+                    `• <b>Precio de venta:</b> ${fmtPrice(avgSell)}\n` +
+                    `• <b>Comisiones:</b> ${sellFee.toFixed(4)} USDT\n` +
+                    `• 💵 <b>Ganancia líquida:</b> 🟢 <b>${sign}${profitUsdt.toFixed(3)} USDT</b> (<b>${sign}${netPct.toFixed(2)}% NETO</b>) ≈ ${sign}${Math.round(profitUsdt * COP_PER_USDT).toLocaleString("es-CO")} COP\n\n` +
+                    `🛡️ <i>Rechazo institucional detectado en la cima. Posición cerrada antes del desplome.</i>\n` +
+                    `📊 <i>Escribe /reporte para ver el acumulado real.</i>`;
             }
             else {
                 alertMsg = `🏆 <b>¡GANANCIA COBRADA CON TRAILING TAKE PROFIT!</b> 🎉\n\n` +
