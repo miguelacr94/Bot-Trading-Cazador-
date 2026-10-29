@@ -915,7 +915,8 @@ export class TrailingMasterBot {
     async checkTrailingPositions() {
         for (const [symbol, pos] of this.activeTrailingPositions.entries()) {
             try {
-                const asset = symbol.replace("USDT", "");
+                const actualSymbol = pos.symbol || symbol.split('_')[0];
+                const asset = actualSymbol.replace("USDT", "");
                 let freeBal = await this.getFreeBalance(asset);
                 if (freeBal < pos.qty * 0.1) {
                     // Intentar rescatar de Simple Earn si Binance lo barrió con Auto-Subscribe
@@ -928,7 +929,7 @@ export class TrailingMasterBot {
                     this.saveTrailingPositions();
                     continue;
                 }
-                const ticker = await this.client.tickerPrice(symbol);
+                const ticker = await this.client.tickerPrice(actualSymbol);
                 const curPrice = parseFloat(ticker.data.price);
                 const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
                 // 0. BLINDAJE SPOT ABSOLUTO: CERO VENTAS EN PÉRDIDA
@@ -936,7 +937,8 @@ export class TrailingMasterBot {
                 // NUNCA vender en rojo; esperar el rebote al alza (+0.80% mínimo) o promediar con Smart DCA.
                 // (Stop-Loss eliminado al 100% de la lógica Spot para evitar whipsaws)
                 // 1. Activar Trailing si superó el +0.8%
-                if (gainPct >= TRAILING_ACTIVATION_PCT && !pos.activated) {
+                const activationTarget = pos.customMinGainPct || TRAILING_ACTIVATION_PCT;
+                if (gainPct >= activationTarget && !pos.activated) {
                     pos.activated = true;
                     pos.highestPrice = curPrice;
                     const msg = `🎯 <b>[TRAILING ACTIVADO: ${symbol}]</b>\n\n` +
@@ -970,7 +972,7 @@ export class TrailingMasterBot {
                     }
                 }
                 // 💎 PASO A: VENTA PARCIAL 50/50 AL TOCAR PICO ALTO (>= +2.20%)
-                if (pos.activated && gainPct >= 2.20 && !pos.partialProfitTaken) {
+                if (!pos.customMinGainPct && pos.activated && gainPct >= 2.20 && !pos.partialProfitTaken) {
                     try {
                         await this.executePartialSell(pos, curPrice, 0.50);
                     }
@@ -981,7 +983,7 @@ export class TrailingMasterBot {
                     const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
                     const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
                     let callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol, pos);
-                    let minGain = pos.strategy === "micro_grid" ? 0.35 : 0.80; // Blindado a +0.80% mínimo para no cerrar con migajas
+                    let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.35 : 0.80); // Blindado a +0.80% mínimo para no cerrar con migajas
                     // 🌆 COSECHA PRE-NOCTURNA (16:00 - 19:30 COT):
                     if (this.isPreNightHarvestWindow() && gainPct >= 0.65) {
                         callback = Math.min(callback, 0.20);

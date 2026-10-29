@@ -8,7 +8,11 @@
       "investedUsdt": 16.26,
       "highestPrice": 2412.02,
       "activated": false,
-      "buyTime": 1792677217622
+      "buyTime": 1792677217622,
+      "strategy": "trailing_rebound",
+      "partialProfitTaken": false,
+      "lastDcaTime": 1793313115020,
+      "dcaCount": 1
     }
   ],
   [
@@ -17,11 +21,13 @@
       "symbol": "XRPUSDT",
       "buyPrice": 1.3329,
       "qty": 15.88300561,
-      "investedUsdt": 21.170458177569,
+      "investedUsdt": 21.1705,
       "highestPrice": 1.3329,
       "activated": false,
       "buyTime": 1793179021405,
-      "customCallbackPct": 0.25
+      "strategy": "trailing_rebound",
+      "customCallbackPct": 0.25,
+      "partialProfitTaken": false
     }
   ],
   [
@@ -30,10 +36,12 @@
       "symbol": "AVAXUSDT",
       "buyPrice": 9.044,
       "qty": 7.26017938,
-      "investedUsdt": 65.66106231272,
+      "investedUsdt": 65.6611,
       "highestPrice": 9.044,
       "activated": false,
-      "buyTime": 1793221470154
+      "buyTime": 1793221470154,
+      "strategy": "trailing_rebound",
+      "partialProfitTaken": false
     }
   ],
   [
@@ -42,10 +50,12 @@
       "symbol": "BONKUSDT",
       "buyPrice": 0.0000032,
       "qty": 14774638.51,
-      "investedUsdt": 47.278843232,
+      "investedUsdt": 47.2788,
       "highestPrice": 0.0000032,
       "activated": false,
-      "buyTime": 1793290983417
+      "buyTime": 1793290983417,
+      "strategy": "trailing_rebound",
+      "partialProfitTaken": false
     }
   ],
   [
@@ -54,10 +64,28 @@
       "symbol": "PEPEUSDT",
       "buyPrice": 0.00000542,
       "qty": 2184159.8,
-      "investedUsdt": 11.838146115999999,
+      "investedUsdt": 11.8381,
       "highestPrice": 0.00000542,
       "activated": false,
-      "buyTime": 1793295788684
+      "buyTime": 1793295788684,
+      "strategy": "trailing_rebound",
+      "partialProfitTaken": false
+    }
+  ],
+  [
+    "PEPEUSDT_lot_2",
+    {
+      "symbol": "PEPEUSDT",
+      "lotId": "PEPEUSDT_lot_2",
+      "lotIndex": 2,
+      "buyPrice": 0.000004614614609045924,
+      "qty": 4143357.5,
+      "investedUsdt": 19.11999805,
+      "highestPrice": 0.000004614614609045924,
+      "activated": false,
+      "buyTime": 1793313420232,
+      "strategy": "trailing_rebound",
+      "customMinGainPct": 10
     }
   ]
 ]
