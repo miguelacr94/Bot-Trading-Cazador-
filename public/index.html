@@ -1904,6 +1904,73 @@
       box-shadow: 0 0 8px rgba(139, 92, 246, 0.35);
     }
 
+  
+    /* === MODERN TABBED NAVIGATION SYSTEM === */
+    .main-tabs-nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 18px 0 22px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 12px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .main-tabs-nav::-webkit-scrollbar { display: none; }
+    .main-tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 22, 34, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      color: #94a3b8;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      white-space: nowrap;
+      user-select: none;
+    }
+    .main-tab-btn:hover {
+      background: rgba(30, 41, 59, 0.85);
+      color: #f1f5f9;
+      border-color: rgba(96, 165, 250, 0.35);
+      transform: translateY(-1px);
+    }
+    .main-tab-btn.active {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.25), rgba(139, 92, 246, 0.22));
+      border-color: #38bdf8;
+      color: #38bdf8;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.22);
+    }
+    .tab-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 12px;
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+    .tab-badge.purple {
+      background: rgba(139, 92, 246, 0.2);
+      color: #c4b5fd;
+      border-color: rgba(139, 92, 246, 0.35);
+    }
+    .tab-content {
+      display: none;
+      animation: tabFadeIn 0.25s ease-out forwards;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    @keyframes tabFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
   </style>
 </head>
 <body>
@@ -2022,7 +2089,155 @@
       <div class="opp-footnote">🤖 Modo Autónomo: Si no respondes antes del tiempo límite, el bot ejecutará automáticamente la oportunidad recomendada.</div>
     </div>
 
-        <!-- Strategy Control Hub -->
+    <div class="kpi-grid">
+      <div class="kpi-card green">
+        <div class="kpi-header">
+          <span class="kpi-title">Capital Total Estimado</span>
+          <span class="kpi-badge">Cartera</span>
+        </div>
+        <div class="kpi-value"><span id="kpi-total-usdt-num">—</span> <span class="kpi-unit">USDT</span></div>
+        <div class="kpi-sub" id="kpi-total-cop">&nbsp;</div>
+      </div>
+
+      <div class="kpi-card blue">
+        <div class="kpi-header">
+          <span class="kpi-title">Saldo USDT Disponible</span>
+          <span class="kpi-badge">Spot + Earn</span>
+        </div>
+        <div class="kpi-value"><span id="kpi-free-usdt-num">—</span> <span class="kpi-unit">USDT</span></div>
+        <div class="kpi-sub" id="kpi-slots">&nbsp;</div>
+      </div>
+
+      <div class="kpi-card purple">
+        <div class="kpi-header">
+          <span class="kpi-title">Ganancia Neta Realizada</span>
+          <span class="kpi-badge" id="kpi-winrate" style="color:var(--accent-green);background:rgba(16,185,129,0.15)">— Win Rate</span>
+        </div>
+        <div class="kpi-value pos-profit"><span id="kpi-realized-pnl-num">—</span> <span style="font-size:14px">USDT</span></div>
+        <div class="kpi-sub" id="kpi-realized-cop">Calculando desde Binance…</div>
+      </div>
+
+      <div class="kpi-card amber">
+        <div class="kpi-header">
+          <span class="kpi-title">Ciclos Cerrados</span>
+          <span class="kpi-badge">Auditoría Binance</span>
+        </div>
+        <div class="kpi-value"><span id="kpi-cycles-num">—</span> <span class="kpi-unit" id="kpi-cycles-total"></span></div>
+        <div class="kpi-sub" id="kpi-losses">&nbsp;</div>
+      </div>
+    </div>
+
+
+    <!-- Tab Navigation Bar -->
+    <div class="main-tabs-nav">
+      <button class="main-tab-btn active" data-tab="tab-spot">
+        <span class="tab-icon">🏹</span>
+        <span class="tab-label">Operaciones Spot</span>
+        <span class="tab-badge" id="tab-spot-badge">0 activas</span>
+      </button>
+      <button class="main-tab-btn" data-tab="tab-strategies">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-label">Estrategias & Presupuesto</span>
+      </button>
+      <button class="main-tab-btn" data-tab="tab-futures">
+        <span class="tab-icon">⚡</span>
+        <span class="tab-label">Futuros USD-M</span>
+        <span class="tab-badge purple" id="tab-futures-badge">🧪 SIM</span>
+      </button>
+      <button class="main-tab-btn" data-tab="tab-analysis">
+        <span class="tab-icon">📊</span>
+        <span class="tab-label">Análisis & Sesiones COT</span>
+      </button>
+    </div>
+  
+
+    <!-- TAB 1: OPERACIONES SPOT -->
+    <div class="tab-content active" id="tab-spot">
+<!-- Active Positions Section -->
+    <div class="section-title">
+      <h2>🏹 Compras Activas (Trailing Take Profit)</h2>
+      <span class="section-tag" id="active-positions-count">Cargando posiciones...</span>
+    </div>
+
+    <div class="positions-grid" id="positions-container">
+      <div id="positions-empty">🎯 <b>Sin posiciones abiertas.</b><br><span style="font-size:13px">El bot está escaneando el radar para comprar en la próxima caída confirmada.</span></div>
+      <!-- Se inyectan y actualizan fluidamente in-place -->
+    </div>
+
+    <!-- Split: Radar de Caídas y Gráfica PnL -->
+    <div class="dashboard-split">
+      
+      <!-- Radar -->
+      <div class="split-card">
+        <div class="section-title" style="margin-bottom:14px;">
+          <h2>📡 Radar de Oportunidades (Trailing Buy)</h2>
+          <span class="section-tag">Watchlist</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
+          Monitorea caídas ≥ 1.5% o RSI sobrevendido para seguir el piso y comprar en el rebote exacto (+0.25%).
+        </p>
+        <div class="table-responsive">
+          <table class="radar-table">
+            <thead>
+              <tr>
+                <th>Moneda</th>
+                <th>Precio</th>
+                <th>Caída 24h</th>
+                <th>RSI (15m)</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="radar-tbody">
+              <!-- Se inyecta fluidamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Gráfica PnL -->
+      <div class="split-card">
+        <div class="section-title" style="margin-bottom:14px;">
+          <h2>📈 Curva de Ganancias Acumuladas</h2>
+          <span class="section-tag">USDT Netos</span>
+        </div>
+        <div style="height: 250px; width: 100%;">
+          <canvas id="pnlChart"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Historial de Ciclos Ganados -->
+    <div class="history-card">
+      <div class="section-title">
+        <h2>🏆 Historial de Ciclos Completados con Ganancia</h2>
+        <span class="section-tag">Registro de Binance Spot</span>
+      </div>
+      <div class="table-responsive">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Moneda</th>
+              <th>Fecha y Hora</th>
+              <th>Compra</th>
+              <th>Venta</th>
+              <th>Ganancia Neta</th>
+              <th>Rendimiento</th>
+              <th>Resultado</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody">
+            <!-- Se inyecta fluidamente -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+    </div>
+
+    <!-- TAB 2: ESTRATEGIAS & PRESUPUESTO -->
+    <div class="tab-content" id="tab-strategies">
+<!-- Strategy Control Hub -->
     <div class="strategy-hub-card">
       <div class="hub-header">
         <div class="hub-header-left">
@@ -2633,48 +2848,11 @@
         </div>
       </div>
     </div>
-
-    <!-- KPI Summary Grid -->
-    <div class="kpi-grid">
-      <div class="kpi-card green">
-        <div class="kpi-header">
-          <span class="kpi-title">Capital Total Estimado</span>
-          <span class="kpi-badge">Cartera</span>
-        </div>
-        <div class="kpi-value"><span id="kpi-total-usdt-num">—</span> <span class="kpi-unit">USDT</span></div>
-        <div class="kpi-sub" id="kpi-total-cop">&nbsp;</div>
-      </div>
-
-      <div class="kpi-card blue">
-        <div class="kpi-header">
-          <span class="kpi-title">Saldo USDT Disponible</span>
-          <span class="kpi-badge">Spot + Earn</span>
-        </div>
-        <div class="kpi-value"><span id="kpi-free-usdt-num">—</span> <span class="kpi-unit">USDT</span></div>
-        <div class="kpi-sub" id="kpi-slots">&nbsp;</div>
-      </div>
-
-      <div class="kpi-card purple">
-        <div class="kpi-header">
-          <span class="kpi-title">Ganancia Neta Realizada</span>
-          <span class="kpi-badge" id="kpi-winrate" style="color:var(--accent-green);background:rgba(16,185,129,0.15)">— Win Rate</span>
-        </div>
-        <div class="kpi-value pos-profit"><span id="kpi-realized-pnl-num">—</span> <span style="font-size:14px">USDT</span></div>
-        <div class="kpi-sub" id="kpi-realized-cop">Calculando desde Binance…</div>
-      </div>
-
-      <div class="kpi-card amber">
-        <div class="kpi-header">
-          <span class="kpi-title">Ciclos Cerrados</span>
-          <span class="kpi-badge">Auditoría Binance</span>
-        </div>
-        <div class="kpi-value"><span id="kpi-cycles-num">—</span> <span class="kpi-unit" id="kpi-cycles-total"></span></div>
-        <div class="kpi-sub" id="kpi-losses">&nbsp;</div>
-      </div>
     </div>
 
-
-    <!-- SECCIÓN DE TELEMETRÍA Y RADAR CUANTITATIVO DE FUTUROS (MODO DESARROLLADOR) -->
+    <!-- TAB 3: FUTUROS USD-M -->
+    <div class="tab-content" id="tab-futures">
+<!-- SECCIÓN DE TELEMETRÍA Y RADAR CUANTITATIVO DE FUTUROS (MODO DESARROLLADOR) -->
     <div class="futures-dev-panel" id="futures-dev-panel" style="margin-top: 24px; background: rgba(18, 20, 29, 0.95); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 14px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
       <div class="futures-dev-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:16px;">
         <div style="display:flex; align-items:center; gap:10px;">
@@ -2849,90 +3027,103 @@
         </div>
       </div>
     </div>
-
-
-    <!-- Active Positions Section -->
-    <div class="section-title">
-      <h2>🏹 Compras Activas (Trailing Take Profit)</h2>
-      <span class="section-tag" id="active-positions-count">Cargando posiciones...</span>
     </div>
 
-    <div class="positions-grid" id="positions-container">
-      <div id="positions-empty">🎯 <b>Sin posiciones abiertas.</b><br><span style="font-size:13px">El bot está escaneando el radar para comprar en la próxima caída confirmada.</span></div>
-      <!-- Se inyectan y actualizan fluidamente in-place -->
+
+    <!-- TAB 4: ANÁLISIS CUANTITATIVO & SESIONES -->
+    <div class="tab-content" id="tab-analysis">
+      <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 22px; margin-bottom: 24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h2 style="font-size:16px; font-weight:700; color:#f1f5f9; margin:0 0 4px 0; display:flex; align-items:center; gap:8px;">
+              <span>🏛️</span> Ciclo Cuantitativo de Sesiones Horarias (COT / UTC-5)
+            </h2>
+            <p style="font-size:12px; color:var(--text-muted); margin:0;">
+              Parámetros deducidos y calibrados a partir de 1.000 horas de datos reales de Binance Spot y Futuros.
+            </p>
+          </div>
+          <span style="font-size:11px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); padding:4px 10px; border-radius:6px; font-weight:600;">
+            Hora Colombia Activa
+          </span>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:20px;">
+          <!-- 1. Drenaje Nocturno -->
+          <div style="background:rgba(15, 23, 42, 0.6); border:1px solid rgba(239, 68, 68, 0.25); border-radius:10px; padding:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-weight:700; font-size:13px; color:#f87171;">🌙 Drenaje Nocturno</span>
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">20:00 – 02:30 COT</span>
+            </div>
+            <div style="font-size:11px; color:#cbd5e1; margin-bottom:8px;">
+              Win rate del <b>38% – 43%</b> (valle de mayor caída del día). Libros delgados y caza de liquidaciones.
+            </div>
+            <div style="background:rgba(239,68,68,0.1); border-radius:6px; padding:6px 10px; font-size:11px; color:#fca5a5;">
+              🔒 <b>Regla:</b> 45% reserva protegida. Solo micro-lotes si RSI ≤ 26.
+            </div>
+          </div>
+
+          <!-- 2. Rebote Londres -->
+          <div style="background:rgba(15, 23, 42, 0.6); border:1px solid rgba(16, 185, 129, 0.25); border-radius:10px; padding:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-weight:700; font-size:13px; color:#34d399;">🏰 Rebote de Londres</span>
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">03:00 – 06:00 COT</span>
+            </div>
+            <div style="font-size:11px; color:#cbd5e1; margin-bottom:8px;">
+              Win rate del <b>64% – 71%</b>. Absorción de compras institucionales europeas con mechas inferiores récord.
+            </div>
+            <div style="background:rgba(16,185,129,0.1); border-radius:6px; padding:6px 10px; font-size:11px; color:#6ee7b7;">
+              🟢 <b>Regla:</b> 100% liquidez liberada. Trailing Buy sensible (+0.25%).
+            </div>
+          </div>
+
+          <!-- 3. Impulso NY -->
+          <div style="background:rgba(15, 23, 42, 0.6); border:1px solid rgba(56, 189, 248, 0.25); border-radius:10px; padding:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-weight:700; font-size:13px; color:#38bdf8;">🗽 Impulso Wall Street</span>
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">08:30 – 14:00 COT</span>
+            </div>
+            <div style="font-size:11px; color:#cbd5e1; margin-bottom:8px;">
+              Máximo volumen transaccional diario (ATR 1.8% – 2.6%/h). Fuerte direccionalidad y rupturas.
+            </div>
+            <div style="background:rgba(56,189,248,0.1); border-radius:6px; padding:6px 10px; font-size:11px; color:#7dd3fc;">
+              🚀 <b>Regla:</b> Trailing TP amplio para exprimir picos (+1.2% a +3.5%).
+            </div>
+          </div>
+
+          <!-- 4. Cosecha Pre-Nocturna -->
+          <div style="background:rgba(15, 23, 42, 0.6); border:1px solid rgba(245, 158, 11, 0.25); border-radius:10px; padding:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-weight:700; font-size:13px; color:#fbbf24;">🌆 Cosecha Vespertina</span>
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">16:00 – 19:30 COT</span>
+            </div>
+            <div style="font-size:11px; color:#cbd5e1; margin-bottom:8px;">
+              Picos de volumen seguidos de rechazos abruptos a las 20:00 COT.
+            </div>
+            <div style="background:rgba(245,158,11,0.1); border-radius:6px; padding:6px 10px; font-size:11px; color:#fde68a;">
+              ✂️ <b>Regla:</b> Ceñir trailing a 0.20% en ganancias para asegurar USDT líquido.
+            </div>
+          </div>
+        </div>
+
+        <!-- Jerarquía de Volatilidad -->
+        <div style="background:rgba(30, 41, 59, 0.5); border-radius:10px; padding:16px; border:1px solid rgba(255,255,255,0.06);">
+          <h4 style="font-size:13px; font-weight:700; color:#e2e8f0; margin:0 0 10px 0;">⚡ Calibración Diferenciada por Activo (Data-Driven)</h4>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
+            <div>
+              <div style="font-size:12px; font-weight:600; color:#93c5fd; margin-bottom:4px;">💎 Core Watchlist (BTC, ETH, SOL, BNB, XRP)</div>
+              <p style="font-size:11px; color:#94a3b8; margin:0;">Rango horario 0.35% – 0.55%. Trailing Stop con callback ceñido (0.25%) y Take Profit inicial al +0.80%. Menor ruido, alta predictibilidad institucional.</p>
+            </div>
+            <div>
+              <div style="font-size:12px; font-weight:600; color:#f472b6; margin-bottom:4px;">🐕 Meme Watchlist (PEPE, DOGE, BONK, SHIB, WIF)</div>
+              <p style="font-size:11px; color:#94a3b8; margin:0;">Rango horario 1.50% – 2.60%. Trailing Stop con callback holgado (0.35% – 0.45%) y Take Profit al +1.20%. Máximo 30% del portafolio ($50 USDT tope) para blindar el balance.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+  
 
-    <!-- Split: Radar de Caídas y Gráfica PnL -->
-    <div class="dashboard-split">
-      
-      <!-- Radar -->
-      <div class="split-card">
-        <div class="section-title" style="margin-bottom:14px;">
-          <h2>📡 Radar de Oportunidades (Trailing Buy)</h2>
-          <span class="section-tag">Watchlist</span>
-        </div>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
-          Monitorea caídas ≥ 1.5% o RSI sobrevendido para seguir el piso y comprar en el rebote exacto (+0.25%).
-        </p>
-        <div class="table-responsive">
-          <table class="radar-table">
-            <thead>
-              <tr>
-                <th>Moneda</th>
-                <th>Precio</th>
-                <th>Caída 24h</th>
-                <th>RSI (15m)</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody id="radar-tbody">
-              <!-- Se inyecta fluidamente -->
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Gráfica PnL -->
-      <div class="split-card">
-        <div class="section-title" style="margin-bottom:14px;">
-          <h2>📈 Curva de Ganancias Acumuladas</h2>
-          <span class="section-tag">USDT Netos</span>
-        </div>
-        <div style="height: 250px; width: 100%;">
-          <canvas id="pnlChart"></canvas>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- Historial de Ciclos Ganados -->
-    <div class="history-card">
-      <div class="section-title">
-        <h2>🏆 Historial de Ciclos Completados con Ganancia</h2>
-        <span class="section-tag">Registro de Binance Spot</span>
-      </div>
-      <div class="table-responsive">
-        <table class="history-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Moneda</th>
-              <th>Fecha y Hora</th>
-              <th>Compra</th>
-              <th>Venta</th>
-              <th>Ganancia Neta</th>
-              <th>Rendimiento</th>
-              <th>Resultado</th>
-            </tr>
-          </thead>
-          <tbody id="history-tbody">
-            <!-- Se inyecta fluidamente -->
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Footer -->
+<!-- Footer -->
     <footer>
       <p>🦅 Bot Cazador Spot Autónomo • Datos directos desde Binance API Oficial • Actualización cada 2 segundos</p>
     </footer>

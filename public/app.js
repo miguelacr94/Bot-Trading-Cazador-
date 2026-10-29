@@ -1,4 +1,44 @@
 
+  // ---------- SISTEMA MODULAR DE PESTAÑAS (TABS NAVIGATION) ----------
+  function initTabNavigation() {
+    const tabBtns = document.querySelectorAll(".main-tab-btn");
+    const tabContents = document.querySelectorAll(".tab-content");
+
+    const savedTab = localStorage.getItem("cazador_active_tab") || "tab-spot";
+
+    function switchTab(targetId) {
+      tabBtns.forEach(btn => {
+        if (btn.getAttribute("data-tab") === targetId) {
+          btn.classList.add("active");
+        } else {
+          btn.classList.remove("active");
+        }
+      });
+      tabContents.forEach(content => {
+        if (content.id === targetId) {
+          content.classList.add("active");
+        } else {
+          content.classList.remove("active");
+        }
+      });
+      localStorage.setItem("cazador_active_tab", targetId);
+
+      if (targetId === "tab-spot" && pnlChart) {
+        try { pnlChart.resize(); } catch(e) {}
+      }
+    }
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.getAttribute("data-tab");
+        if (target) switchTab(target);
+      });
+    });
+
+    switchTab(savedTab);
+  }
+
+
   function renderSessionOrchestrator(d) {
     const sp = d.sessionPlan;
     const banner = $("session-orchestrator-banner");
@@ -1571,6 +1611,23 @@
       }
     }
 
+      
+      // Actualizar badges de pestañas
+      const spotBadge = $("tab-spot-badge");
+      if (spotBadge) {
+        const cnt = d.positions ? d.positions.length : 0;
+        spotBadge.textContent = `${cnt} ${cnt === 1 ? 'activa' : 'activas'}`;
+        spotBadge.style.color = cnt > 0 ? "#34d399" : "#94a3b8";
+        spotBadge.style.borderColor = cnt > 0 ? "rgba(16, 185, 129, 0.4)" : "rgba(255,255,255,0.1)";
+      }
+      const futBadge = $("tab-futures-badge");
+      if (futBadge) {
+        const isSim = d.futuresTelemetry?.state?.isSimulated !== false;
+        futBadge.textContent = isSim ? "🧪 SIM" : "⚡ REAL";
+        futBadge.style.background = isSim ? "rgba(139, 92, 246, 0.2)" : "rgba(16, 185, 129, 0.2)";
+        futBadge.style.color = isSim ? "#c4b5fd" : "#34d399";
+      }
+
       renderPositions(d.positions);
       renderRadar(d.radar);
       renderHistory(d.recentCycles);
@@ -1585,5 +1642,6 @@
       setTimeout(tick, 2000);
     }
   }
+  initTabNavigation();
   tick();
 })();
