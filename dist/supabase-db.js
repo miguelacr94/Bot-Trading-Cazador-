@@ -273,6 +273,38 @@ export class SupabaseDbService {
             return [];
         }
     }
+    async recordFuturesTrade(trade) {
+        if (!this.client)
+            return false;
+        try {
+            const row = {
+                symbol: trade.symbol,
+                side: trade.side,
+                entry_price: trade.entryPrice,
+                exit_price: trade.exitPrice,
+                leverage: trade.leverage,
+                margin_usdt: trade.marginUsdt,
+                notional_usdt: trade.notionalUsdt,
+                net_pnl_usdt: trade.netPnlUsdt,
+                roe_pct: trade.roePct,
+                is_simulated: trade.isSimulated !== false,
+                rationale: trade.rationale || null,
+                time: trade.time || Date.now()
+            };
+            const { error } = await this.client
+                .from("futures_trades")
+                .insert(row);
+            if (error) {
+                console.error("Error registrando futures_trade en Supabase:", error.message);
+                return false;
+            }
+            return true;
+        }
+        catch (err) {
+            console.error("Excepción en recordFuturesTrade:", err.message);
+            return false;
+        }
+    }
     // --- MIGRACIÓN INICIAL DESDE ARCHIVOS JSON LOCALES ---
     async migrateAllLocalData() {
         const res = { closedTrades: 0, positions: 0, controls: false };

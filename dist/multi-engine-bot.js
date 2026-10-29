@@ -323,8 +323,19 @@ export class TrailingMasterBot {
             console.error("Error guardando trailing buys:", e.message);
         }
     }
-    loadStrategyControls() {
+    async loadStrategyControls() {
         try {
+            // 1. FUENTE PRIMARIA: SUPABASE CLOUD DB
+            if (supabaseDb.isAvailable()) {
+                const dbCtrl = await supabaseDb.loadStrategyControls();
+                if (dbCtrl && dbCtrl.strategies) {
+                    this.controls = dbCtrl;
+                    this.autoPilot = this.controls.autoPilot !== false;
+                    console.log("☁️ [SUPABASE CLOUD] Controles y estrategia leídos desde Supabase DB.");
+                    return;
+                }
+            }
+            // 2. Respaldo local de emergencia
             const file = path.resolve(process.cwd(), ".strategy-controls.json");
             if (fs.existsSync(file)) {
                 this.controls = JSON.parse(fs.readFileSync(file, "utf-8"));
@@ -841,13 +852,23 @@ export class TrailingMasterBot {
             console.error("Error guardando trailing positions:", e.message);
         }
     }
-    loadTrailingPositions() {
+    async loadTrailingPositions() {
         try {
+            // 1. FUENTE PRIMARIA: SUPABASE CLOUD DB
+            if (supabaseDb.isAvailable()) {
+                const dbPos = await supabaseDb.loadActivePositions();
+                if (dbPos && dbPos.size > 0) {
+                    this.activeTrailingPositions = dbPos;
+                    console.log(`☁️ [SUPABASE CLOUD] ${this.activeTrailingPositions.size} posiciones vivas leídas directamente de Supabase DB.`);
+                    return;
+                }
+            }
+            // 2. Respaldo local de emergencia
             const file = path.resolve(process.cwd(), ".trailing-positions.json");
             if (fs.existsSync(file)) {
                 const data = JSON.parse(fs.readFileSync(file, "utf-8"));
                 this.activeTrailingPositions = new Map(data);
-                console.log(`📂 Cargadas ${this.activeTrailingPositions.size} posiciones de Trailing desde disco.`);
+                console.log(`📂 Cargadas ${this.activeTrailingPositions.size} posiciones de Trailing desde disco local.`);
             }
         }
         catch (e) {

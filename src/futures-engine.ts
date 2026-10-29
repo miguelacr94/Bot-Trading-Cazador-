@@ -1,3 +1,4 @@
+import { supabaseDb } from "./supabase-db.js";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -168,6 +169,11 @@ export class FuturesEngine {
 
   private saveTrades(): void {
     try {
+      // Registrar en Supabase Cloud DB
+      if (this.trades.length > 0) {
+        const lastT = this.trades[this.trades.length - 1];
+        supabaseDb.recordFuturesTrade(lastT).catch(() => {});
+      }
       fs.writeFileSync(this.tradesFile, JSON.stringify(this.trades, null, 2), "utf-8");
     } catch (e: any) {
       console.error("Error guardando .futures-sim-trades.json:", e.message);

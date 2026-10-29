@@ -1423,7 +1423,8 @@ export class DashboardServer {
 
             controls.updatedAt = Date.now();
             fs.writeFileSync(futStateF, JSON.stringify(futSt, null, 2), "utf-8");
-            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+            supabaseDb.saveStrategyControls(controls).catch(() => {});
+fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
 
             res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: true, state: futSt, controls: controls.strategies }));
