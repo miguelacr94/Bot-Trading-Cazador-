@@ -1,1 +1,35 @@
-[]
+[
+  [
+    "SOLUSDT",
+    {
+      "symbol": "SOLUSDT",
+      "armedPrice": 101.58,
+      "lowestPrice": 101.07,
+      "armedTime": 1793295509701,
+      "rsi": 52.362639343093015,
+      "dropPct": 1.550688117852305
+    }
+  ],
+  [
+    "BNBUSDT",
+    {
+      "symbol": "BNBUSDT",
+      "armedPrice": 747.37,
+      "lowestPrice": 745.58,
+      "armedTime": 1793295510924,
+      "rsi": 49.06764177315177,
+      "dropPct": 1.7910643889618918
+    }
+  ],
+  [
+    "BTCUSDT",
+    {
+      "symbol": "BTCUSDT",
+      "armedPrice": 81073.43,
+      "lowestPrice": 80877.3,
+      "armedTime": 1793295571259,
+      "rsi": 54.979517837788116,
+      "dropPct": 1.0949848117017078
+    }
+  ]
+]

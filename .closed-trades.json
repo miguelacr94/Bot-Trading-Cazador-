@@ -28,5 +28,35 @@
     "pnlPct": 4.129637086754139,
     "strategy": "trailing_rebound",
     "source": "bot_execution"
+  },
+  {
+    "symbol": "BONKUSDT",
+    "orderId": 5345148778,
+    "time": 1793290122931,
+    "buyPrice": 0.00000318,
+    "sellPrice": 0.00000325,
+    "qty": 5584032,
+    "costUsdt": 17.75722176,
+    "proceedsUsdt": 18.1299559,
+    "feesUsdt": 0.0181481,
+    "pnlUsdt": 0.3727341399999986,
+    "pnlPct": 2.0990566262996233,
+    "strategy": "trailing_rebound",
+    "source": "partial_scale_out_50"
+  },
+  {
+    "symbol": "DOGEUSDT",
+    "orderId": 15166231682,
+    "time": 1793290263704,
+    "buyPrice": 0.07994,
+    "sellPrice": 0.08111,
+    "qty": 148,
+    "costUsdt": 11.83112,
+    "proceedsUsdt": 11.99227572,
+    "feesUsdt": 0.01200428,
+    "pnlUsdt": 0.16115572,
+    "pnlPct": 1.3621341005754315,
+    "strategy": "trailing_rebound",
+    "source": "bot_execution"
   }
 ]
