@@ -902,7 +902,7 @@ export class TrailingMasterBot {
       this.saveTrailingPositions();
 
       const targetGain = (buyPrice * 1.008).toFixed(4);
-      const rec = this.controls.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
+      const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
 
       const msg = `🤖 <b>[CENTINELA ALPHA: ENTRADA DE RECUPERACIÓN]</b> 🎯\n\n` +
         `• <b>Moneda seleccionada:</b> <b>${bestAsset.symbol}</b>\n` +
@@ -1367,7 +1367,7 @@ export class TrailingMasterBot {
       const profitUsdt = grossUsdt - sellFee - costBasis;
       if (profitUsdt > 0) {
         if (!this.controls.recoveryTracker) {
-          this.controls.recoveryTracker = { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
+          this.controls.recoveryTracker = { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
         }
         if (this.controls.recoveryTracker.recoveredUsdt < this.controls.recoveryTracker.targetUsdt) {
           this.controls.recoveryTracker.recoveredUsdt = Math.min(
@@ -1860,7 +1860,7 @@ export class TrailingMasterBot {
       }
 
       if (cmd === "/alpha" || cmd === "alpha") {
-        const rec = this.controls.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
+        const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
         const pct = Math.min(100, (rec.recoveredUsdt / rec.targetUsdt) * 100);
         let alphaPos: ActivePosition | null = null;
         for (const p of this.activeTrailingPositions.values()) {
@@ -1868,7 +1868,7 @@ export class TrailingMasterBot {
         }
 
         let msg = `🤖 <b>ESTRATEGIA AUTÓNOMA CENTINELA ALPHA</b> 🛡️\n\n` +
-          `<i>Estrategia con 20% del presupuesto dedicada a recuperar los $2.30 USDT con gestión autónoma de parámetros.</i>\n\n` +
+          `<i>Estrategia con 20% del presupuesto dedicada a recuperar los $100.00 USDT con gestión autónoma de parámetros.</i>\n\n` +
           `📊 <b>ESTADO DE LA MISIÓN:</b>\n` +
           `• Meta fijada: <b>${rec.targetUsdt.toFixed(2)} USDT</b>\n` +
           `• Recuperado hasta hoy: <b>+${rec.recoveredUsdt.toFixed(2)} USDT</b> (${pct.toFixed(1)}%)\n` +
@@ -3843,7 +3843,7 @@ export class TrailingMasterBot {
     const futPositions = this.futuresEngine.getPositions();
 
     // 4. Tracker de recuperación Centinela Alpha
-    const rec = this.controls.recoveryTracker || { targetUsdt: 6.11, recoveredUsdt: 3.452, tradesCount: 5 };
+    const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
     const recPct = Math.min(100, (rec.recoveredUsdt / rec.targetUsdt) * 100);
 
     // 5. Total acumulado del día

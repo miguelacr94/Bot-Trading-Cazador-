@@ -1589,8 +1589,8 @@
     renderSessionOrchestrator(d);
 
     // Actualizar barra de recuperación Centinela Alpha
-    const tracker = d.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };
-    const target = tracker.targetUsdt || 2.30;
+    const tracker = d.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
+    const target = tracker.targetUsdt || 100.00;
     const recovered = tracker.recoveredUsdt || 0;
     const pct = Math.min(100, Math.max(0, (recovered / target) * 100));
     const remaining = Math.max(0, target - recovered);
