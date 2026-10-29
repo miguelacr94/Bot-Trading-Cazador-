@@ -1215,6 +1215,13 @@ export class TrailingMasterBot {
                 const lows = data.map((k) => parseFloat(k[3]));
                 const closes = data.map((k) => parseFloat(k[4]));
                 const rsi = this.calculateRSI(closes, 14);
+                // Centinela Nocturno: En ventana nocturna (20:00 - 02:30 COT) exigir sobreventa extrema (RSI <= 26)
+                const isNight = this.isNightWindow();
+                const rsiThreshold = isNight ? 26 : 35;
+                if (isNight && rsi > 26) {
+                    // Filtrar compras en la noche para no comprar caídas tempranas en libros delgados
+                    continue;
+                }
                 const curPrice = closes[closes.length - 1];
                 const maxRecent = Math.max(...highs.slice(-20));
                 const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
@@ -2825,6 +2832,17 @@ export class TrailingMasterBot {
             "• 🏹 Disparará compra al confirmar rebote de <b>+0.35%</b> desde el piso.\n" +
             "• 🚀 <b>Salida:</b> El Trailing Take Profit (+0.80% a +3.5%) perseguirá el pico más alto (domingo noche/lunes o el día que más suba) para vender en la cima.");
         return true;
+    }
+    // --- PARÁMETROS DEL CENTINELA NOCTURNO (PROTECCIÓN 20:00 - 02:30 COT) ---
+    isNightWindow() {
+        const hour = parseInt(new Date().toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+        // Ventana de bajo volumen y caza de liquidaciones: 20:00 a 02:30 COT
+        return hour >= 20 || hour < 3;
+    }
+    isReboundWindow() {
+        const hour = parseInt(new Date().toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+        // Ventana de rebote institucional (Apertura Europa/Londres): 03:00 a 06:00 COT
+        return hour >= 3 && hour <= 6;
     }
     // --- MÉTODOS DE TRANSFERENCIA UNIVERSAL SPOT <-> FUTUROS USD-M ---
     async getFuturesBalance() {

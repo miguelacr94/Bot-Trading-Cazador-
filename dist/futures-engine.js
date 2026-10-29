@@ -488,13 +488,17 @@ export class FuturesEngine {
         const lowerWick = Math.min(lastCandle15m.open, lastCandle15m.close) - lastCandle15m.low;
         const upperWick = lastCandle15m.high - Math.max(lastCandle15m.open, lastCandle15m.close);
         const lowerWickRatio = lowerWick / totalRange;
+        // Centinela Nocturno Futuros: De 20:00 a 02:30 COT exigir absorción más exigente (>= 45%) para evitar trampas
+        const hourCot = parseInt(new Date().toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+        const isNightCot = hourCot >= 20 || hourCot < 3;
+        const minWickRequired = isNightCot ? 0.45 : 0.35;
         const upperWickRatio = upperWick / totalRange;
         // Obtener Funding Rate para protección
         const fundingRate = await this.fetchFundingRate(symbol);
         // --- EVALUACIÓN DE SEÑAL LONG ---
         const isMacroBullish = curPrice1h >= ema50_1h * 0.995; // Macro neutral a alcista
         const isRsiOversold = rsi15m <= 42; // Captura cualquier sobreventa válida (incluso < 30)
-        const isLowerAbsorption = lowerWickRatio >= 0.35;
+        const isLowerAbsorption = lowerWickRatio >= minWickRequired;
         const isFundingSafeForLong = fundingRate < 0.0003;
         // Cooldown check
         const cd = this.symbolCooldowns.get(symbol);
@@ -506,7 +510,7 @@ export class FuturesEngine {
         // --- EVALUACIÓN DE SEÑAL SHORT ---
         const isMacroBearish = curPrice1h <= ema50_1h * 1.005; // Macro neutral a bajista
         const isRsiOverbought = rsi15m >= 60; // Captura sobrecompra
-        const isUpperRejection = upperWickRatio >= 0.35;
+        const isUpperRejection = upperWickRatio >= minWickRequired;
         const isFundingSafeForShort = fundingRate > -0.0003;
         if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && isMacroBearish && isRsiOverbought && isUpperRejection && isFundingSafeForShort) {
             const rationale = `Macro 1H bajista (<EMA50) + RSI 15M (${rsi15m.toFixed(1)}) en sobrecompra con rechazo superior del ${(upperWickRatio * 100).toFixed(0)}%`;

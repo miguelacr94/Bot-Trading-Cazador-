@@ -1338,7 +1338,91 @@ export class DashboardServer {
       }
 
       if (
-        parsedUrl.pathname === "/api/strategies/toggle" &&
+        parsedUrl.pathname === "/api/futures/config" &&
+        req.method === "POST"
+      ) {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const futStateF = path.resolve(process.cwd(), ".futures-sim-state.json");
+            const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+
+            let futSt: any = {
+              isSimulated: true,
+              enabled: true,
+              virtualBalanceUsdt: 100,
+              startingBalanceUsdt: 100,
+              maxActivePositions: 2,
+              defaultMarginPerTrade: 15,
+              defaultLeverage: 3,
+              leverageMode: "dynamic",
+              stopLossPct: 1.2,
+              trailingTriggerPct: 1.2,
+              trailingCallbackPct: 0.35,
+              lastScanTime: 0
+            };
+            if (fs.existsSync(futStateF)) {
+              try { futSt = JSON.parse(fs.readFileSync(futStateF, "utf-8")); } catch {}
+            }
+
+            let controls: any = {};
+            if (fs.existsSync(ctrlFile)) {
+              try { controls = JSON.parse(fs.readFileSync(ctrlFile, "utf-8")); } catch {}
+            }
+            if (!controls.strategies) controls.strategies = {};
+            if (!controls.strategySettings) controls.strategySettings = {};
+            if (!controls.strategySettings.futures) {
+              controls.strategySettings.futures = {
+                timeframe: "15m",
+                stopLossEnabled: true,
+                stopLossPct: 1.2,
+                leverage: 3,
+                isSimulated: true
+              };
+            }
+
+            if (data.enabled !== undefined) {
+              futSt.enabled = !!data.enabled;
+              controls.strategies.futures = !!data.enabled;
+            }
+            if (data.isSimulated !== undefined) {
+              futSt.isSimulated = !!data.isSimulated;
+              controls.strategySettings.futures.isSimulated = !!data.isSimulated;
+            }
+            if (data.marginPerTrade !== undefined) {
+              const m = parseFloat(data.marginPerTrade);
+              if (!isNaN(m) && m > 0) {
+                futSt.defaultMarginPerTrade = m;
+              }
+            }
+            if (data.startingBalance !== undefined) {
+              const b = parseFloat(data.startingBalance);
+              if (!isNaN(b) && b > 0) {
+                futSt.startingBalanceUsdt = b;
+                if (data.reset) futSt.virtualBalanceUsdt = b;
+              }
+            }
+            if (data.leverageMode) {
+              futSt.leverageMode = data.leverageMode;
+            }
+
+            controls.updatedAt = Date.now();
+            fs.writeFileSync(futStateF, JSON.stringify(futSt, null, 2), "utf-8");
+            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: true, state: futSt, controls: controls.strategies }));
+          } catch (e: any) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/strategies/toggle" &&
         req.method === "POST"
       ) {
         let body = "";

@@ -922,10 +922,10 @@
       const tWeekend = document.getElementById("toggle-weekend");
       const tFutures = document.getElementById("toggle-futures");
       const cardFutures = document.getElementById("card-strat-futures");
-      if (tFutures && strats.futures !== undefined) {
-        tFutures.checked = !!strats.futures;
+      if (tFutures && s.futures !== undefined) {
+        tFutures.checked = !!s.futures;
         if (cardFutures) {
-          if (strats.futures) cardFutures.classList.add("active-strat");
+          if (s.futures) cardFutures.classList.add("active-strat");
           else cardFutures.classList.remove("active-strat");
         }
       }
@@ -1100,15 +1100,12 @@
     });
 
     document.getElementById("btn-save-alloc")?.addEventListener("click", () => {
-      const t = parseInt(sT?.value || "50", 10);
-      const d = parseInt(sD?.value || "30", 10);
+      const t = parseInt(sT?.value || "0", 10);
+      const d = parseInt(sD?.value || "0", 10);
       const g = parseInt(sG?.value || "0", 10);
-      const w = parseInt(sW?.value || "20", 10);
-      if (t + d + g + w === 100) {
-        saveAllocations(t, d, g, w);
-      } else {
-        alert("La suma debe ser exactamente 100%. Actualmente suma " + (t + d + g + w) + "%");
-      }
+      const w = parseInt(sW?.value || "0", 10);
+      const f = parseInt(document.getElementById("slider-futures")?.value || "0", 10);
+      saveAllocations(t, d, g, w, f);
     });
 
     document.querySelectorAll(".btn-preset").forEach(btn => {
@@ -1239,7 +1236,8 @@
         isSimulated: isSim,
         marginPerTrade: margin,
         startingBalance: capital,
-        leverageMode: levMode
+        leverageMode: levMode,
+        enabled: enabled !== undefined ? enabled : (document.getElementById("toggle-futures")?.checked ?? true)
       };
       const res = await fetch("/api/futures/config", {
         method: "POST",
@@ -1342,7 +1340,7 @@
   const selectFutLev = document.getElementById("select-fut-lev");
   const btnSaveFutCfg = document.getElementById("btn-save-fut-config");
 
-  async function updateFuturesConfig(isSim, margin, capital, levMode) {
+  async function updateFuturesConfig(isSim, margin, capital, levMode, enabled) {
     try {
       const payload = {
         isSimulated: isSim,
@@ -1395,7 +1393,8 @@
   if (btnSaveFutCfg) {
     btnSaveFutCfg.addEventListener("click", () => {
       const isSim = btnModeSim && btnModeSim.style.background === "rgb(139, 92, 246)";
-      updateFuturesConfig(isSim, parseFloat(inputFutMargin?.value || "15"), parseFloat(inputFutCapital?.value || "100"), selectFutLev?.value || "dynamic");
+      const isEnabled = document.getElementById("toggle-futures") ? document.getElementById("toggle-futures").checked : true;
+      updateFuturesConfig(isSim, parseFloat(inputFutMargin?.value || "15"), parseFloat(inputFutCapital?.value || "100"), selectFutLev?.value || "dynamic", isEnabled);
     });
   }
 
