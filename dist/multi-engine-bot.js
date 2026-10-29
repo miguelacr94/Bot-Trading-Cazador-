@@ -1460,9 +1460,10 @@ export class TrailingMasterBot {
                 const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
                 const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
                 const reqBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
-                if (bounce >= reqBounce && usdt >= this.minUsdtToTrade) {
-                    let amountToUse = this.calculateSessionLotSize(sym, usdt, sessionPlan.lotFractionPct);
-                    if (amountToUse < this.minUsdtToTrade && usdt >= this.minUsdtToTrade) {
+                // CANDADO ESTRICTO DE RESERVA: Solo comprar si el saldo GASTABLE supera el mínimo ($10 USDT)
+                if (bounce >= reqBounce && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
+                    let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt, sessionPlan.lotFractionPct);
+                    if (amountToUse < this.minUsdtToTrade && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
                         amountToUse = this.minUsdtToTrade;
                     }
                     const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
@@ -3041,68 +3042,93 @@ export class TrailingMasterBot {
         const now = new Date();
         const cotHour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
         const cotMin = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
-        const isNight = cotHour >= 20 || cotHour < 3;
-        const isLondon = cotHour >= 3 && cotHour <= 6;
-        const isNY = (cotHour === 8 && cotMin >= 30) || (cotHour > 8 && cotHour < 14);
-        const isPreNight = (cotHour >= 16 && cotHour < 19) || (cotHour === 19 && cotMin <= 30);
+        // Reserva base permanente desde la configuración (Mínimo 25% siempre protegido)
+        const baseReservePct = (this.controls?.cashReservePct ?? 25) / 100;
+        // Definición horaria de las bolsas institucionales (COT = UTC-5)
+        const isLondon = cotHour >= 3 && cotHour < 7; // 03:00 - 07:00 COT (Apertura Europea)
+        const isNY = (cotHour === 8 && cotMin >= 30) || (cotHour > 8 && cotHour < 14); // 08:30 - 14:00 COT (Wall Street)
+        const isAfternoonSlide = cotHour >= 14 && cotHour < 17; // 14:00 - 17:00 COT (Cierre NY y deslizamiento)
+        const isPreNight = cotHour >= 17 && cotHour < 20; // 17:00 - 20:00 COT (Cosecha previa a Asia)
+        const isNight = cotHour >= 20 || cotHour < 3; // 20:00 - 03:00 COT (Drenaje nocturno y trampas)
         let sessionKey = "REGULAR";
         let sessionTitle = "🔄 Sesión Regular / Transición";
-        let reservedUsdt = 0;
-        let spendableUsdt = totalFreeUsdt;
-        let lotFractionPct = 0.50;
+        let reservePct = baseReservePct; // Por defecto siempre respetar mínimo el 25%
+        let lotFractionPct = 0.40;
         let trailingBounceTrigger = 0.35;
         let harvestCallbackPct = undefined;
-        let reason = "Flujo normal del mercado intradía.";
-        let recommendation = "🔄 Operación balanceada de rotación y micro-grid.";
+        let reason = "Flujo estándar intradía. Manteniendo colchón de reserva protegido del 25%.";
+        let recommendation = "🔄 Operación cautelosa. El 25% del capital queda blindado ante caídas imprevistas.";
         if (isNight) {
             sessionKey = "NOCTURNO_DRENAJE";
             sessionTitle = "🌙 Drenaje Nocturno (Caza de Stops / Vacío de Liquidez)";
-            if (totalFreeUsdt >= 20) {
-                reservedUsdt = Math.max(10, Math.round(totalFreeUsdt * 0.45 * 100) / 100);
-                spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
-            }
-            else if (totalFreeUsdt >= 10) {
-                reservedUsdt = 10;
-                spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
-            }
-            else {
-                reservedUsdt = totalFreeUsdt;
-                spendableUsdt = 0;
-            }
-            lotFractionPct = 0.25;
-            trailingBounceTrigger = 0.40;
-            reason = "Win rate histórico bajo (38%-43%). Reserva obligatoria activa para capitalizar el rebote de Londres a las 03:00 COT.";
-            recommendation = "🌙 Mantener reserva protegida. Bloqueo de compras superficiales; solo micro-lote si RSI <= 26 y absorción >= 45%.";
+            reservePct = 0.50; // CONGELAR EL 50% PARA LONDRES A LAS 03:00 COT
+            lotFractionPct = 0.20;
+            trailingBounceTrigger = 0.45;
+            reason = "Bajo volumen y alto riesgo de caza de stops (Win Rate 38%-43%). El 50% de la caja queda CONGELADA para aprovechar los suelos de Londres a las 03:00 COT.";
+            recommendation = "🌙 Mantener reserva congelada. Compras bloqueadas salvo pánico extremo (RSI <= 26 con vela de rechazo).";
         }
         else if (isLondon) {
             sessionKey = "LONDRES_REBOTE";
             sessionTitle = "🏰 Rebote de Londres (Apertura Europea / Absorción)";
-            reservedUsdt = 0;
-            spendableUsdt = totalFreeUsdt;
+            reservePct = 0.15; // En Londres se libera la reserva para cazar el rebote de mayor win rate (64%-71%)
             lotFractionPct = 0.60;
             trailingBounceTrigger = 0.25;
-            reason = "Win rate del 64%-71% en velas horarias y mechas de absorción institucional más largas del ciclo.";
+            reason = "Máxima tasa de acierto del ciclo (64%-71%). La liquidez guardada en la noche se despliega en los suelos confirmados.";
             recommendation = "🏰 Modo Ofensivo Activo: Despliegue de lotes al 60% cazando suelos con Trailing Buy sensible (+0.25%).";
-        }
-        else if (isPreNight) {
-            sessionKey = "COSECHA_PRENOCTURNA";
-            sessionTitle = "🌆 Cosecha Vespertina (Toma de Beneficios Pre-Nocturna)";
-            reservedUsdt = Math.round(totalFreeUsdt * 0.35 * 100) / 100;
-            spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
-            lotFractionPct = 0.30;
-            harvestCallbackPct = 0.20;
-            reason = "Picos de cierre en Wall Street seguidos de goteo nocturno a las 20:00 COT. Asegurar USDT líquido.";
-            recommendation = "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para asegurar utilidades y esperar la noche en caja líquida.";
         }
         else if (isNY) {
             sessionKey = "NY_IMPULSO";
             sessionTitle = "🗽 Impulso Wall Street (Máxima Liquidez y Volumen)";
-            reservedUsdt = 0;
-            spendableUsdt = totalFreeUsdt;
+            reservePct = 0.25; // 25% de reserva base permanente
             lotFractionPct = 0.50;
             trailingBounceTrigger = 0.35;
-            reason = "Mayor volumen transaccional diario en Spot y Futuros. Expansión de tendencias.";
-            recommendation = "🗽 Dejar correr posiciones con Trailing Take Profit amplio aprovechando el impulso de Nueva York.";
+            reason = "Mayor volumen del día. Se opera la expansión manteniendo el 25% en caja protegida.";
+            recommendation = "🗽 Dejar correr posiciones con Trailing Take Profit y guardar el 25% para retrocesos.";
+        }
+        else if (isAfternoonSlide) {
+            sessionKey = "COSECHA_PRENOCTURNA";
+            sessionTitle = "📉 Enfriamiento Post-Wall Street (14:00 - 17:00 COT)";
+            reservePct = 0.35; // ELEVAR RESERVA AL 35% ANTE EL CIERRE DE NY
+            lotFractionPct = 0.30;
+            trailingBounceTrigger = 0.40;
+            reason = "Cierre de contado en Nueva York. Los operadores institucionales toman ganancias y el mercado suele deslizarse a la baja. Reserva elevada al 35%.";
+            recommendation = "📉 Proteger el 35% de la caja. No comprar rebotes débiles; esperar confirmación profunda de soporte.";
+        }
+        else if (isPreNight) {
+            sessionKey = "COSECHA_PRENOCTURNA";
+            sessionTitle = "🌆 Cosecha Vespertina & Acumulación (17:00 - 20:00 COT)";
+            reservePct = 0.45; // ELEVAR RESERVA AL 45% PARA LA NOCHE
+            lotFractionPct = 0.25;
+            harvestCallbackPct = 0.20;
+            reason = "Preparación para el drenaje nocturno. El 45% de la cuenta se protege en USDT líquido.";
+            recommendation = "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para cerrar en verde y acumular USDT para la noche.";
+        }
+        // Calcular montos exactos respetando los mínimos de Binance ($10 USDT)
+        let reservedUsdt = 0;
+        let spendableUsdt = totalFreeUsdt;
+        if (totalFreeUsdt >= 20) {
+            reservedUsdt = Math.max(10, Math.round(totalFreeUsdt * reservePct * 100) / 100);
+            spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
+            // Si lo que queda para gastar es menor a $10 USDT, se congela todo como reserva para no dejar órdenes inválidas
+            if (spendableUsdt < this.minUsdtToTrade) {
+                reservedUsdt = totalFreeUsdt;
+                spendableUsdt = 0;
+            }
+        }
+        else if (totalFreeUsdt >= this.minUsdtToTrade) {
+            // Si el capital libre es pequeño (entre 10 y 20 USDT), en sesiones defensivas protegerlo al 100%
+            if (reservePct >= 0.35) {
+                reservedUsdt = totalFreeUsdt;
+                spendableUsdt = 0;
+            }
+            else {
+                reservedUsdt = 0;
+                spendableUsdt = totalFreeUsdt;
+            }
+        }
+        else {
+            reservedUsdt = totalFreeUsdt;
+            spendableUsdt = 0;
         }
         return {
             sessionKey,
