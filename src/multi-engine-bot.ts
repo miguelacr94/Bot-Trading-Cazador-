@@ -155,6 +155,21 @@ export interface PendingOpportunity {
   expiresAt: number;
 }
 
+
+export interface SessionLiquidityPlan {
+  sessionKey: "NOCTURNO_DRENAJE" | "LONDRES_REBOTE" | "NY_IMPULSO" | "COSECHA_PRENOCTURNA" | "REGULAR";
+  sessionTitle: string;
+  totalFreeUsdt: number;
+  reservedUsdt: number;
+  spendableUsdt: number;
+  lotFractionPct: number;
+  trailingBounceTrigger: number;
+  harvestCallbackPct?: number;
+  reason: string;
+  recommendation: string;
+  updatedAt: number;
+}
+
 export class TrailingMasterBot {
   private controls: StrategyControls = {
     strategies: {
@@ -188,6 +203,8 @@ export class TrailingMasterBot {
   private isProcessing = false;
   private autoPilot = true;
   private minUsdtToTrade = 10;
+  public lastSessionPlan: SessionLiquidityPlan | null = null;
+  private lastSessionKey: string | null = null;
   private cycleCount = 0;
   private lastWeekendWindowState: boolean | null = null;
   private lastRegimeCheckTime: number = 0;
@@ -1091,8 +1108,17 @@ export class TrailingMasterBot {
         if (pos.activated) {
           const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
           const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
-          const callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol, pos);
-          const minGain = pos.strategy === "micro_grid" ? 0.35 : 0.80; // Blindado a +0.80% mínimo para no cerrar con migajas
+          let callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol, pos);
+          let minGain = pos.strategy === "micro_grid" ? 0.35 : 0.80; // Blindado a +0.80% mínimo para no cerrar con migajas
+
+          // 🌆 COSECHA PRE-NOCTURNA (16:00 - 19:30 COT):
+          // Si estamos en la ventana de cosecha y la posición ya tiene ganancia (>= +0.65%),
+          // ceñimos el callback a 0.20% para amarrar la ganancia antes del drenaje de las 20:00 COT
+          if (this.isPreNightHarvestWindow() && gainPct >= 0.65) {
+            callback = Math.min(callback, 0.20);
+            minGain = 0.65;
+          }
+
           const hitCallback = dropFromPeak >= callback && gainPct >= minGain;
 
           if (hitCallback || hitHardCap) {
@@ -1466,20 +1492,12 @@ export class TrailingMasterBot {
         }
 
         const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
-        if (bounce >= TRAILING_BUY_BOUNCE_PCT && usdt >= this.minUsdtToTrade) {
-          // Tamaño de compra para capital ampliado (~$150 USDT):
-          // Prioriza compras fuertes de ~$100 USDT para maximizar ganancias (+$1.20 a +$2.00 por venta)
-          let amountToUse = usdt;
-          if (usdt >= 120) {
-            amountToUse = 100;
-          } else if (usdt >= 90) {
-            amountToUse = Math.min(usdt, 100);
-          } else if (usdt >= 50 && this.activeTrailingPositions.size === 0) {
-            amountToUse = Math.floor((usdt / 2) * 100) / 100;
-          }
-          // LÍMITE DE RIESGO MEMECOINS: Tope máximo de $50 USDT (máx 30% del portafolio)
-          if (MEME_WATCHLIST.includes(sym)) {
-            amountToUse = Math.min(amountToUse, 50);
+        const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
+        const reqBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
+        if (bounce >= reqBounce && usdt >= this.minUsdtToTrade) {
+          let amountToUse = this.calculateSessionLotSize(sym, usdt, sessionPlan.lotFractionPct);
+          if (amountToUse < this.minUsdtToTrade && usdt >= this.minUsdtToTrade) {
+            amountToUse = this.minUsdtToTrade;
           }
           const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
           const strat = w.strategy || "trailing_rebound";
@@ -2357,6 +2375,28 @@ export class TrailingMasterBot {
         return rep;
       }
 
+      if (cmd === "/sesion" || cmd === "sesion" || cmd === "/orquestador" || cmd === "orquestador") {
+        const acc = await this.client.account({ recvWindow: 60000 });
+        const usdt = parseFloat(acc.data.balances.find((b: any) => b.asset === "USDT")?.free || "0");
+        const plan = this.getSessionLiquidityPlan(usdt);
+
+        let msg = `🏛️ <b>ORQUESTADOR AUTÓNOMO DE LIQUIDEZ Y SESIONES (COT)</b>\n\n` +
+          `• 📍 <b>Sesión Actual:</b> ${plan.sessionTitle}\n` +
+          `• 💵 <b>Saldo Total en Spot:</b> ${usdt.toFixed(2)} USDT\n` +
+          `• 🔒 <b>Reserva Protegida:</b> ${plan.reservedUsdt.toFixed(2)} USDT (${plan.sessionKey === "NOCTURNO_DRENAJE" ? "Reservado para Londres 03:00 COT" : (plan.sessionKey === "COSECHA_PRENOCTURNA" ? "Caja preventiva" : "Libre")})\n` +
+          `• 🟢 <b>Disponible para Operar:</b> ${plan.spendableUsdt.toFixed(2)} USDT\n` +
+          `• 🎯 <b>Fraccionamiento de Lote:</b> ${(plan.lotFractionPct * 100).toFixed(0)}% del saldo disponible\n` +
+          `• ⏱️ <b>Gatillo Trailing Buy:</b> +${plan.trailingBounceTrigger.toFixed(2)}% desde el piso\n`;
+        if (plan.harvestCallbackPct) {
+          msg += `• ✂️ <b>Callback Cosecha:</b> ${plan.harvestCallbackPct.toFixed(2)}% (Cerrar en verde antes de las 20:00)\n`;
+        }
+        msg += `\n📊 <b>Evidencia Cuantitativa (Datos 42 Días):</b>\n<i>${plan.reason}</i>\n\n` +
+          `💡 <b>Recomendación Óptima:</b>\n${plan.recommendation}\n\n` +
+          `👉 /sugerencias — <i>Ver análisis técnico por estrategia</i>\n` +
+          `👉 /estado — <i>Ver posiciones y órdenes abiertas</i>`;
+        return msg;
+      }
+
       if (cmd === "/estado" || cmd === "estado") {
         const openOrders = await this.client.openOrders({ recvWindow: 60000 });
         const sellOrders = openOrders.data.filter((o: any) => o.side === "SELL");
@@ -2381,7 +2421,10 @@ export class TrailingMasterBot {
 
         const acc = await this.client.account({ recvWindow: 60000 });
         const usdt = parseFloat(acc.data.balances.find((b: any) => b.asset === "USDT")?.free || "0");
-        txt += `\n• 💼 <b>USDT libre:</b> $${usdt.toFixed(2)} USDT\n`;
+        const plan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
+        txt += `\n• 💼 <b>USDT en cuenta:</b> ${usdt.toFixed(2)} USDT (🟢 ${plan.spendableUsdt.toFixed(2)} libre | 🔒 ${plan.reservedUsdt.toFixed(2)} reserva ${plan.sessionKey === "NOCTURNO_DRENAJE" ? "Londres" : ""})\n`;
+        txt += `• 🏛️ <b>Sesión (COT):</b> ${plan.sessionTitle}\n`;
+        txt += `• 💡 <b>Recomendación:</b> <i>${plan.recommendation}</i>\n`;
         txt += `• 🏹 <b>Trailing Activo:</b> ${this.activeTrailingPositions.size} posiciones rastreando el pico\n`;
         txt += `• 🔻 <b>Trailing Buy:</b> ${this.buyWatches.size} moneda(s) cazando el piso\n`;
         txt += `• 🤖 <b>Modo:</b> ${this.autoPilot ? "🟢 Autónomo con Trailing (+0.8% a +3.5%)" : "🟡 Manual Asistido"}`;
@@ -3157,6 +3200,124 @@ export class TrailingMasterBot {
     return hour >= 20 || hour < 3;
   }
 
+  
+  public isPreNightHarvestWindow(): boolean {
+    const d = new Date();
+    const hour = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+    const minute = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
+    return (hour >= 16 && hour < 19) || (hour === 19 && minute <= 30);
+  }
+
+  public isNYImpulseWindow(): boolean {
+    const d = new Date();
+    const hour = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+    const minute = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
+    return (hour === 8 && minute >= 30) || (hour > 8 && hour < 14);
+  }
+
+  public getSessionLiquidityPlan(totalFreeUsdt: number): SessionLiquidityPlan {
+    const now = new Date();
+    const cotHour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+    const cotMin = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
+
+    const isNight = cotHour >= 20 || cotHour < 3;
+    const isLondon = cotHour >= 3 && cotHour <= 6;
+    const isNY = (cotHour === 8 && cotMin >= 30) || (cotHour > 8 && cotHour < 14);
+    const isPreNight = (cotHour >= 16 && cotHour < 19) || (cotHour === 19 && cotMin <= 30);
+
+    let sessionKey: SessionLiquidityPlan["sessionKey"] = "REGULAR";
+    let sessionTitle = "🔄 Sesión Regular / Transición";
+    let reservedUsdt = 0;
+    let spendableUsdt = totalFreeUsdt;
+    let lotFractionPct = 0.50;
+    let trailingBounceTrigger = 0.35;
+    let harvestCallbackPct: number | undefined = undefined;
+    let reason = "Flujo normal del mercado intradía.";
+    let recommendation = "🔄 Operación balanceada de rotación y micro-grid.";
+
+    if (isNight) {
+      sessionKey = "NOCTURNO_DRENAJE";
+      sessionTitle = "🌙 Drenaje Nocturno (Caza de Stops / Vacío de Liquidez)";
+      if (totalFreeUsdt >= 20) {
+        reservedUsdt = Math.max(10, Math.round(totalFreeUsdt * 0.45 * 100) / 100);
+        spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
+      } else if (totalFreeUsdt >= 10) {
+        reservedUsdt = 10;
+        spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
+      } else {
+        reservedUsdt = totalFreeUsdt;
+        spendableUsdt = 0;
+      }
+      lotFractionPct = 0.25;
+      trailingBounceTrigger = 0.40;
+      reason = "Win rate histórico bajo (38%-43%). Reserva obligatoria activa para capitalizar el rebote de Londres a las 03:00 COT.";
+      recommendation = "🌙 Mantener reserva protegida. Bloqueo de compras superficiales; solo micro-lote si RSI <= 26 y absorción >= 45%.";
+    } else if (isLondon) {
+      sessionKey = "LONDRES_REBOTE";
+      sessionTitle = "🏰 Rebote de Londres (Apertura Europea / Absorción)";
+      reservedUsdt = 0;
+      spendableUsdt = totalFreeUsdt;
+      lotFractionPct = 0.60;
+      trailingBounceTrigger = 0.25;
+      reason = "Win rate del 64%-71% en velas horarias y mechas de absorción institucional más largas del ciclo.";
+      recommendation = "🏰 Modo Ofensivo Activo: Despliegue de lotes al 60% cazando suelos con Trailing Buy sensible (+0.25%).";
+    } else if (isPreNight) {
+      sessionKey = "COSECHA_PRENOCTURNA";
+      sessionTitle = "🌆 Cosecha Vespertina (Toma de Beneficios Pre-Nocturna)";
+      reservedUsdt = Math.round(totalFreeUsdt * 0.35 * 100) / 100;
+      spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
+      lotFractionPct = 0.30;
+      harvestCallbackPct = 0.20;
+      reason = "Picos de cierre en Wall Street seguidos de goteo nocturno a las 20:00 COT. Asegurar USDT líquido.";
+      recommendation = "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para asegurar utilidades y esperar la noche en caja líquida.";
+    } else if (isNY) {
+      sessionKey = "NY_IMPULSO";
+      sessionTitle = "🗽 Impulso Wall Street (Máxima Liquidez y Volumen)";
+      reservedUsdt = 0;
+      spendableUsdt = totalFreeUsdt;
+      lotFractionPct = 0.50;
+      trailingBounceTrigger = 0.35;
+      reason = "Mayor volumen transaccional diario en Spot y Futuros. Expansión de tendencias.";
+      recommendation = "🗽 Dejar correr posiciones con Trailing Take Profit amplio aprovechando el impulso de Nueva York.";
+    }
+
+    return {
+      sessionKey,
+      sessionTitle,
+      totalFreeUsdt,
+      reservedUsdt,
+      spendableUsdt,
+      lotFractionPct,
+      trailingBounceTrigger,
+      harvestCallbackPct,
+      reason,
+      recommendation,
+      updatedAt: Date.now()
+    };
+  }
+
+  public calculateSessionLotSize(symbol: string, spendableUsdt: number, lotFractionPct: number): number {
+    if (spendableUsdt < this.minUsdtToTrade) return 0;
+
+    let lot = Math.floor(spendableUsdt * lotFractionPct * 100) / 100;
+    if (lot < this.minUsdtToTrade && spendableUsdt >= this.minUsdtToTrade) {
+      lot = this.minUsdtToTrade;
+    }
+
+    // Tope de riesgo para memecoins: máximo $50 USDT
+    if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) {
+      lot = Math.min(lot, 50);
+    }
+
+    return Math.min(lot, spendableUsdt);
+  }
+
+  public saveSessionPlan(plan: SessionLiquidityPlan) {
+    try {
+      fs.writeFileSync(path.resolve(process.cwd(), ".session-liquidity-plan.json"), JSON.stringify(plan, null, 2));
+    } catch(e) {}
+  }
+
   public isReboundWindow(): boolean {
     const hour = parseInt(new Date().toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
     // Ventana de rebote institucional (Apertura Europa/Londres): 03:00 a 06:00 COT
@@ -3374,41 +3535,60 @@ export class TrailingMasterBot {
       const usdt = parseFloat(acc.data.balances.find((b: any) => b.asset === "USDT")?.free || "0");
       const time = new Date().toLocaleTimeString();
 
-      console.log(`[${time}] Monitoreo... USDT libre: ${usdt.toFixed(2)} | Órdenes Binance: ${sellOrders.length} | Trailing activos: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
+      // Orquestador Autónomo de Liquidez y Sesiones (COT)
+      const sessionPlan = this.getSessionLiquidityPlan(usdt);
+      this.lastSessionPlan = sessionPlan;
+      this.saveSessionPlan(sessionPlan);
+
+      // Notificar cambio de sesión relevante
+      if (this.lastSessionKey && this.lastSessionKey !== sessionPlan.sessionKey) {
+        const sessionAlert = `🏛️ <b>[ORQUESTADOR DE SESIONES: ${sessionPlan.sessionTitle}]</b>\n\n` +
+          `• 💼 <b>USDT Total en Spot:</b> ${usdt.toFixed(2)} USDT\n` +
+          `• 🔒 <b>Reserva Protegida:</b> ${sessionPlan.reservedUsdt.toFixed(2)} USDT (${sessionPlan.sessionKey === "NOCTURNO_DRENAJE" ? "Apartado para Londres 03:00 COT" : "Acumulación"})\n` +
+          `• 🟢 <b>Disponible para Operar:</b> ${sessionPlan.spendableUsdt.toFixed(2)} USDT\n` +
+          `• 📊 <b>Fundamento:</b> <i>${sessionPlan.reason}</i>\n\n` +
+          `💡 <b>Recomendación Óptima:</b> ${sessionPlan.recommendation}`;
+        try { await this.notifier.send(sessionAlert); } catch(e) {}
+      }
+      this.lastSessionKey = sessionPlan.sessionKey;
+
+      console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva: ${sessionPlan.reservedUsdt.toFixed(2)}) | Trailing: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
 
       // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
       await this.checkLiquidityAndFuturesViability(usdt);
 
-      // 2. Evaluar oportunidades si hay saldo libre y no hay oportunidad pendiente
-      if (usdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
+      // 2. Evaluar oportunidades si hay saldo libre gastable y no hay oportunidad pendiente
+      if (sessionPlan.spendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
         // A) Primero evaluar Smart DCA en posiciones activas que hayan caído
-        const dcaTriggered = await this.checkSmartDcaOpportunities(usdt);
+        const dcaTriggered = await this.checkSmartDcaOpportunities(sessionPlan.spendableUsdt);
 
         // B) Centinela Alpha (Estrategia Autónoma de Recuperación con 20% del presupuesto)
         let alphaTriggered = false;
         if (!dcaTriggered && this.controls.strategies?.centinela_alpha) {
-          alphaTriggered = await this.evaluateCentinelaAlpha(usdt);
+          alphaTriggered = await this.evaluateCentinelaAlpha(sessionPlan.spendableUsdt);
         }
 
-        // B) Si estamos en Fin de Semana y Cazador Weekend está activo:
+        // C) Si estamos en Fin de Semana y Cazador Weekend está activo:
         let weekendTriggered = false;
         if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && this.activeTrailingPositions.size < 5) {
-          weekendTriggered = await this.evaluateCazadorWeekend(usdt, activeSymbols);
+          weekendTriggered = await this.evaluateCazadorWeekend(sessionPlan.spendableUsdt, activeSymbols);
         }
 
-        // C) Si Micro-Grid está activo (en días quietos): operar canales laterales
+        // D) Si Micro-Grid está activo (en días quietos): operar canales laterales
         let gridTriggered = false;
         if (!dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && this.activeTrailingPositions.size < 5) {
-          gridTriggered = await this.evaluateMicroGrid(usdt, activeSymbols);
+          gridTriggered = await this.evaluateMicroGrid(sessionPlan.spendableUsdt, activeSymbols);
         }
 
-        // D) Si no hay DCA, Weekend ni Grid y Trailing Rebound está activo: vigilar caídas y suelos
+        // E) Si no hay DCA, Weekend ni Grid y Trailing Rebound está activo: vigilar caídas y suelos
         if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && this.activeTrailingPositions.size < 5) {
           await this.scanForDips(activeSymbols);
           if (this.buyWatches.size > 0) {
-            await this.checkBuyWatches(usdt);
+            await this.checkBuyWatches(sessionPlan.spendableUsdt);
           }
         }
+      } else if (usdt >= this.minUsdtToTrade && sessionPlan.spendableUsdt < this.minUsdtToTrade) {
+        console.log(`🌙 [RESERVA NOCTURNA] Compras pausadas: ${usdt.toFixed(2)} USDT en cuenta (${sessionPlan.reservedUsdt.toFixed(2)} protegidos para Londres a las 03:00 COT).`);
       }
 
     } catch (e: any) {

@@ -1,3 +1,33 @@
+
+  function renderSessionOrchestrator(d) {
+    const sp = d.sessionPlan;
+    const banner = $("session-orchestrator-banner");
+    const pill = $("session-pill");
+    if (!sp) {
+      if (banner) banner.style.display = "none";
+      if (pill) pill.style.display = "none";
+      return;
+    }
+
+    if (banner) {
+      banner.style.display = "block";
+      const icon = sp.sessionKey === "NOCTURNO_DRENAJE" ? "🌙" : (sp.sessionKey === "LONDRES_REBOTE" ? "🏰" : (sp.sessionKey === "NY_IMPULSO" ? "🗽" : (sp.sessionKey === "COSECHA_PRENOCTURNA" ? "🌆" : "🔄")));
+      setText($("session-icon"), icon);
+      setText($("session-banner-title"), sp.sessionTitle);
+      setText($("session-banner-reason"), sp.reason);
+      setText($("session-reserved-val"), `$${sp.reservedUsdt.toFixed(2)} USDT`);
+      setText($("session-spendable-val"), `$${sp.spendableUsdt.toFixed(2)} USDT`);
+      setText($("session-banner-rec"), sp.recommendation);
+    }
+
+    if (pill) {
+      pill.style.display = "inline-flex";
+      const resText = sp.reservedUsdt > 0 ? `<b style="color:#fbbf24;margin-left:5px;">🔒 $${sp.reservedUsdt.toFixed(2)}</b>` : `<b style="color:#34d399;margin-left:5px;">🟢 100% Libre</b>`;
+      pill.innerHTML = `<span>${sp.sessionTitle.split(" ")[0]} ${sp.sessionTitle.split(" ")[1] || ""}</span> ${resText}`;
+      pill.title = `${sp.sessionTitle}\nReserva: $${sp.reservedUsdt.toFixed(2)} USDT | Disponible: $${sp.spendableUsdt.toFixed(2)} USDT\nFundamento: ${sp.reason}\nRecomendación: ${sp.recommendation}`;
+    }
+  }
+
 // Dashboard client: los componentes se crean UNA vez y solo se actualizan los textos.
 // Nunca se borra ni se redibuja una tarjeta mientras la moneda siga activa.
 (() => {
@@ -1518,6 +1548,7 @@
       latestFreeUsdt = (d.portfolio?.usdtFree ?? 0) + (d.portfolio?.usdtEarn ?? 0);
       renderAuthBanner(d.authError);
       renderKpis(d);
+    renderSessionOrchestrator(d);
 
     // Actualizar barra de recuperación Centinela Alpha
     const tracker = d.recoveryTracker || { targetUsdt: 2.30, recoveredUsdt: 0, tradesCount: 0 };

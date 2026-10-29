@@ -28,6 +28,8 @@ export class TelegramCommands {
                 { command: "reporte", description: "📈 Ganancias reales acumuladas netas" },
                 { command: "cierre", description: "🏁 Cierre de jornada diario consolidado" },
                 { command: "balance_diario", description: "📅 Balance diario de todas las estrategias" },
+                { command: "sesion", description: "🏛️ Orquestador de liquidez y reserva horaria (COT)" },
+                { command: "orquestador", description: "🌙 Estado de reserva nocturna y Londres" },
                 // Futuros USD-M
                 { command: "futuros", description: "🧪 Estado del motor de Futuros" },
                 { command: "futuros_real", description: "🚀 Activar Futuros en Modo Real" },

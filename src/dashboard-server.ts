@@ -654,6 +654,13 @@ export class DashboardServer {
       },
       nightMode: this.isNightMode(),
       weekendMode: this.isWeekendMode(),
+      sessionPlan: (() => {
+        try {
+          const spFile = path.resolve(process.cwd(), ".session-liquidity-plan.json");
+          if (fs.existsSync(spFile)) return JSON.parse(fs.readFileSync(spFile, "utf-8"));
+        } catch(e) {}
+        return null;
+      })(),
       projections:
         p && p.cycles.length > 0
           ? (() => {
