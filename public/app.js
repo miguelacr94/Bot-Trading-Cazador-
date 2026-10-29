@@ -1,3 +1,39 @@
+(() => {
+  const COP_PER_USDT = 4200;
+  let pnlChart = null;
+  let historySignature = "";
+
+  // ---------- utilidades ----------
+  const $ = (id) => document.getElementById(id);
+
+  function fmt(val, dec = 2) {
+    if (val === undefined || val === null || isNaN(val)) return "—";
+    const n = Number(val);
+    const a = Math.abs(n);
+    if (a === 0) return "0.00";
+    if (a < 0.0001) return n.toFixed(8);
+    if (a < 0.01) return n.toFixed(6);
+    if (a < 1) return n.toFixed(4);
+    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: dec });
+  }
+  const cop = (v) => Math.round(v).toLocaleString("es-CO");
+
+  // Escriben en el DOM solo si el valor cambió
+  function setText(el, txt) { if (el && el.textContent !== txt) el.textContent = txt; }
+  function setHTML(el, html) { if (el && el.__html !== html) { el.innerHTML = html; el.__html = html; } }
+  function setClass(el, cls) { if (el && el.className !== cls) el.className = cls; }
+  function setStyle(el, prop, val) { if (el && el.style[prop] !== val) el.style[prop] = val; }
+
+  // ---------- reloj ----------
+  setInterval(() => setText($("live-clock"), new Date().toLocaleTimeString("es-CO")), 1000);
+
+  // ---------- estado de conexión ----------
+  function setConnection(ok, fresh) {
+    const label = !ok ? "RECONECTANDO…" : fresh ? "MONITOREO EN VIVO" : "PRECIOS DEMORADOS";
+    setText($("system-status"), label);
+    setClass($("status-pill"), "status-pill" + (ok && fresh ? "" : " offline"));
+  }
+
 
   // ---------- SISTEMA MODULAR DE PESTAÑAS (TABS NAVIGATION) ----------
   function initTabNavigation() {
@@ -38,7 +74,7 @@
     switchTab(savedTab);
   }
 
-
+  // ---------- ORQUESTADOR DE SESIONES & LIQUIDEZ ----------
   function renderSessionOrchestrator(d) {
     const sp = d.sessionPlan;
     const banner = $("session-orchestrator-banner");
@@ -55,55 +91,17 @@
       setText($("session-icon"), icon);
       setText($("session-banner-title"), sp.sessionTitle);
       setText($("session-banner-reason"), sp.reason);
-      setText($("session-reserved-val"), `$${sp.reservedUsdt.toFixed(2)} USDT`);
-      setText($("session-spendable-val"), `$${sp.spendableUsdt.toFixed(2)} USDT`);
+      setText($("session-reserved-val"), `${sp.reservedUsdt.toFixed(2)} USDT`);
+      setText($("session-spendable-val"), `${sp.spendableUsdt.toFixed(2)} USDT`);
       setText($("session-banner-rec"), sp.recommendation);
     }
 
     if (pill) {
       pill.style.display = "inline-flex";
-      const resText = sp.reservedUsdt > 0 ? `<b style="color:#fbbf24;margin-left:5px;">🔒 $${sp.reservedUsdt.toFixed(2)}</b>` : `<b style="color:#34d399;margin-left:5px;">🟢 100% Libre</b>`;
+      const resText = sp.reservedUsdt > 0 ? `<b style="color:#fbbf24;margin-left:5px;">🔒 ${sp.reservedUsdt.toFixed(2)}</b>` : `<b style="color:#34d399;margin-left:5px;">🟢 100% Libre</b>`;
       pill.innerHTML = `<span>${sp.sessionTitle.split(" ")[0]} ${sp.sessionTitle.split(" ")[1] || ""}</span> ${resText}`;
-      pill.title = `${sp.sessionTitle}\nReserva: $${sp.reservedUsdt.toFixed(2)} USDT | Disponible: $${sp.spendableUsdt.toFixed(2)} USDT\nFundamento: ${sp.reason}\nRecomendación: ${sp.recommendation}`;
+      pill.title = `${sp.sessionTitle}\nReserva: ${sp.reservedUsdt.toFixed(2)} USDT | Disponible: ${sp.spendableUsdt.toFixed(2)} USDT\nFundamento: ${sp.reason}\nRecomendación: ${sp.recommendation}`;
     }
-  }
-
-// Dashboard client: los componentes se crean UNA vez y solo se actualizan los textos.
-// Nunca se borra ni se redibuja una tarjeta mientras la moneda siga activa.
-(() => {
-  const COP_PER_USDT = 4200;
-  let pnlChart = null;
-  let historySignature = "";
-
-  // ---------- utilidades ----------
-  const $ = (id) => document.getElementById(id);
-
-  function fmt(val, dec = 2) {
-    if (val === undefined || val === null || isNaN(val)) return "—";
-    const n = Number(val);
-    const a = Math.abs(n);
-    if (a === 0) return "0.00";
-    if (a < 0.0001) return n.toFixed(8);
-    if (a < 0.01) return n.toFixed(6);
-    if (a < 1) return n.toFixed(4);
-    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: dec });
-  }
-  const cop = (v) => Math.round(v).toLocaleString("es-CO");
-
-  // Escriben en el DOM solo si el valor cambió
-  function setText(el, txt) { if (el && el.textContent !== txt) el.textContent = txt; }
-  function setHTML(el, html) { if (el && el.__html !== html) { el.innerHTML = html; el.__html = html; } }
-  function setClass(el, cls) { if (el && el.className !== cls) el.className = cls; }
-  function setStyle(el, prop, val) { if (el && el.style[prop] !== val) el.style[prop] = val; }
-
-  // ---------- reloj ----------
-  setInterval(() => setText($("live-clock"), new Date().toLocaleTimeString("es-CO")), 1000);
-
-  // ---------- estado de conexión ----------
-  function setConnection(ok, fresh) {
-    const label = !ok ? "RECONECTANDO…" : fresh ? "MONITOREO EN VIVO" : "PRECIOS DEMORADOS";
-    setText($("system-status"), label);
-    setClass($("status-pill"), "status-pill" + (ok && fresh ? "" : " offline"));
   }
 
   // ---------- error de autenticación con Binance ----------
