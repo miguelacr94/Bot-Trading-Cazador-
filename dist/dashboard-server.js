@@ -365,9 +365,14 @@ export class DashboardServer {
             const sym = pos.symbol || symbolOrId.split("_")[0];
             const curPrice = this.prices[sym] || pos.buyPrice;
             const target08 = pos.buyPrice * 1.008;
-            const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
+            let gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
             const progressPct = ((curPrice - pos.buyPrice) / (target08 - pos.buyPrice)) * 100;
-            const pnlUsdt = pos.qty * curPrice - pos.investedUsdt;
+            let pnlUsdt = pos.qty * curPrice - pos.investedUsdt;
+            // Eliminar micro-ruido de redondeo de Binance (ej: -0.00003769 cuando curPrice == buyPrice)
+            if (Math.abs(gainPct) < 0.0001 || Math.abs(curPrice - pos.buyPrice) < 0.00000001) {
+                gainPct = 0;
+                pnlUsdt = 0;
+            }
             const callback = this.getCallbackPct(sym, pos);
             totalInvested += pos.investedUsdt;
             positionsValue += pos.qty * curPrice;

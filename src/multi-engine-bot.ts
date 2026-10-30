@@ -1247,7 +1247,7 @@ export class TrailingMasterBot {
           let isRejectionWick = false;
           if (gainPct >= 1.20 && dropFromPeak >= 0.12) {
             try {
-              const klines = await this.client.klines(symbol, "15m", { limit: 2 });
+              const klines = await this.client.klines(actualSymbol, "15m", { limit: 2 });
               const lastK = klines.data[klines.data.length - 1];
               const o = parseFloat(lastK[1]), h = parseFloat(lastK[2]), l = parseFloat(lastK[3]), c = parseFloat(lastK[4]);
               const totRange = h - l;
@@ -1262,15 +1262,18 @@ export class TrailingMasterBot {
 
           let hitLockedFloor = false;
           if (pos.lockedFloorGainPct && pos.lockedFloorGainPct > 0) {
-            // Si el precio retrocede y toca o baja de la ganancia asegurada:
-            if (gainPct <= pos.lockedFloorGainPct) {
+            const peakGain = ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100;
+            // Solo gatillar si el pico alcanzó o superó el piso fijado, Y el precio retrocede tocándolo, Y SIEMPRE gainPct >= 0.80% (NUNCA VENDER EN NEGATIVO)
+            if (peakGain >= pos.lockedFloorGainPct && gainPct <= pos.lockedFloorGainPct && gainPct >= 0.80) {
               hitLockedFloor = true;
-              console.log(`🔒 [PISO ASEGURADO TOCADO] ${symbol}: Ganancia actual ${gainPct.toFixed(2)}% retrocedió al piso asegurado de ${pos.lockedFloorGainPct.toFixed(2)}%. Ejecutando venta asegurada.`);
+              console.log(`🔒 [PISO ASEGURADO TOCADO] ${symbol}: Ganancia actual +${gainPct.toFixed(2)}% retrocedió al piso asegurado de +${pos.lockedFloorGainPct.toFixed(2)}%. Ejecutando venta asegurada.`);
             }
           }
-          const hitCallback = (dropFromPeak >= callback && gainPct >= minGain) || hitLockedFloor;
+          // CANDADO SUPREMO: hitCallback NUNCA puede ser verdadero si gainPct < 0.50%
+          const hitCallback = ((dropFromPeak >= callback && gainPct >= minGain) || hitLockedFloor) && (gainPct >= 0.50);
 
-          if (hitCallback || hitHardCap || isRejectionWick) {
+          // CANDADO FÉRREO: Jamás gatillar venta si la ganancia no supera el +0.50%
+          if ((hitCallback || hitHardCap || isRejectionWick) && gainPct >= 0.50) {
             const reasonOverride = isRejectionWick ? "RECHAZO_MECHA" : undefined;
             console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a ${curPrice} (Pico: ${pos.highestPrice}) [${reasonOverride || 'TRAILING'}]`);
             const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap, false, reasonOverride);
@@ -1335,14 +1338,23 @@ export class TrailingMasterBot {
     try {
       if (pos.partialProfitTaken) return false;
 
-      const asset = pos.symbol.replace("USDT", "");
+      const actualSymbol = (pos.symbol || "").split("_")[0];
+      const asset = actualSymbol.replace("USDT", "");
+
+      // 🛡️ REGLA SUPREMA: NUNCA VENDER PARCIAL A PÉRDIDA
+      const estGainPct = ((exitPrice - pos.buyPrice) / pos.buyPrice) * 100;
+      if (exitPrice <= pos.buyPrice || estGainPct < 0.50) {
+        console.error(`🛡️ [VENTA PARCIAL A PÉRDIDA BLOQUEADA] ${pos.symbol}: Precio ${exitPrice} <= Compra ${pos.buyPrice}. Cancelada.`);
+        return false;
+      }
+
       let freeBal = await this.getFreeBalance(asset);
       if (freeBal < pos.qty * ratio * 0.95) {
         await this.redeemFromEarnIfNeeded(asset, pos.qty * ratio);
         freeBal = await this.getFreeBalance(asset);
       }
 
-      const exInfo = await this.client.exchangeInfo({ symbol: pos.symbol });
+      const exInfo = await this.client.exchangeInfo({ symbol: actualSymbol });
       const sInfo = exInfo.data.symbols[0];
       const stepSize = parseFloat(sInfo.filters.find((f: any) => f.filterType === "LOT_SIZE").stepSize);
       const minNotional = parseFloat(sInfo.filters.find((f: any) => f.filterType === "NOTIONAL" || f.filterType === "MIN_NOTIONAL")?.minNotional || "10.0");
@@ -1465,7 +1477,15 @@ export class TrailingMasterBot {
         return false;
       }
 
-      const sellRes = await this.client.newOrder(pos.symbol, "SELL", "MARKET", {
+      // 🛡️ REGLA SUPREMA DE BLINDAJE SPOT: NUNCA VENDER A PÉRDIDA
+      const curCheckPrice = exitPrice || parseFloat((await this.client.tickerPrice(actualSymbol)).data.price);
+      const estGainPct = ((curCheckPrice - pos.buyPrice) / pos.buyPrice) * 100;
+      if (curCheckPrice <= pos.buyPrice || estGainPct < 0.50) {
+        console.error(`🛡️ [VENTA A PÉRDIDA BLOQUEADA] ${pos.symbol}: Precio ${curCheckPrice} <= Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}%). Venta CANCELADA sin tocar Binance.`);
+        return false;
+      }
+
+      const sellRes = await this.client.newOrder(actualSymbol, "SELL", "MARKET", {
         quantity: sellQtyStr,
         newOrderRespType: "FULL",
         recvWindow: 60000

@@ -350,16 +350,21 @@
   function updatePositionCard(card, p) {
     card._currentPos = p;
     const f = (k) => card.querySelector(`[data-f="${k}"]`);
-    const gain = p.gainPct >= 0;
-    const s = gain ? "+" : "";
+    
+    // Regla estricta de color:
+    // Si pnlUsdt < -0.00001 o gainPct < -0.01 -> ES PÉRDIDA (ROJO)
+    // Si pnlUsdt > 0.00001 o gainPct > 0.01 -> ES GANANCIA (VERDE)
+    // De lo contrario -> NEUTRAL
+    const isLoss = (p.pnlUsdt < -0.00001) || (p.gainPct < -0.01);
+    const isGain = (p.pnlUsdt > 0.00001) || (p.gainPct > 0.01);
 
     const stratName = p.strategy === "centinela_alpha" ? "🤖 Alpha (20%)" : (p.lotIndex > 1 ? `🛡️ Lote #${p.lotIndex}` : "🏹 Lote 1");
     setText(f("stratbadge"), stratName);
     setText(f("qty"), `${fmt(p.qty)} ${p.base} • Invertido: ${fmt(p.investedUsdt)} USDT`);
-    setText(f("buy"), `$${fmt(p.buyPrice)}`);
-    setText(f("cur"), `$${fmt(p.curPrice)}`);
-    setStyle(f("cur"), "color", gain ? "var(--accent-green)" : "var(--accent-rose)");
-    setText(f("target"), `$${fmt(p.target08)}`);
+    setText(f("buy"), `${fmt(p.buyPrice)}`);
+    setText(f("cur"), `${fmt(p.curPrice)}`);
+    setStyle(f("cur"), "color", isGain ? "var(--accent-green)" : (isLoss ? "var(--accent-rose)" : "var(--text-main)"));
+    setText(f("target"), `${fmt(p.target08)}`);
 
     const badge = f("badge");
     if (p.activated) {
@@ -375,16 +380,30 @@
     setClass(fill, "progress-fill" + (p.activated ? " trailing-mode" : ""));
 
     if (p.activated) {
-      setText(f("proginfo"), `Pico $${fmt(p.highestPrice)} (+${p.peakGainPct.toFixed(2)}%) • Salida $${fmt(p.stopPrice)}`);
+      setText(f("proginfo"), `Pico ${fmt(p.highestPrice)} (+${p.peakGainPct.toFixed(2)}%) • Salida ${fmt(p.stopPrice)}`);
     } else {
       const falta = ((p.target08 - p.curPrice) / p.curPrice) * 100;
       setText(f("proginfo"), falta > 0 ? `Falta +${falta.toFixed(2)}%` : "Meta alcanzada");
     }
 
+    // Formateo limpio blindado contra '+-'
+    let pnlStr = fmt(p.pnlUsdt);
+    if (isGain && !pnlStr.startsWith("+")) pnlStr = "+" + pnlStr;
+    pnlStr = pnlStr.replace("+-", "-").replace("-+", "-");
+
+    let pctStr = p.gainPct.toFixed(2);
+    if (isGain && !pctStr.startsWith("+")) pctStr = "+" + pctStr;
+    pctStr = pctStr.replace("+-", "-").replace("-+", "-");
+
     const pnl = f("pnl");
-    setClass(pnl, "pnl-value " + (gain ? "pos-profit" : "pos-loss"));
-    setText(pnl, `${s}${fmt(p.pnlUsdt)} USDT (${s}${p.gainPct.toFixed(2)}%)`);
-    setText(f("pnlcop"), `≈ ${s}${cop(p.pnlCop)} COP`);
+    setClass(pnl, "pnl-value " + (isGain ? "pos-profit" : (isLoss ? "pos-loss" : "")));
+    setText(pnl, `${pnlStr} USDT (${pctStr}%)`);
+
+    let copStr = cop(p.pnlCop);
+    if (isGain) copStr = "+" + copStr;
+    else if (isLoss && !copStr.startsWith("-")) copStr = "-" + copStr;
+    copStr = copStr.replace("+-", "-").replace("-+", "-");
+    setText(f("pnlcop"), `≈ ${copStr} COP`);
 
     // Actualizar indicador de piso asegurado
     if (f("lockfloordesc")) {
@@ -544,16 +563,23 @@
 
     $("history-tbody").innerHTML = cycles.map((c, i) => {
       const d = new Date(c.time).toLocaleString("es-CO", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      const s = c.pnlUsdt >= 0 ? "+" : "";
-      const cls = c.pnlUsdt >= 0 ? "pos-profit" : "pos-loss";
+      const isWin = (c.pnlUsdt || 0) > 0.0001;
+      const isLoss = (c.pnlUsdt || 0) < -0.0001;
+      let pnlStr = fmt(c.pnlUsdt, 3);
+      if (isWin && !pnlStr.startsWith("+")) pnlStr = "+" + pnlStr;
+      pnlStr = pnlStr.replace("+-", "-").replace("-+", "-");
+      let pctStr = (c.pnlPct || 0).toFixed(2);
+      if (isWin && !pctStr.startsWith("+")) pctStr = "+" + pctStr;
+      pctStr = pctStr.replace("+-", "-").replace("-+", "-");
+      const cls = isWin ? "pos-profit" : (isLoss ? "pos-loss" : "");
       return `<tr>
         <td style="color:var(--text-dim)">${i + 1}</td>
         <td><strong>${c.symbol.replace("USDT", "")}</strong></td>
         <td style="color:var(--text-dim)">${d}</td>
-        <td>$${fmt(c.avgBuy)}</td><td>$${fmt(c.avgSell)}</td>
-        <td class="${cls}"><strong>${s}${fmt(c.pnlUsdt, 3)} USDT</strong></td>
-        <td class="${cls}">${s}${c.pnlPct.toFixed(2)}%</td>
-        <td><span class="win-tag">${c.pnlUsdt >= 0 ? "GANADO" : "PÉRDIDA"}</span></td></tr>`;
+        <td>${fmt(c.avgBuy)}</td><td>${fmt(c.avgSell)}</td>
+        <td class="${cls}"><strong>${pnlStr} USDT</strong></td>
+        <td class="${cls}">${pctStr}%</td>
+        <td><span class="win-tag">${isWin ? "GANADO" : (isLoss ? "PÉRDIDA" : "BREAKEVEN")}</span></td></tr>`;
     }).join("");
 
     renderChart(cycles);
@@ -1575,8 +1601,15 @@
         posTbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:18px; color:var(--text-muted);">Sin posiciones abiertas. El escáner está buscando el siguiente piso/techo…</td></tr>';
       } else {
         posTbody.innerHTML = positions.map(p => {
-          const pnlColor = p.floatingPnlUsdt >= 0 ? "#34d399" : "#f87171";
-          const pnlSign = p.floatingPnlUsdt >= 0 ? "+" : "";
+          const isFutWin = (p.floatingPnlUsdt || 0) > 0.0001;
+          const isFutLoss = (p.floatingPnlUsdt || 0) < -0.0001;
+          const pnlColor = isFutWin ? "#34d399" : (isFutLoss ? "#f87171" : "var(--text-main)");
+          let fPnlStr = (p.floatingPnlUsdt || 0).toFixed(3);
+          if (isFutWin && !fPnlStr.startsWith("+")) fPnlStr = "+" + fPnlStr;
+          fPnlStr = fPnlStr.replace("+-", "-").replace("-+", "-");
+          let fRoeStr = (p.floatingRoePct || 0).toFixed(2);
+          if (isFutWin && !fRoeStr.startsWith("+")) fRoeStr = "+" + fRoeStr;
+          fRoeStr = fRoeStr.replace("+-", "-").replace("-+", "-");
           const sideColor = p.side === "LONG" ? "#34d399" : "#f87171";
           return `<tr>
             <td><b>${p.symbol}</b></td>
@@ -1585,7 +1618,7 @@
             <td><b>${(p.curPrice || p.entryPrice).toFixed(4)}</b></td>
             <td style="color:#f87171;">${p.stopLossPrice.toFixed(4)}</td>
             <td style="color:#34d399;">${p.trailingTriggerPrice.toFixed(4)}</td>
-            <td><b style="color:${pnlColor};">${pnlSign}${(p.floatingPnlUsdt || 0).toFixed(3)} USDT (${pnlSign}${(p.floatingRoePct || 0).toFixed(2)}%)</b></td>
+            <td><b style="color:${pnlColor};">${fPnlStr} USDT (${fRoeStr}%)</b></td>
             <td style="font-size:11px; color:var(--text-muted);">${p.rationale || "Señal Cuantitativa"}</td>
           </tr>`;
         }).join("");
