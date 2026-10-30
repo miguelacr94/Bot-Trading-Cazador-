@@ -1425,6 +1425,26 @@ export class DashboardServer {
                         const data = JSON.parse(body || "{}");
                         const actionFile = path.resolve(process.cwd(), ".position-action.json");
                         fs.writeFileSync(actionFile, JSON.stringify({ action: "lock_profit", id: data.id, targetGainPct: data.targetGainPct, time: Date.now() }, null, 2), "utf-8");
+                        // Sincronizar de inmediato el archivo local de posiciones para que el frontend lo vea al instante
+                        const pFile = path.resolve(process.cwd(), ".trailing-positions.json");
+                        if (fs.existsSync(pFile)) {
+                            try {
+                                const list = JSON.parse(fs.readFileSync(pFile, "utf-8"));
+                                const map = new Map(list);
+                                for (const [k, p] of map.entries()) {
+                                    if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
+                                        p.activated = true;
+                                        p.lockedFloorGainPct = data.targetGainPct;
+                                        p.customMinGainPct = data.targetGainPct;
+                                        const floorPrice = p.buyPrice * (1 + data.targetGainPct / 100);
+                                        if ((p.highestPrice || 0) < floorPrice)
+                                            p.highestPrice = floorPrice;
+                                    }
+                                }
+                                fs.writeFileSync(pFile, JSON.stringify(Array.from(map.entries()), null, 2), "utf-8");
+                            }
+                            catch (e) { }
+                        }
                         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
                         res.end(JSON.stringify({ success: true, message: "Candado de ganancia registrado" }));
                     }

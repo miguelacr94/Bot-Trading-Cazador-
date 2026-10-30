@@ -654,14 +654,27 @@ export class TrailingMasterBot {
         const data = JSON.parse(fs.readFileSync(file, "utf-8"));
         fs.unlinkSync(file);
         if (data.action === "lock_profit" && data.id) {
-          const pos = this.activeTrailingPositions.get(data.id);
+          let pos = this.activeTrailingPositions.get(data.id);
+          if (!pos) {
+            for (const [k, p] of this.activeTrailingPositions.entries()) {
+              if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
+                pos = p;
+                break;
+              }
+            }
+          }
           if (pos) {
             pos.activated = true;
             if (data.targetGainPct && data.targetGainPct > 0) {
+              pos.lockedFloorGainPct = data.targetGainPct;
               pos.customMinGainPct = data.targetGainPct;
+              const floorPrice = pos.buyPrice * (1 + data.targetGainPct / 100);
+              if ((pos.highestPrice || 0) < floorPrice) {
+                pos.highestPrice = floorPrice;
+              }
             }
-            this.saveTrailingPositions();
-            const lockedVal = (pos.customMinGainPct || data.targetGainPct || 0.8).toFixed(2);
+            await this.saveTrailingPositions();
+            const lockedVal = (pos.lockedFloorGainPct || data.targetGainPct).toFixed(2);
             const msg = "🔒 <b>[CANDADO MANUAL ASEGURADO: " + pos.symbol + "]</b>\n\n" +
               "• Ganancia asegurada fijada en: <b>+" + lockedVal + "%</b>\n" +
               "• Si el precio retrocede, venderá asegurando este piso.\n" +
@@ -1276,17 +1289,18 @@ export class TrailingMasterBot {
           let hitLockedFloor = false;
           if (pos.lockedFloorGainPct && pos.lockedFloorGainPct > 0) {
             const peakGain = ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100;
-            // Solo gatillar si el pico alcanzó o superó el piso fijado, Y el precio retrocede tocándolo, Y SIEMPRE gainPct >= 0.80% (NUNCA VENDER EN NEGATIVO)
-            if (peakGain >= pos.lockedFloorGainPct && gainPct <= pos.lockedFloorGainPct && gainPct >= 0.80) {
+            // Si el pico alcanzó o superó el piso fijado (ej: +0.40%), y el precio retrocede tocándolo, Y SIEMPRE gainPct >= 0.30% (Cubre comisiones y asegura ganancia neta)
+            if (peakGain >= pos.lockedFloorGainPct && gainPct <= pos.lockedFloorGainPct && gainPct >= 0.30) {
               hitLockedFloor = true;
               console.log(`🔒 [PISO ASEGURADO TOCADO] ${symbol}: Ganancia actual +${gainPct.toFixed(2)}% retrocedió al piso asegurado de +${pos.lockedFloorGainPct.toFixed(2)}%. Ejecutando venta asegurada.`);
             }
           }
-          // CANDADO SUPREMO: hitCallback NUNCA puede ser verdadero si gainPct < 0.50%
-          const hitCallback = ((dropFromPeak >= callback && gainPct >= minGain) || hitLockedFloor) && (gainPct >= 0.50);
+          // CANDADO SUPREMO: hitCallback se activa por Trailing regular (>= minGain) O por Piso Manual Asegurado (>= 0.30% neto)
+          const hitCallback = (dropFromPeak >= callback && gainPct >= minGain) || (hitLockedFloor && gainPct >= 0.30);
 
-          // CANDADO FÉRREO: Jamás gatillar venta si la ganancia no supera el +0.50%
-          if ((hitCallback || hitHardCap || isRejectionWick) && gainPct >= 0.50) {
+          // CANDADO FÉRREO: Venta autorizada si supera el mínimo de seguridad (>= 0.30% para piso asegurado, o >= 0.50% para trailing normal)
+          const minAllowedExit = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.30) ? 0.30 : 0.50;
+          if ((hitCallback || hitHardCap || isRejectionWick) && gainPct >= minAllowedExit) {
             const reasonOverride = isRejectionWick ? "RECHAZO_MECHA" : undefined;
             console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a ${curPrice} (Pico: ${pos.highestPrice}) [${reasonOverride || 'TRAILING'}]`);
             const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap, false, reasonOverride);
@@ -1493,7 +1507,8 @@ export class TrailingMasterBot {
       // 🛡️ REGLA SUPREMA DE BLINDAJE SPOT: NUNCA VENDER A PÉRDIDA
       const curCheckPrice = exitPrice || parseFloat((await this.client.tickerPrice(actualSymbol)).data.price);
       const estGainPct = ((curCheckPrice - pos.buyPrice) / pos.buyPrice) * 100;
-      if (curCheckPrice <= pos.buyPrice || estGainPct < 0.50) {
+      const minNetFloor = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.30) ? 0.28 : 0.45;
+      if (curCheckPrice <= pos.buyPrice || estGainPct < minNetFloor) {
         console.error(`🛡️ [VENTA A PÉRDIDA BLOQUEADA] ${pos.symbol}: Precio ${curCheckPrice} <= Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}%). Venta CANCELADA sin tocar Binance.`);
         return false;
       }
