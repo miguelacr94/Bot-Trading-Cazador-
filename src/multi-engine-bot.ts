@@ -18,7 +18,7 @@ const COP_PER_USDT = 4200;
 
 // WATCHLISTS SEPARADAS: CLÁSICAS Y CANASTA MEMECOINS TIER-1
 export const CORE_WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT"];
-export const MEME_WATCHLIST = ["PEPEUSDT", "DOGEUSDT", "BONKUSDT", "SHIBUSDT", "WIFUSDT"];
+export const MEME_WATCHLIST = ["PEPEUSDT", "DOGEUSDT", "BONKUSDT"];
 export const WATCHLIST = [...CORE_WATCHLIST, ...MEME_WATCHLIST];
 
 // Formateador dinámico de precios para soportar micro-ticks y monedas estándar (ETH/SOL/BTC)
@@ -349,7 +349,7 @@ export class TrailingMasterBot {
 
     // 4. 🚀 TRAILING CEÑIDO ESCALONADO DINÁMICO (Tiered Dynamic Callback)
     // A medida que la ganancia sube, el lazo se ciñe automáticamente para capturar la cima intacta
-    const isMeme = MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF");
+    const isMeme = MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE");
     const isMid = symbol.includes("AVAX") || symbol.includes("SOL");
     const baseCb = isMeme ? 0.45 : (isMid ? 0.35 : 0.25);
 
@@ -4196,7 +4196,7 @@ export class TrailingMasterBot {
     }
 
     // Tope de riesgo para memecoins: máximo $50 USDT
-    if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE") || symbol.includes("SHIB") || symbol.includes("WIF")) {
+    if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE")) {
       lot = Math.min(lot, 50);
     }
 

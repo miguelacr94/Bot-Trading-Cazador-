@@ -14,9 +14,7 @@ export const PNL_SYMBOLS = [
     "XRPUSDT",
     "PEPEUSDT",
     "DOGEUSDT",
-    "BONKUSDT",
-    "SHIBUSDT",
-    "WIFUSDT"
+    "BONKUSDT"
 ];
 // Inicio del bot: ignorar trades anteriores
 // Ventana rodante para no agotar el límite de 1000 trades por consulta

@@ -89,7 +89,7 @@ export class DashboardServer {
     trackedSymbols() {
         const pos = this.readJson(".trailing-positions.json").map(([s]) => (s || "").split("_")[0]);
         const buys = this.readJson(".trailing-buys.json").map(([s]) => (s || "").split("_")[0]);
-        const allKnown = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "PEPEUSDT", "DOGEUSDT", "BONKUSDT", "SHIBUSDT", "WIFUSDT", "USDTCOP"];
+        const allKnown = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "PEPEUSDT", "DOGEUSDT", "BONKUSDT", "USDTCOP"];
         const set = new Set([...PNL_SYMBOLS, ...allKnown, ...pos, ...buys]);
         return Array.from(set)
             .map((s) => (s || "").trim().toUpperCase())
@@ -188,7 +188,7 @@ export class DashboardServer {
                 ? JSON.parse(fs.readFileSync(pFile, "utf-8"))
                 : [];
             let updated = false;
-            const candidates = ["ETH", "SOL", "AVAX", "BTC", "BNB", "XRP", "PEPE", "DOGE", "BONK", "SHIB", "WIF"];
+            const candidates = ["ETH", "SOL", "AVAX", "BTC", "BNB", "XRP", "PEPE", "DOGE", "BONK"];
             for (const base of candidates) {
                 const sym = base + "USDT";
                 // 🛡️ Si ya existe CUALQUIER lote o posición de esta moneda en el disco, NO TOCAR
@@ -337,8 +337,7 @@ export class DashboardServer {
         if (symbol.includes("PEPE") ||
             symbol.includes("BONK") ||
             symbol.includes("DOGE") ||
-            symbol.includes("SHIB") ||
-            symbol.includes("WIF")) {
+            false) {
             return {
                 timeframe: "15m",
                 reason: "Alta velocidad meme (15m aprovecha impulsos rápidos)",
@@ -415,8 +414,7 @@ export class DashboardServer {
         if (symbol.includes("PEPE") ||
             symbol.includes("BONK") ||
             symbol.includes("DOGE") ||
-            symbol.includes("SHIB") ||
-            symbol.includes("WIF"))
+            false)
             return 0.45;
         if (symbol.includes("AVAX") || symbol.includes("SOL"))
             return 0.35;
@@ -550,8 +548,7 @@ export class DashboardServer {
                 suggestedCallback: sym.includes("PEPE") ||
                     sym.includes("BONK") ||
                     sym.includes("DOGE") ||
-                    sym.includes("SHIB") ||
-                    sym.includes("WIF")
+                    false
                     ? 0.45
                     : sym.includes("AVAX") || sym.includes("SOL")
                         ? 0.35
@@ -559,8 +556,7 @@ export class DashboardServer {
                 suggestedReason: sym.includes("PEPE") ||
                     sym.includes("BONK") ||
                     sym.includes("DOGE") ||
-                    sym.includes("SHIB") ||
-                    sym.includes("WIF")
+                    false
                     ? "Alta volatilidad Meme (tolerar micro-retrocesos)"
                     : sym.includes("AVAX") || sym.includes("SOL")
                         ? "Volatilidad media"
