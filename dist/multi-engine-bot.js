@@ -913,13 +913,24 @@ export class TrailingMasterBot {
             console.error("Error cargando trailing buys:", e.message);
         }
     }
-    saveTrailingPositions() {
+    async saveTrailingPositions() {
         try {
             const data = Array.from(this.activeTrailingPositions.entries());
             fs.writeFileSync(path.resolve(process.cwd(), ".trailing-positions.json"), JSON.stringify(data, null, 2));
-            // Sincronización en la nube Supabase
-            for (const pos of this.activeTrailingPositions.values()) {
-                supabaseDb.saveActivePosition(pos).catch(() => { });
+            // Sincronización bidireccional en la nube Supabase
+            if (supabaseDb.isAvailable()) {
+                const currentKeys = new Set(this.activeTrailingPositions.keys());
+                for (const [key, pos] of this.activeTrailingPositions.entries()) {
+                    await supabaseDb.saveActivePosition({ ...pos, lotId: key });
+                }
+                // Limpiar posiciones en la nube que ya fueron vendidas o retiradas
+                const dbMap = await supabaseDb.loadActivePositions();
+                for (const dbKey of dbMap.keys()) {
+                    if (!currentKeys.has(dbKey)) {
+                        await supabaseDb.deleteActivePosition(dbKey);
+                        console.log(`🧹 [SUPABASE CLEANUP] Posición ${dbKey} retirada de la nube (ya vendida).`);
+                    }
+                }
             }
         }
         catch (e) {
@@ -1232,7 +1243,7 @@ export class TrailingMasterBot {
             pos.partialProfitTaken = true;
             pos.partialProfitUsdt = (pos.partialProfitUsdt || 0) + profitUsdt;
             pos.highestPrice = avgSell;
-            this.saveTrailingPositions();
+            await this.saveTrailingPositions();
             const sign = profitUsdt >= 0 ? "+" : "";
             const partialAlert = `🎯 <b>¡TOMA DE GANANCIA PARCIAL (50%) EN LA CIMA!</b> 💎\n\n` +
                 `• <b>Moneda:</b> ${pos.symbol}\n` +

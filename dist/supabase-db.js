@@ -139,9 +139,13 @@ export class SupabaseDbService {
                 return map;
             }
             for (const row of data || []) {
+                const isLot = (row.symbol || "").includes("_lot_");
+                const cleanSym = (row.symbol || "").split("_")[0];
+                const lotIndex = isLot ? parseInt(row.symbol.split("_lot_")[1] || "1", 10) : 1;
                 const item = {
-                    symbol: row.symbol.startsWith('PEPEUSDT_lot_') ? 'PEPEUSDT' : row.symbol,
+                    symbol: cleanSym,
                     lotId: row.symbol,
+                    lotIndex,
                     buyPrice: parseFloat(row.buy_price),
                     qty: parseFloat(row.qty),
                     investedUsdt: parseFloat(row.invested_usdt),
@@ -151,7 +155,8 @@ export class SupabaseDbService {
                     strategy: row.strategy,
                     customCallbackPct: row.custom_callback_pct ? parseFloat(row.custom_callback_pct) : undefined,
                     customTimeframe: row.custom_timeframe || undefined,
-                    customMinGainPct: row.symbol.includes('_lot_') ? 10.0 : undefined,
+                    customMinGainPct: isLot ? 10.0 : undefined,
+                    lockedFloorGainPct: isLot ? 8.0 : undefined,
                     partialProfitTaken: row.partial_profit_taken === true
                 };
                 map.set(row.symbol, item);
@@ -167,8 +172,9 @@ export class SupabaseDbService {
         if (!this.client)
             return false;
         try {
+            const key = pos.lotId || pos.symbol;
             const row = {
-                symbol: pos.symbol,
+                symbol: key,
                 buy_price: pos.buyPrice,
                 qty: pos.qty,
                 invested_usdt: pos.investedUsdt,
@@ -185,7 +191,7 @@ export class SupabaseDbService {
                 .from("active_positions")
                 .upsert(row, { onConflict: "symbol" });
             if (error) {
-                console.error(`Error guardando posición ${pos.symbol} en Supabase:`, error.message);
+                console.error(`Error guardando posición ${key} en Supabase:`, error.message);
                 return false;
             }
             return true;
@@ -195,22 +201,22 @@ export class SupabaseDbService {
             return false;
         }
     }
-    async deleteActivePosition(symbol) {
+    async deleteActivePosition(symbolOrLotId) {
         if (!this.client)
             return false;
         try {
             const { error } = await this.client
                 .from("active_positions")
                 .delete()
-                .eq("symbol", symbol);
+                .eq("symbol", symbolOrLotId);
             if (error) {
-                console.error(`Error eliminando posición ${symbol} de Supabase:`, error.message);
+                console.error(`Error eliminando posición ${symbolOrLotId} en Supabase:`, error.message);
                 return false;
             }
             return true;
         }
         catch (err) {
-            console.error(`Excepción en deleteActivePosition (${symbol}):`, err.message);
+            console.error(`Excepción en deleteActivePosition (${symbolOrLotId}):`, err.message);
             return false;
         }
     }
