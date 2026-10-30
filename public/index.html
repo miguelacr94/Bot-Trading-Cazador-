@@ -2181,7 +2181,47 @@
       }
     }
 
-  </style>
+  
+    /* Control de Asegurar Piso en Pico */
+    .pos-lock-floor-box {
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      display: none !important;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pos-lock-floor-box.is-positive {
+      display: flex !important;
+    }
+
+    .btn-lock-floor {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .btn-lock-floor:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.45);
+    }
+
+</style>
 </head>
 <body>
 
@@ -3340,6 +3380,6 @@
 
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=20261030_1225"></script>
 </body>
 </html>

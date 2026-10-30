@@ -1737,6 +1737,9 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
         res.writeHead(200, {
           "Content-Type":
             mime[path.extname(filePath).toLowerCase()] || "text/plain",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0"
         });
         fs.createReadStream(filePath).pipe(res);
         return;

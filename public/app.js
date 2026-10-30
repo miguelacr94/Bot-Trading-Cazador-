@@ -243,13 +243,13 @@
       </div>
 
       <!-- Botón Asegurar Piso en Pico -->
-      <div class="pos-lock-floor-box" data-f="lockfloorbox" style="margin-top:10px; padding:8px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); display:none; align-items:center; justify-content:space-between;">
+      <div class="pos-lock-floor-box" data-f="lockfloorbox">
         <div>
-          <div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px;">🔒 Asegurar Piso</div>
+          <div style="font-size:11px; font-weight:700; color:var(--accent-green); text-transform:uppercase; letter-spacing:0.5px;">🔒 Asegurar Pico</div>
           <div style="font-size:11px; color:var(--text-muted);" data-f="lockfloordesc">Sin piso amarrado</div>
         </div>
-        <button class="btn-lock-floor" data-f="btnlockfloor" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px;">
-          🔒 Asegurar Ganancia
+        <button class="btn-lock-floor" data-f="btnlockfloor">
+          🔒 Asegurar Pico
         </button>
       </div>
 
@@ -407,38 +407,53 @@
 
     // Regla de Visibilidad del Botón Asegurar Piso:
     // "si esta en negativo el boton no debe salir, es visible si es positivo"
-    const lockBox = f("lockfloorbox");
-    const isPositiveGain = (p.gainPct || 0) > 0.05;
+    const lockBox = card.querySelector(".pos-lock-floor-box") || f("lockfloorbox");
+    const gPct = typeof p.gainPct === "number" ? p.gainPct : 0;
+    const pUsdt = typeof p.pnlUsdt === "number" ? p.pnlUsdt : 0;
+    
+    // POSITIVO: solo si la ganancia es mayor a +0.05% o PnL > $0.005
+    const isStrictlyPositive = (gPct > 0.05) || (pUsdt > 0.005);
 
     if (lockBox) {
-      if (!isPositiveGain) {
-        // En negativo o breakeven: OCULTAR COMPLETAMENTE EL BOTÓN
-        lockBox.style.display = "none";
+      if (!isStrictlyPositive) {
+        // En negativo o breakeven: OCULTAR TOTALMENTE
+        lockBox.classList.remove("is-positive");
+        lockBox.style.setProperty("display", "none", "important");
       } else {
-        // En positivo: MOSTRAR EL BOTÓN
-        lockBox.style.display = "flex";
+        // En positivo: MOSTRAR SIEMPRE
+        lockBox.classList.add("is-positive");
+        lockBox.style.setProperty("display", "flex", "important");
 
-        const curG = p.gainPct || 0;
-        const curGStr = "+" + curG.toFixed(2) + "%";
+        const curGStr = "+" + gPct.toFixed(2) + "%";
         const hasFloor = p.lockedFloorGainPct && p.lockedFloorGainPct > 0;
 
+        const descEl = f("lockfloordesc");
+        const btnEl = f("btnlockfloor");
+
         if (hasFloor) {
-          setText(f("lockfloordesc"), `🛡️ Piso actual: +${p.lockedFloorGainPct.toFixed(2)}%`);
-          setStyle(f("lockfloordesc"), "color", "var(--accent-green)");
-          if (f("btnlockfloor")) {
-            setText(f("btnlockfloor"), `🔒 Elevar Piso (${curGStr})`);
-            setStyle(f("btnlockfloor"), "background", "linear-gradient(135deg, #059669, #047857)");
-            setStyle(f("btnlockfloor"), "border", "1px solid var(--accent-green)");
-            setStyle(f("btnlockfloor"), "color", "#fff");
+          if (descEl) {
+            descEl.textContent = "🛡️ Piso asegurado: +" + p.lockedFloorGainPct.toFixed(2) + "%";
+            descEl.style.color = "var(--accent-green)";
+          }
+          if (btnEl) {
+            if (gPct > p.lockedFloorGainPct) {
+              btnEl.textContent = "🚀 Elevar Piso a " + curGStr;
+              btnEl.title = "Piso actual +" + p.lockedFloorGainPct.toFixed(2) + "%. Pulsa para elevarlo a " + curGStr;
+            } else {
+              btnEl.textContent = "🔒 Modificar (+" + p.lockedFloorGainPct.toFixed(2) + "%)";
+              btnEl.title = "Pulsa para ajustar el piso asegurado";
+            }
+            btnEl.style.background = "linear-gradient(135deg, #059669, #047857)";
           }
         } else {
-          setText(f("lockfloordesc"), `Ganancia en vivo: ${curGStr}`);
-          setStyle(f("lockfloordesc"), "color", "var(--accent-green)");
-          if (f("btnlockfloor")) {
-            setText(f("btnlockfloor"), `🔒 Asegurar ${curGStr}`);
-            setStyle(f("btnlockfloor"), "background", "linear-gradient(135deg, #10b981, #059669)");
-            setStyle(f("btnlockfloor"), "border", "none");
-            setStyle(f("btnlockfloor"), "color", "#fff");
+          if (descEl) {
+            descEl.textContent = "Ganancia actual: " + curGStr + " (Sin piso amarrado)";
+            descEl.style.color = "var(--accent-green)";
+          }
+          if (btnEl) {
+            btnEl.textContent = "🔒 Asegurar Pico (" + curGStr + ")";
+            btnEl.title = "Pulsa para asegurar inmediatamente esta ganancia de " + curGStr + " sin esperar";
+            btnEl.style.background = "linear-gradient(135deg, #10b981, #059669)";
           }
         }
       }

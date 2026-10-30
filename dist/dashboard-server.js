@@ -1493,6 +1493,9 @@ export class DashboardServer {
                 };
                 res.writeHead(200, {
                     "Content-Type": mime[path.extname(filePath).toLowerCase()] || "text/plain",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
                 });
                 fs.createReadStream(filePath).pipe(res);
                 return;
