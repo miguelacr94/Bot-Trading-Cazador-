@@ -1,86 +1,65 @@
 {
   "strategies": {
-    "trailing_rebound": true,
+    "futures": false,
     "smart_dca": true,
     "micro_grid": false,
     "cazador_weekend": false,
     "centinela_alpha": true,
-    "futures": true
+    "trailing_rebound": true
   },
   "autoPilot": true,
   "approvalTimeoutSec": 180,
-  "updatedAt": 1793297146420,
+  "maxPositions": 7,
   "allocations": {
-    "trailing_rebound": 55,
+    "futures": 10,
     "smart_dca": 25,
-    "centinela_alpha": 20,
     "micro_grid": 0,
     "cazador_weekend": 0,
-    "futures": 10
+    "centinela_alpha": 20,
+    "trailing_rebound": 55
   },
   "baseAllocations": {
-    "trailing_rebound": 55,
+    "futures": 10,
     "smart_dca": 25,
-    "centinela_alpha": 20,
     "micro_grid": 0,
     "cazador_weekend": 0,
-    "futures": 10
+    "centinela_alpha": 20,
+    "trailing_rebound": 55
   },
-  "aiEnabled": false,
-  "gridIgnoredUntil": 0,
-  "stopLossEnabled": false,
-  "stopLossPct": 4,
-  "timeframe": "1h",
-  "cashReservePct": 25,
-  "maxPerCoinPct": 30,
   "strategySettings": {
-    "trailing_rebound": {
+    "futures": {
+      "leverage": 2,
       "timeframe": "15m",
-      "stopLossEnabled": false,
-      "stopLossPct": 3.5
+      "isSimulated": true,
+      "stopLossPct": 1.2,
+      "stopLossEnabled": true
     },
+    "aiEnabled": false,
+    "autoPilot": true,
     "smart_dca": {
       "timeframe": "4h",
-      "stopLossEnabled": false,
-      "stopLossPct": 6
+      "stopLossPct": 6,
+      "stopLossEnabled": false
     },
     "micro_grid": {
       "timeframe": "15m",
-      "stopLossEnabled": false,
-      "stopLossPct": 2
+      "stopLossPct": 2,
+      "stopLossEnabled": false
     },
+    "maxPositions": 7,
+    "maxPerCoinPct": 30,
     "cazador_weekend": {
       "timeframe": "1h",
-      "stopLossEnabled": false,
-      "stopLossPct": 5
+      "stopLossPct": 5,
+      "stopLossEnabled": false
     },
-    "futures": {
-      "timeframe": "15m",
-      "stopLossEnabled": true,
-      "stopLossPct": 1.2,
-      "leverage": 2,
-      "isSimulated": true
-    }
-  },
-  "suggestions": {
     "trailing_rebound": {
       "timeframe": "15m",
       "stopLossPct": 3.5,
-      "reason": "Alta velocidad detectada (BTC 2.8%, Memes 9.2%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
-      "criterios": [
-        "Rango Bitcoin: 2.84% (Fuerza direccional)",
-        "Rango Memecoins: 9.24% (Líder PEPE con 18.8%)",
-        "Sesión: Wall Street / New York (Máxima Liquidez y Volumen)",
-        "Flujo de órdenes dinámico con ciclos de rebote veloces"
-      ],
-      "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m permite capturar rebotes rápidos (+1.2% a +2.0%) varias veces al día sin dejar capital atrapado.",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
-      "btcRange24h": 2.8365324300589636,
-      "updatedAt": 1793297146420,
-      "expiresAt": 1793300746420,
-      "isCurrent": true,
-      "status": "applied"
-    },
+      "stopLossEnabled": false
+    }
+  },
+  "suggestions": {
     "smart_dca": {
       "timeframe": "4h",
       "stopLossPct": 6,
@@ -91,26 +70,26 @@
         "Cooldown de 2 horas entre compras consecutivas"
       ],
       "porQue": "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
-      "btcRange24h": 2.8365324300589636,
-      "updatedAt": 1793297146420,
-      "expiresAt": 1793300746420,
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
+      "btcRange24h": 4.692322379961949,
+      "updatedAt": 1793313493741,
+      "expiresAt": 1793317093741,
       "isCurrent": true,
       "status": "applied"
     },
     "micro_grid": {
       "timeframe": "15m",
       "stopLossPct": 2,
-      "reason": "Mercado direccional activo (2.8%). Conviene cautela.",
+      "reason": "Mercado direccional activo (4.7%). Conviene cautela.",
       "criterios": [
-        "Rango Bitcoin: 2.84% (Mercado con dirección)",
+        "Rango Bitcoin: 4.69% (Mercado con dirección)",
         "Poco favorable para mallas fijas sin tendencia"
       ],
       "porQue": "Cuando el mercado tiene movimiento direccional, las estrategias de rejilla corren riesgo de quedar con compras atrapadas. Se sugiere mantener el presupuesto de Micro-Grid en 0% o con Stop-Loss estricto de -2.0% mientras el Trailing Hunter hace el trabajo pesado.",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
-      "btcRange24h": 2.8365324300589636,
-      "updatedAt": 1793297146420,
-      "expiresAt": 1793300746420,
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
+      "btcRange24h": 4.692322379961949,
+      "updatedAt": 1793313493741,
+      "expiresAt": 1793317093741,
       "isCurrent": true,
       "status": "applied"
     },
@@ -123,41 +102,53 @@
         "Capital trabajando al 100% en Cazador Trailing"
       ],
       "porQue": "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
-      "btcRange24h": 2.8365324300589636,
-      "updatedAt": 1793297146420,
-      "expiresAt": 1793300746420,
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
+      "btcRange24h": 4.692322379961949,
+      "updatedAt": 1793313493741,
+      "expiresAt": 1793317093741,
+      "isCurrent": true,
+      "status": "applied"
+    },
+    "trailing_rebound": {
+      "timeframe": "15m",
+      "stopLossPct": 3.5,
+      "reason": "Alta velocidad detectada (BTC 4.7%, Memes 16.2%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
+      "criterios": [
+        "Rango Bitcoin: 4.69% (Fuerza direccional)",
+        "Rango Memecoins: 16.20% (Líder PEPE con 28.5%)",
+        "Sesión: Asia / Tokio (Consolidación y Rango Lateral)",
+        "Flujo de órdenes dinámico con ciclos de rebote veloces"
+      ],
+      "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m permite capturar rebotes rápidos (+1.2% a +2.0%) varias veces al día sin dejar capital atrapado.",
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
+      "btcRange24h": 4.692322379961949,
+      "updatedAt": 1793313493741,
+      "expiresAt": 1793317093741,
       "isCurrent": true,
       "status": "applied"
     }
   },
-  "rejectedSuggestions": {},
   "trailingCallbacks": {
-    "PEPEUSDT": 0.45,
-    "AVAXUSDT": 0.35,
     "ETHUSDT": 0.25,
+    "XRPUSDT": 0.25,
     "default": 0.35,
+    "AVAXUSDT": 0.35,
     "BONKUSDT": 0.45,
     "DOGEUSDT": 0.45,
-    "XRPUSDT": 0.25
-  },
-  "symbolTimeframes": {
-    "PEPEUSDT": "15m",
-    "ETHUSDT": "1h",
-    "AVAXUSDT": "1h"
+    "PEPEUSDT": 0.45
   },
   "recoveryTracker": {
     "targetUsdt": 100,
-    "recoveredUsdt": 6.11,
-    "remainingUsdt": 93.89,
     "tradesCount": 8,
-    "breakdown": {
-      "solLoss": 3.581,
-      "avaxLoss": 2.296,
-      "pepeLoss": 0.233,
-      "debtGoal": 100
-    }
+    "recoveredUsdt": 6.11,
+    "remainingUsdt": 93.89
   },
-  "notified50UsdtThreshold": false,
-  "maxPositions": 7
+  "stopLossEnabled": false,
+  "stopLossPct": 4,
+  "timeframe": "1h",
+  "cashReservePct": 25,
+  "maxPerCoinPct": 30,
+  "aiEnabled": false,
+  "updatedAt": 1793313493741,
+  "rejectedSuggestions": {}
 }

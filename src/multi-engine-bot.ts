@@ -65,6 +65,7 @@ interface ActivePosition {
   customCallbackPct?: number;
   customTimeframe?: "15m" | "1h" | "4h" | "1d";
   customMinGainPct?: number;
+  lockedFloorGainPct?: number;
   lotId?: string;
   partialProfitTaken?: boolean;
   partialProfitUsdt?: number;
@@ -569,6 +570,11 @@ export class TrailingMasterBot {
         fs.writeFileSync(file, JSON.stringify(this.pendingOpportunity, null, 2));
       } else if (fs.existsSync(file)) {
         fs.unlinkSync(file);
+        if (data.action === lock_floor && data.symbol) {
+          console.log(`🌐 Acción recibida desde Dashboard: ASEGURAR PISO ${data.symbol} a ${data.pct || 'pico actual'}%`);
+          await this.lockPositionFloor(data.symbol, data.pct);
+          return;
+        }
       }
     } catch(e: any) {}
   }
@@ -595,6 +601,54 @@ export class TrailingMasterBot {
       );
     } catch(e: any) {
       console.error("Error en onWeekendTradeCompleted:", e.message);
+    }
+  }
+
+    public async lockPositionFloor(targetSymbolOrId: string, customPct?: number): Promise<{ success: boolean; msg: string; lockedPct?: number }> {
+    let matchedId: string | null = null;
+    let pos: ActivePosition | null = null;
+
+    for (const [id, p] of this.activeTrailingPositions.entries()) {
+      if (id.toLowerCase() === targetSymbolOrId.toLowerCase() || p.symbol.toLowerCase() === targetSymbolOrId.toLowerCase()) {
+        matchedId = id;
+        pos = p;
+        break;
+      }
+    }
+
+    if (!matchedId || !pos) {
+      return { success: false, msg: `No se encontró posición activa para ${targetSymbolOrId}.` };
+    }
+
+    try {
+      const actualSym = pos.symbol.includes('_lot_') ? pos.symbol.split('_')[0] : pos.symbol;
+      const t = await this.client.tickerPrice(actualSym);
+      const curPrice = parseFloat(t.data.price);
+      const curGain = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
+
+      // El piso a asegurar: Si el usuario pasa un porcentaje, se usa ese; si no, se asegura la ganancia del pico o actual
+      let lockPct = customPct !== undefined ? customPct : Math.max(curGain, ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100);
+      lockPct = Math.round(lockPct * 100) / 100;
+
+      if (lockPct <= 0.20) {
+        return { success: false, msg: `La ganancia actual (+${curGain.toFixed(2)}%) es muy baja para asegurar piso.` };
+      }
+
+      pos.lockedFloorGainPct = lockPct;
+      pos.activated = true;
+      pos.highestPrice = Math.max(pos.highestPrice, curPrice);
+      this.saveTrailingPositions();
+
+      const notifMsg = `🔒 <b>¡PISO ASEGURADO EN ${pos.symbol}!</b> 🎯\n\n` +
+        `• 💎 <b>Piso Blindado:</b> <b>+${lockPct.toFixed(2)}%</b>\n` +
+        `• 📍 <b>Precio de entrada:</b> ${fmtPrice(pos.buyPrice)}\n` +
+        `• 💰 <b>Precio actual:</b> ${fmtPrice(curPrice)} (+${curGain.toFixed(2)}%)\n\n` +
+        `🚀 <i>Comportamiento: Si el precio sube más, el Trailing sigue buscando picos sin tope. Si retrocede y toca +${lockPct.toFixed(2)}%, vende de inmediato asegurando la ganancia.</i>`;
+      await this.notifier.send(notifMsg);
+
+      return { success: true, msg: `Piso de ${pos.symbol} asegurado en +${lockPct.toFixed(2)}%`, lockedPct: lockPct };
+    } catch (e: any) {
+      return { success: false, msg: e.message };
     }
   }
 
@@ -1136,6 +1190,7 @@ export class TrailingMasterBot {
             const stopPrice = curPrice * (1 - callback / 100);
             const minLockedGain = ((stopPrice - pos.buyPrice) / pos.buyPrice) * 100;
             const tierDesc = gainPct >= 3.0 ? "Candado Extremo (0.15%)" : (gainPct >= 2.2 ? "Ceñido Euforia (0.20%)" : (gainPct >= 1.4 ? "Consolidación (0.30%)" : "Respiro Normal (0.45%)"));
+            const floorNote = pos.lockedFloorGainPct ? `\n🔒 <b>Piso Asegurado Férreo:</b> +${pos.lockedFloorGainPct.toFixed(2)}% NETO\n` : "";
             const peakAlert = `📈 <b>¡NUEVO PICO ALCANZADO: ${symbol}!</b> 🚀\n\n` +
               `• <b>Nuevo techo:</b> ${fmtPrice(curPrice)} (<b>+${gainPct.toFixed(2)}%</b>)\n` +
               `• 🛡️ <b>Nuevo piso garantizado:</b> ${fmtPrice(stopPrice)}\n` +
@@ -1183,7 +1238,15 @@ export class TrailingMasterBot {
             } catch(e) {}
           }
 
-          const hitCallback = dropFromPeak >= callback && gainPct >= minGain;
+          let hitLockedFloor = false;
+          if (pos.lockedFloorGainPct && pos.lockedFloorGainPct > 0) {
+            // Si el precio retrocede y toca o baja de la ganancia asegurada:
+            if (gainPct <= pos.lockedFloorGainPct) {
+              hitLockedFloor = true;
+              console.log(`🔒 [PISO ASEGURADO TOCADO] ${symbol}: Ganancia actual ${gainPct.toFixed(2)}% retrocedió al piso asegurado de ${pos.lockedFloorGainPct.toFixed(2)}%. Ejecutando venta asegurada.`);
+            }
+          }
+          const hitCallback = (dropFromPeak >= callback && gainPct >= minGain) || hitLockedFloor;
 
           if (hitCallback || hitHardCap || isRejectionWick) {
             const reasonOverride = isRejectionWick ? "RECHAZO_MECHA" : undefined;
@@ -2805,6 +2868,20 @@ export class TrailingMasterBot {
         this.buyWatches.delete(symbol);
         this.saveBuyWatches();
         return `🚀 Compra en ${symbol} ejecutada por $${amountToUse.toFixed(2)} USDT. Trailing Take Profit activado persiguiendo el pico.`;
+      }
+
+      if (cmd === "/asegurar" || cmd === "asegurar") {
+        if (!arg1) {
+          return "❓ <b>Uso:</b> <code>/asegurar &lt;MONEDA&gt; [PORCENTAJE]</code>\nEjemplo: <code>/asegurar pepe</code> (asegura el pico actual)\nEjemplo: <code>/asegurar pepe 3.0</code> (asegura en +3.0%)";
+        }
+        const sym = arg1.toUpperCase().endsWith("USDT") ? arg1.toUpperCase() : `${arg1.toUpperCase()}USDT`;
+        const pct = arg2 ? parseFloat(arg2) : undefined;
+        const res = await this.lockPositionFloor(sym, pct);
+        if (res.success) {
+          return `🔒 <b>¡ÉXITO!</b> ${res.msg}\nSi el precio sube, ¡seguirá sumando! Si baja, tienes asegurado el +${res.lockedPct}% neto.`;
+        } else {
+          return `⚠️ ${res.msg}`;
+        }
       }
 
       if (cmd === "/vender" || cmd === "vender") {

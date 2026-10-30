@@ -52,5 +52,23 @@
     "feesUsdt": 0.04471569514422326,
     "netPnlUsdt": 0.5238940164092694,
     "roePct": 3.4926267760617953
+  },
+  {
+    "id": "sim_fut_1793288949878",
+    "symbol": "BNBUSDT",
+    "side": "SHORT",
+    "entryPrice": 751.589652,
+    "exitPrice": 702.63,
+    "marginUsdt": 15,
+    "leverage": 3,
+    "notionalUsdt": 45,
+    "openTime": 1793288949878,
+    "closeTime": 1793313101274,
+    "durationMin": 403,
+    "exitReason": "TRAILING_TP",
+    "grossPnlUsdt": 2.9313659842671704,
+    "feesUsdt": 0.04353431700786641,
+    "netPnlUsdt": 2.887831667259304,
+    "roePct": 19.252211115062025
   }
 ]

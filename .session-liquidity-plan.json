@@ -1,12 +1,13 @@
 {
-  "sessionKey": "NY_IMPULSO",
-  "sessionTitle": "🗽 Impulso Wall Street (Máxima Liquidez y Volumen)",
-  "totalFreeUsdt": 1.76658237,
-  "reservedUsdt": 0,
-  "spendableUsdt": 1.76658237,
-  "lotFractionPct": 0.5,
+  "sessionKey": "COSECHA_PRENOCTURNA",
+  "sessionTitle": "🌆 Cosecha Vespertina & Acumulación (17:00 - 20:00 COT)",
+  "totalFreeUsdt": 0.10119953,
+  "reservedUsdt": 0.10119953,
+  "spendableUsdt": 0,
+  "lotFractionPct": 0.25,
   "trailingBounceTrigger": 0.35,
-  "reason": "Mayor volumen transaccional diario en Spot y Futuros. Expansión de tendencias.",
-  "recommendation": "🗽 Dejar correr posiciones con Trailing Take Profit amplio aprovechando el impulso de Nueva York.",
-  "updatedAt": 1793297246664
+  "harvestCallbackPct": 0.2,
+  "reason": "Preparación para el drenaje nocturno. El 45% de la cuenta se protege en USDT líquido.",
+  "recommendation": "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para cerrar en verde y acumular USDT para la noche.",
+  "updatedAt": 1793313643439
 }

@@ -1499,6 +1499,30 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
       }
 
       if (
+        parsedUrl.pathname === "/api/positions/lock-floor" &&
+        req.method === "POST"
+      ) {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const actionFile = path.resolve(process.cwd(), ".opportunity-action.json");
+            fs.writeFileSync(
+              actionFile,
+              JSON.stringify({ action: "lock_floor", symbol: data.symbol, pct: data.pct, time: Date.now() }, null, 2),
+              "utf-8"
+            );
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: true }));
+          } catch (e: any) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+      if (
         parsedUrl.pathname === "/api/opportunity/action" &&
         req.method === "POST"
       ) {
