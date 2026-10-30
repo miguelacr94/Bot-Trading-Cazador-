@@ -253,6 +253,14 @@
         </button>
       </div>
 
+      <!-- Botón Salida Manual (Vender Ahora) -->
+      <div class="pos-manual-sell-box" style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:rgba(239, 68, 68, 0.06); border:1px solid rgba(239, 68, 68, 0.2); border-radius:8px;">
+        <span style="font-size:11px; color:var(--text-muted);">Salida manual</span>
+        <button class="btn-manual-sell" data-f="btnmanualsell" style="background:#ef4444; color:#fff; border:none; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
+          🛑 Vender Ahora
+        </button>
+      </div>
+
       <div class="pos-footer">
         <span class="pnl-label">Ganancia flotante</span>
         <div style="text-align:right">
@@ -283,6 +291,59 @@
           }
         } catch(err) {
           console.error("Error setting timeframe:", err);
+        }
+        return;
+      }
+
+      // Click en botón Vender Ahora (Salida Manual con Alerta Estricta si está en pérdida)
+      const manualSellBtn = e.target.closest(".btn-manual-sell");
+      if (manualSellBtn) {
+        const id = currentP.id || currentP.lotId || currentP.symbol;
+        const currentGain = currentP.gainPct || 0;
+        const pnlVal = currentP.pnlUsdt || 0;
+
+        if (currentGain < 0 || pnlVal < 0) {
+          // ALERTA DE SEGURIDAD ESTRICTA: VENTA EN PÉRDIDA
+          const alertLossMsg = "⚠️ ALERTA DE SEGURIDAD - VENTA EN PÉRDIDA ⚠️\n\n" +
+            "• Moneda: " + currentP.symbol + "\n" +
+            "• Pérdida flotante: " + pnlVal.toFixed(2) + " USDT (" + currentGain.toFixed(2) + "%)\n\n" +
+            "🛑 El bot tiene estrictamente PROHIBIDO vender a pérdida de forma automática para proteger tu capital.\n\n" +
+            "¿Estás absolutamente seguro de que deseas forzar el cierre manual y asumir esta pérdida ahora?";
+          
+          if (!confirm(alertLossMsg)) return;
+          if (!confirm("🚨 ÚLTIMA CONFIRMACIÓN:\n¿Confirmas que deseas ejecutar la venta en PÉRDIDA de " + currentP.symbol + "?")) return;
+
+          try {
+            const res = await fetch("/api/positions/manual-sell", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, allowLoss: true })
+            });
+            const d = await res.json();
+            if (d.success && typeof showToast === "function") {
+              showToast("🛑 Venta en pérdida autorizada para " + currentP.symbol);
+            }
+          } catch(err) {
+            console.error("Error ejecutando venta manual:", err);
+          }
+        } else {
+          // Venta en ganancia
+          const ok = confirm("🎯 ¿Deseas cerrar la posición de " + currentP.symbol + " en GANANCIA (+" + currentGain.toFixed(2) + "% / +" + pnlVal.toFixed(2) + " USDT) ahora mismo?");
+          if (ok) {
+            try {
+              const res = await fetch("/api/positions/manual-sell", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id, allowLoss: false })
+              });
+              const d = await res.json();
+              if (d.success && typeof showToast === "function") {
+                showToast("🚀 Venta de " + currentP.symbol + " enviada.");
+              }
+            } catch(err) {
+              console.error("Error ejecutando venta manual:", err);
+            }
+          }
         }
         return;
       }

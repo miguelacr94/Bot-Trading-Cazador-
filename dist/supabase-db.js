@@ -155,8 +155,8 @@ export class SupabaseDbService {
                     strategy: row.strategy,
                     customCallbackPct: row.custom_callback_pct ? parseFloat(row.custom_callback_pct) : undefined,
                     customTimeframe: row.custom_timeframe || undefined,
-                    customMinGainPct: isLot ? 10.0 : undefined,
-                    lockedFloorGainPct: isLot ? 8.0 : undefined,
+                    customMinGainPct: row.custom_min_gain_pct ? parseFloat(row.custom_min_gain_pct) : undefined,
+                    lockedFloorGainPct: row.locked_floor_gain_pct ? parseFloat(row.locked_floor_gain_pct) : undefined,
                     partialProfitTaken: row.partial_profit_taken === true
                 };
                 map.set(row.symbol, item);

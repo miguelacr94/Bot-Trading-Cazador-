@@ -377,8 +377,16 @@ export class TrailingMasterBot {
       const acc = await this.client.account({ recvWindow: 60000 });
       const checkList = [...WATCHLIST, "PEPEUSDT"];
       for (const sym of checkList) {
-        if (this.activeTrailingPositions.has(sym)) continue;
         const asset = sym.replace("USDT", "");
+        
+        // 🛡️ BLINDAJE SUPREMO: Verificar si YA existe cualquier lote o posición viva para esta moneda
+        const alreadyTracked = Array.from(this.activeTrailingPositions.entries()).some(([key, p]) => {
+          const cleanKey = key.split('_')[0];
+          const cleanSym = (p.symbol || "").split('_')[0];
+          return cleanKey === sym || cleanSym === sym || key.startsWith(asset + "_") || cleanKey === asset;
+        });
+        if (alreadyTracked) continue; // Si ya tiene lotes, JAMÁS pisar ni crear huérfanos que mezclen precios
+
         const balObj = acc.data.balances.find((b: any) => b.asset === asset);
         if (!balObj) continue;
         const free = parseFloat(balObj.free || "0");
@@ -396,16 +404,30 @@ export class TrailingMasterBot {
 
         const usdtValue = total * curPrice;
         if (usdtValue >= 10) {
-          console.log(`🔍 [AUTO-SYNC] Moneda detectada en Binance sin tracking: ${sym} (${total} ${asset} ≈ ${usdtValue.toFixed(2)} USDT)`);
+          console.log(`🔍 [AUTO-SYNC] Moneda detectada en Binance sin tracking alguno: ${sym} (${total} ${asset} ≈ ${usdtValue.toFixed(2)} USDT)`);
           let buyPrice = curPrice;
           let buyTime = Date.now();
           try {
-            const tradesRes = await this.client.myTrades(sym, { limit: 10, recvWindow: 60000 });
+            const tradesRes = await this.client.myTrades(sym, { limit: 20, recvWindow: 60000 });
             const buyTrades = (tradesRes.data || []).filter((t: any) => t.isBuyer);
             if (buyTrades.length > 0) {
-              const lastBuy = buyTrades[buyTrades.length - 1];
-              buyPrice = parseFloat(lastBuy.price);
-              buyTime = lastBuy.time || Date.now();
+              // Calcular precio promedio ponderado real recorriendo hacia atrás hasta cubrir el balance
+              let coveredQty = 0;
+              let weightedCost = 0;
+              for (let i = buyTrades.length - 1; i >= 0; i--) {
+                const t = buyTrades[i];
+                const tQty = parseFloat(t.qty);
+                const tPrice = parseFloat(t.price);
+                const need = total - coveredQty;
+                const useQty = Math.min(tQty, need);
+                coveredQty += useQty;
+                weightedCost += useQty * tPrice;
+                if (coveredQty >= total * 0.98) break;
+              }
+              if (coveredQty > 0) {
+                buyPrice = weightedCost / coveredQty;
+                buyTime = buyTrades[buyTrades.length - 1].time || Date.now();
+              }
             }
           } catch (err: any) {
             console.error(`No se pudieron obtener trades previos de ${sym}: ${err.message}`);
@@ -425,8 +447,8 @@ export class TrailingMasterBot {
             activated,
             buyTime
           });
-          this.saveTrailingPositions();
-          console.log(`✅ ${sym} adoptada con éxito para Trailing Take Profit.`);
+          await this.saveTrailingPositions();
+          console.log(`✅ ${sym} adoptada con éxito para Trailing Take Profit (Precio prom ponderado: ${buyPrice.toFixed(4)}).`);
         }
       }
     } catch (e: any) {
@@ -653,7 +675,31 @@ export class TrailingMasterBot {
       if (fs.existsSync(file)) {
         const data = JSON.parse(fs.readFileSync(file, "utf-8"));
         fs.unlinkSync(file);
-        if (data.action === "lock_profit" && data.id) {
+        if (data.action === "manual_sell" && data.id) {
+          let pos = this.activeTrailingPositions.get(data.id);
+          let posKey = data.id;
+          if (!pos) {
+            for (const [k, p] of this.activeTrailingPositions.entries()) {
+              if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
+                pos = p;
+                posKey = k;
+                break;
+              }
+            }
+          }
+          if (pos) {
+            console.log(`🌐 [VENTA MANUAL RECIBIDA] Ejecutando venta manual para ${pos.symbol} (allowLoss: ${!!data.allowLoss})...`);
+            const actualSym = pos.symbol.split('_')[0];
+            const ticker = await this.client.tickerPrice(actualSym);
+            const curPrice = parseFloat(ticker.data.price);
+            const sold = await this.executeTrailingSell(pos, curPrice, false, false, "MANUAL_DASHBOARD", true, !!data.allowLoss);
+            if (sold) {
+              this.activeTrailingPositions.delete(posKey);
+              await this.saveTrailingPositions();
+              await this.notifier.send(`🌐 <b>[VENTA MANUAL CONFIRMADA]</b> Posición <b>${pos.symbol}</b> cerrada desde el Dashboard a ${fmtPrice(curPrice)}.`);
+            }
+          }
+        } else if (data.action === "lock_profit" && data.id) {
           let pos = this.activeTrailingPositions.get(data.id);
           if (!pos) {
             for (const [k, p] of this.activeTrailingPositions.entries()) {
@@ -1041,10 +1087,25 @@ export class TrailingMasterBot {
 
     for (const [sym, pos] of this.activeTrailingPositions.entries()) {
       try {
-        if (pos.dcaCount && pos.dcaCount >= 2) continue;
-        if (pos.lastDcaTime && (Date.now() - pos.lastDcaTime) < 3 * 3600 * 1000) continue;
+        // 🛑 REGLA DE SEGURIDAD 1: Solo el Lote 1 principal puede iniciar un Smart DCA
+        if (sym.includes('_lot_') || (pos.lotIndex && pos.lotIndex > 1)) continue;
 
         const cleanSym = (pos.symbol || sym).split('_')[0];
+
+        // 🛑 REGLA DE SEGURIDAD 2: Límite estricto de MÁXIMO 2 lotes en total por moneda
+        const existingLotsForAsset = Array.from(this.activeTrailingPositions.entries()).filter(([k, p]) => {
+          const pSym = (p.symbol || k).split('_')[0];
+          return pSym === cleanSym;
+        });
+        if (existingLotsForAsset.length >= 2) {
+          continue; // Ya tiene Lote 1 y Lote 2. ¡PROHIBIDO crear Lote 3 o acumular más!
+        }
+
+        // 🛑 REGLA DE SEGURIDAD 3: Cooldown estricto de 6 horas entre compras de la misma moneda
+        if (pos.dcaCount && pos.dcaCount >= 2) continue;
+        if (pos.lastDcaTime && (Date.now() - pos.lastDcaTime) < 6 * 3600 * 1000) continue;
+        if (pos.buyTime && (Date.now() - pos.buyTime) < 6 * 3600 * 1000) continue;
+
         const curPrice = parseFloat((await this.client.tickerPrice(cleanSym)).data.price);
         const dropPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
 
@@ -1052,8 +1113,8 @@ export class TrailingMasterBot {
         if (lastIgnored) {
           const hoursSince = (Date.now() - lastIgnored.timestamp) / (3600 * 1000);
           const extraDropPct = ((curPrice - lastIgnored.price) / lastIgnored.price) * 100;
-          if (hoursSince < 2 && extraDropPct > -3.0) {
-            continue; // En enfriamiento tras /ignorar (no spamear al usuario a menos que caiga -3% más)
+          if (hoursSince < 6 && extraDropPct > -4.0) {
+            continue; // En enfriamiento de 6 horas tras /ignorar
           }
         }
 
@@ -1477,7 +1538,7 @@ export class TrailingMasterBot {
     }
   }
 
-  async executeTrailingSell(pos: ActivePosition, exitPrice: number, hitHardCap: boolean, isStopLoss: boolean = false, reasonOverride?: string): Promise<boolean> {
+  async executeTrailingSell(pos: ActivePosition, exitPrice: number, hitHardCap: boolean, isStopLoss: boolean = false, reasonOverride?: string, isManualExit: boolean = false, allowLoss: boolean = false): Promise<boolean> {
     try {
       const actualSymbol = pos.symbol.includes('_lot_') ? pos.symbol.split('_')[0] : pos.symbol;
       const asset = actualSymbol.replace("USDT", "");
@@ -1504,13 +1565,23 @@ export class TrailingMasterBot {
         return false;
       }
 
-      // 🛡️ REGLA SUPREMA DE BLINDAJE SPOT: NUNCA VENDER A PÉRDIDA
+      // 🛡️ REGLA SUPREMA DE BLINDAJE SPOT: NUNCA VENDER A PÉRDIDA AUTOMÁTICAMENTE
       const curCheckPrice = exitPrice || parseFloat((await this.client.tickerPrice(actualSymbol)).data.price);
       const estGainPct = ((curCheckPrice - pos.buyPrice) / pos.buyPrice) * 100;
       const minNetFloor = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.30) ? 0.28 : 0.45;
-      if (curCheckPrice <= pos.buyPrice || estGainPct < minNetFloor) {
-        console.error(`🛡️ [VENTA A PÉRDIDA BLOQUEADA] ${pos.symbol}: Precio ${curCheckPrice} <= Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}%). Venta CANCELADA sin tocar Binance.`);
-        return false;
+
+      if (!isManualExit) {
+        // En cualquier salida automática (trailing, callback, etc.): BLOQUEO TOTAL SI HAY PÉRDIDA O GANANCIA INSUFICIENTE
+        if (curCheckPrice <= pos.buyPrice || estGainPct < minNetFloor) {
+          console.error(`🛡️ [VENTA A PÉRDIDA AUTOMÁTICA BLOQUEADA] ${pos.symbol}: Precio ${curCheckPrice} <= Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}%). Venta CANCELADA sin tocar Binance.`);
+          return false;
+        }
+      } else {
+        // Salida manual desde el Dashboard: si está a pérdida, requiere confirmación explícita con alerta
+        if ((curCheckPrice <= pos.buyPrice || estGainPct < 0) && !allowLoss) {
+          console.error(`🛡️ [VENTA MANUAL A PÉRDIDA BLOQUEADA] ${pos.symbol}: Requiere confirmación explícita con alerta en el Dashboard (allowLoss=true).`);
+          return false;
+        }
       }
 
       const sellRes = await this.client.newOrder(actualSymbol, "SELL", "MARKET", {
@@ -3771,9 +3842,12 @@ export class TrailingMasterBot {
 
   // --- CENTINELA DE LIQUIDEZ (50 USDT) Y VIABILIDAD DE FUTUROS ---
   private isCheckingLiquidity = false;
+  private lastLiquidityAlertTime = 0;
 
   private async checkLiquidityAndFuturesViability(freeUsdt: number): Promise<void> {
     if (this.isCheckingLiquidity) return;
+    // Cooldown de 4 horas para no spamear Telegram
+    if (Date.now() - this.lastLiquidityAlertTime < 4 * 3600 * 1000) return;
 
     // Histéresis: Si el saldo cae por debajo de 35 USDT, reseteamos la bandera para poder alertar de nuevo
     if (freeUsdt < 35.0) {
@@ -3790,6 +3864,7 @@ export class TrailingMasterBot {
       this.isCheckingLiquidity = true;
       try {
         this.controls.notified50UsdtThreshold = true;
+        this.lastLiquidityAlertTime = Date.now();
         this.saveStrategyControls();
         console.log(`[LIQUIDEZ 💰] ¡Detectados ${freeUsdt.toFixed(2)} USDT libres! Evaluando viabilidad de Futuros...`);
 

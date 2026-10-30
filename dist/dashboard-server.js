@@ -151,7 +151,8 @@ export class DashboardServer {
             const candidates = ["ETH", "SOL", "AVAX", "BTC", "BNB", "XRP", "PEPE", "DOGE", "BONK", "SHIB", "WIF"];
             for (const base of candidates) {
                 const sym = base + "USDT";
-                if (diskPositions.some(([s]) => s === sym))
+                // 🛡️ Si ya existe CUALQUIER lote o posición de esta moneda en el disco, NO TOCAR
+                if (diskPositions.some(([s, p]) => s === sym || s.startsWith(base + "_") || (p && p.symbol && p.symbol.startsWith(base))))
                     continue;
                 const spotBal = parseFloat(b.find((x) => x.asset === base)?.free || "0");
                 const earnBal = parseFloat(b.find((x) => x.asset === "LD" + base)?.free || "0");
@@ -1408,6 +1409,30 @@ export class DashboardServer {
                         fs.writeFileSync(actionFile, JSON.stringify({ action: "lock_floor", symbol: data.symbol, pct: data.pct, time: Date.now() }, null, 2), "utf-8");
                         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
                         res.end(JSON.stringify({ success: true }));
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            if (parsedUrl.pathname === "/api/positions/manual-sell" &&
+                req.method === "POST") {
+                let body = "";
+                req.on("data", (chunk) => (body += chunk));
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const actionFile = path.resolve(process.cwd(), ".position-action.json");
+                        fs.writeFileSync(actionFile, JSON.stringify({
+                            action: "manual_sell",
+                            id: data.id,
+                            allowLoss: data.allowLoss === true,
+                            time: Date.now()
+                        }, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                        res.end(JSON.stringify({ success: true, message: "Orden de venta manual enviada al bot." }));
                     }
                     catch (e) {
                         res.writeHead(400, { "Content-Type": "application/json" });
