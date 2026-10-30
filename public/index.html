@@ -2314,58 +2314,190 @@
 
 
           <!-- Comparativa: Depósitos vs Ganancias del Bot (Meta de Superación) -->
-      <div id="crossover-comparison-card" style="margin-bottom: 20px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 16px 20px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 1.4rem;">📊</span>
+      <!-- COMPARATIVA EN TIEMPO REAL: DEPÓSITOS TOTALES VS GANANCIAS DEL BOT (MISIÓN DE SUPERACIÓN) -->
+      <div id="crossover-comparison-card" style="margin-bottom: 25px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 14px; padding: 20px 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);">
+        
+        <!-- Header con Título, Selector de Moneda y Administrador -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 10px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+              📊
+            </div>
             <div>
-              <div style="font-weight: 700; font-size: 0.95rem; color: #60a5fa; display: flex; align-items: center; gap: 8px;">
+              <div style="font-weight: 800; font-size: 1.05rem; color: #60a5fa; display: flex; align-items: center; gap: 8px; letter-spacing: 0.3px;">
                 MISIÓN DE SUPERACIÓN: GANANCIAS DEL BOT VS DEPÓSITOS
-                <span style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; font-size: 0.72rem; padding: 2px 7px; border-radius: 4px; font-weight: 600;">META: 100% RETORNO</span>
+                <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.72rem; padding: 3px 8px; border-radius: 4px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.3);">
+                  META: 100% RETORNO
+                </span>
               </div>
-              <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 2px;">
-                El propósito es que las ganancias líquidas generadas por el bot superen todos los depósitos invertidos de tu bolsillo.
+              <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 3px;">
+                Comparativa gráfica interactiva: Suma de tus depósitos vs lo generado por el bot (ganancias cobradas, pérdidas restadas y promedios).
               </div>
             </div>
           </div>
-          <div style="text-align: right;">
-            <div id="crossover-status-text" style="font-weight: 700; font-size: 1.05rem; color: #3b82f6;">
-              17.21 / 66.14 USDT (26%)
+
+          <!-- Selector COP / USDT y Botón de Ajustar Depósitos -->
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div style="display: inline-flex; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 3px;">
+              <button id="crossover-btn-cop" type="button" style="background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.2s;">
+                🇨🇴 COP ($ Pesos)
+              </button>
+              <button id="crossover-btn-usdt" type="button" style="background: transparent; color: #94a3b8; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.2s;">
+                💵 USDT ($ Dólares)
+              </button>
             </div>
-            <div id="crossover-remaining-text" style="font-size: 0.75rem; color: #cbd5e1; margin-top: 2px;">
-              Faltan 48.93 USDT para superar depósitos
-            </div>
+            <button id="crossover-btn-toggle-deposits" type="button" style="background: rgba(255, 255, 255, 0.06); color: #cbd5e1; border: 1px solid rgba(255, 255, 255, 0.15); padding: 7px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <span>📋 Ver / Administrar Depósitos</span>
+              <span id="crossover-deposits-chevron">▼</span>
+            </button>
           </div>
         </div>
 
-        <!-- Barras comparativas visuales -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 12px;">
-          <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; padding: 10px 14px;">
-            <div style="font-size: 0.72rem; color: #94a3b8; text-transform: uppercase;">💼 Total Depositado (Bolsillo)</div>
-            <div style="font-size: 1.15rem; font-weight: 700; color: #60a5fa; margin-top: 2px;">$66.14 USDT</div>
-            <div style="font-size: 0.75rem; color: #64748b;">≈ $225,000 COP (Ciclo Bot)</div>
+        <!-- Panel Colapsable de Gestión de Depósitos (Oculto por defecto) -->
+        <div id="crossover-deposits-panel" style="display: none; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 14px 18px; margin-bottom: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 0.82rem; font-weight: 700; color: #cbd5e1;">
+              💼 Registro Detallado de Depósitos de Bolsillo
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button id="crossover-btn-preset-100" type="button" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); color: #93c5fd; font-size: 0.72rem; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                🧪 Probar Ejemplo (100 COP)
+              </button>
+              <button id="crossover-btn-reset-deposits" type="button" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #cbd5e1; font-size: 0.72rem; padding: 4px 10px; border-radius: 6px; cursor: pointer;">
+                🔄 Restablecer Reales ($225,000 COP)
+              </button>
+            </div>
           </div>
-          <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 10px 14px;">
-            <div style="font-size: 0.72rem; color: #94a3b8; text-transform: uppercase;">📈 Valor Actual en Binance</div>
-            <div id="crossover-equity-val" style="font-size: 1.15rem; font-weight: 700; color: #10b981; margin-top: 2px;">$180.30 USDT</div>
-            <div style="font-size: 0.75rem; color: #10b981;">+172% vs Depósitos (Superado)</div>
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; font-size: 0.75rem; border-collapse: collapse; text-align: left; color: #94a3b8;">
+              <thead>
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); color: #cbd5e1;">
+                  <th style="padding: 6px 8px;">#</th>
+                  <th style="padding: 6px 8px;">Fecha</th>
+                  <th style="padding: 6px 8px;">Monto COP</th>
+                  <th style="padding: 6px 8px;">Monto USDT</th>
+                  <th style="padding: 6px 8px;">Descripción / Destino</th>
+                  <th style="padding: 6px 8px; text-align: right;">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="crossover-deposits-tbody">
+                <!-- Se inyecta dinámicamente -->
+              </tbody>
+            </table>
           </div>
-          <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 10px 14px;">
-            <div style="font-size: 0.72rem; color: #94a3b8; text-transform: uppercase;">💵 Ganancias Cobradas (Bot)</div>
-            <div id="crossover-profits-val" style="font-size: 1.15rem; font-weight: 700; color: #f59e0b; margin-top: 2px;">$17.21 USDT</div>
-            <div id="crossover-pct-val" style="font-size: 0.75rem; color: #fbbf24;">26.0% de la meta alcanzado</div>
+          <!-- Formulario para agregar depósito -->
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.06); flex-wrap: wrap;">
+            <span style="font-size: 0.75rem; color: #cbd5e1; font-weight: 600;">+ Agregar nuevo depósito:</span>
+            <input id="new-dep-cop" type="number" placeholder="Monto COP (ej: 50000)" style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 5px 10px; color: #fff; font-size: 0.75rem; width: 170px;" />
+            <input id="new-dep-note" type="text" placeholder="Nota / Motivo" style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 5px 10px; color: #fff; font-size: 0.75rem; flex: 1; min-width: 150px;" />
+            <button id="new-dep-btn-add" type="button" style="background: #10b981; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
+              Guardar Depósito
+            </button>
           </div>
         </div>
 
-        <div style="margin-top: 14px;">
-          <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #94a3b8; margin-bottom: 5px;">
-            <span>Progreso hacia el Punto de Superación (Ganancias > Depósitos):</span>
-            <span id="crossover-bar-pct" style="color: #60a5fa; font-weight: 700;">26.0%</span>
+        <!-- Grid Principal: Gráfica de Barras a la izquierda, Métricas y Promedios a la derecha -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; align-items: center;">
+          
+          <!-- COLUMNA 1: Gráfica de Barras Interactiva (Chart.js) -->
+          <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">
+                📈 Gráfica Comparativa de Barras
+              </span>
+              <span id="crossover-chart-currency-badge" style="font-size: 0.7rem; color: #60a5fa; background: rgba(59, 130, 246, 0.15); padding: 2px 8px; border-radius: 4px; font-weight: 600;">
+                Valores en COP
+              </span>
+            </div>
+            <div style="height: 220px; width: 100%; position: relative;">
+              <canvas id="crossoverBarChart"></canvas>
+            </div>
           </div>
-          <div style="width: 100%; height: 9px; background: rgba(255,255,255,0.08); border-radius: 6px; overflow: hidden; position: relative;">
-            <div id="crossover-progress-bar" style="width: 26%; height: 100%; background: linear-gradient(90deg, #3b82f6, #10b981); border-radius: 6px; transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+
+          <!-- COLUMNA 2: Sumas, Desglose de Pérdidas/Ganancias y Promedios -->
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            
+            <!-- Tarjetas de Comparativa Rápida (Total Depositado vs Ganancia Neta Bot) -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              
+              <!-- Tarjeta 1: Total Depositado -->
+              <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 10px; padding: 10px 14px;">
+                <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">💼 Total Invertido (Depósitos)</div>
+                <div id="crossover-card-dep-val" style="font-size: 1.18rem; font-weight: 800; color: #60a5fa; margin-top: 2px;">$225,000 COP</div>
+                <div id="crossover-card-dep-sub" style="font-size: 0.72rem; color: #64748b;">≈ $66.14 USDT (4 depósitos)</div>
+              </div>
+
+              <!-- Tarjeta 2: Ganancia Neta Real del Bot -->
+              <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; padding: 10px 14px;">
+                <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">💎 Ganancia Neta Real (Bot)</div>
+                <div id="crossover-card-net-val" style="font-size: 1.18rem; font-weight: 800; color: #10b981; margin-top: 2px;">+$48,600 COP</div>
+                <div id="crossover-card-net-sub" style="font-size: 0.72rem; color: #34d399;">≈ +$11.57 USDT (Ganancias - Pérdidas)</div>
+              </div>
+
+            </div>
+
+            <!-- Fila de Desglose Matemático: Suma de Ganancias y Pérdidas -->
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 10px; padding: 10px 14px; font-size: 0.78rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="color: #94a3b8;">Desglose de Operaciones del Bot:</span>
+                <span id="crossover-winrate-tag" style="color: #10b981; font-weight: 700; background: rgba(16, 185, 129, 0.15); padding: 2px 7px; border-radius: 4px;">93.3% Efectividad (14V / 1D)</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <span style="color: #10b981; font-weight: 700;">🟢 Ganancias Sumadas: </span>
+                  <span id="crossover-sum-wins" style="color: #f1f5f9; font-weight: 600;">+$72,300 COP (+$17.21 USDT)</span>
+                </div>
+                <div>
+                  <span style="color: #ef4444; font-weight: 700;">🔴 Pérdidas Restadas: </span>
+                  <span id="crossover-sum-losses" style="color: #f1f5f9; font-weight: 600;">-$23,700 COP (-$5.64 USDT)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Promedio y Rentabilidad (Lo que pidió el usuario) -->
+            <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(16, 185, 129, 0.08)); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 10px; padding: 12px 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">📊 Rentabilidad Promedio sobre Depósitos (ROI)</div>
+                  <div id="crossover-roi-headline" style="font-size: 1.3rem; font-weight: 800; color: #38bdf8; margin-top: 2px;">
+                    +21.6% Neto
+                  </div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Promedio por Trade</div>
+                  <div id="crossover-avg-trade" style="font-size: 0.95rem; font-weight: 700; color: #10b981; margin-top: 2px;">
+                    +$5,160 COP (+1.23 USDT)
+                  </div>
+                </div>
+              </div>
+              <div id="crossover-explanation-text" style="font-size: 0.75rem; color: #cbd5e1; margin-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 6px;">
+                💡 <b>Relación:</b> Por cada 100 COP que depositaste en la cuenta, el bot ha producido <b>21.6 COP de ganancia limpia</b>.
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Barra de Progreso hacia la Meta de Superación (Ganancias > Depósitos) -->
+        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; margin-bottom: 6px;">
+            <span style="color: #cbd5e1; font-weight: 600;">
+              🏁 Progreso hacia el Punto de Superación (Ganancias del Bot &gt; Depósitos Totales):
+            </span>
+            <span id="crossover-progress-pct-badge" style="color: #38bdf8; font-weight: 800; font-size: 0.85rem;">
+              21.6%
+            </span>
+          </div>
+          <div style="width: 100%; height: 11px; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; overflow: hidden; position: relative;">
+            <div id="crossover-progress-bar-fill" style="width: 21.6%; height: 100%; background: linear-gradient(90deg, #3b82f6, #10b981); border-radius: 8px; transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94a3b8; margin-top: 5px;">
+            <span id="crossover-progress-sub-left">Depósito Invertido: $225,000 COP</span>
+            <span id="crossover-progress-sub-right" style="color: #fbbf24; font-weight: 600;">Faltan $176,400 COP ($42.00 USDT) para que las ganancias superen los depósitos al 100%</span>
           </div>
         </div>
+
       </div>
 
 <div id="auth-banner">
