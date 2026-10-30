@@ -426,6 +426,90 @@ export class DashboardServer {
     return 0.25;
   }
 
+  /**
+   * Calcula el plan de liquidez institucional y cosecha según el horario de los mercados (Horario Colombia / COT)
+   */
+  public computeSessionPlan(freeUsdt = 0): any {
+    const now = new Date();
+    const cotHour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+    const cotMin = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
+
+    const isLondon = cotHour >= 3 && cotHour < 7; // 03:00 - 07:00 COT (Apertura Europea)
+    const isNY = (cotHour === 8 && cotMin >= 30) || (cotHour > 8 && cotHour < 14); // 08:30 - 14:00 COT (Wall Street)
+    const isAfternoonSlide = cotHour >= 14 && cotHour < 17; // 14:00 - 17:00 COT (Cierre NY y deslizamiento)
+    const isPreNight = cotHour >= 17 && cotHour < 20; // 17:00 - 20:00 COT (Cosecha previa a Asia)
+    const isNight = cotHour >= 20 || cotHour < 3; // 20:00 - 03:00 COT (Drenaje nocturno y trampas)
+
+    let sessionKey: "NOCTURNO_DRENAJE" | "LONDRES_REBOTE" | "NY_IMPULSO" | "COSECHA_PRENOCTURNA" | "REGULAR" = "REGULAR";
+    let sessionTitle = "🔄 Sesión Regular / Transición";
+    let reservePct = 0.25;
+    let lotFractionPct = 0.40;
+    let trailingBounceTrigger = 0.35;
+    let harvestCallbackPct: number | undefined = undefined;
+    let reason = "Flujo estándar intradía. Manteniendo colchón de reserva protegido del 25%.";
+    let recommendation = "🔄 Operación cautelosa. El 25% del capital queda blindado ante caídas imprevistas.";
+
+    if (isNight) {
+      sessionKey = "NOCTURNO_DRENAJE";
+      sessionTitle = "🌙 Drenaje Nocturno (Caza de Stops / Vacío de Liquidez)";
+      reservePct = 0.50; // CONGELAR EL 50% PARA LONDRES A LAS 03:00 COT
+      lotFractionPct = 0.20;
+      trailingBounceTrigger = 0.45;
+      reason = "Bajo volumen y alto riesgo de caza de stops. El 50% de la caja queda CONGELADA para aprovechar los suelos de Londres a las 03:00 COT.";
+      recommendation = "🌙 Mantener reserva congelada. Compras bloqueadas salvo pánico extremo (RSI <= 26 con vela de rechazo).";
+    } else if (isLondon) {
+      sessionKey = "LONDRES_REBOTE";
+      sessionTitle = "🏰 Rebote de Londres (Apertura Europea / Absorción)";
+      reservePct = 0.15;
+      lotFractionPct = 0.60;
+      trailingBounceTrigger = 0.25;
+      reason = "Máxima tasa de acierto del ciclo (64%-71%). La liquidez guardada en la noche se despliega en los suelos confirmados.";
+      recommendation = "🏰 Modo Ofensivo Activo: Despliegue de lotes al 60% cazando suelos con Trailing Buy sensible (+0.25%).";
+    } else if (isNY) {
+      sessionKey = "NY_IMPULSO";
+      sessionTitle = "🗽 Impulso Wall Street (Máxima Liquidez y Volumen)";
+      reservePct = 0.25;
+      lotFractionPct = 0.50;
+      trailingBounceTrigger = 0.35;
+      reason = "Mayor volumen y liquidez institucional del día. Se acompaña la tendencia con Trailing Take Profit expansivo (+0.80% a +3.5%).";
+      recommendation = "🗽 Dejar correr posiciones vivas con Trailing Take Profit y reservar 25% para retrocesos.";
+    } else if (isAfternoonSlide) {
+      sessionKey = "COSECHA_PRENOCTURNA";
+      sessionTitle = "📉 Enfriamiento Post-Wall Street (14:00 - 17:00 COT)";
+      reservePct = 0.35;
+      lotFractionPct = 0.30;
+      trailingBounceTrigger = 0.40;
+      reason = "Volumen institucional descendente. Desacelerar compras nuevas para no quedar atrapado en deslizamientos de fin de sesión.";
+      recommendation = "📉 Proteger ganancias del día y ceñir stops en posiciones que alcancen metas.";
+    } else if (isPreNight) {
+      sessionKey = "COSECHA_PRENOCTURNA";
+      sessionTitle = "🌆 Cosecha Pre-Nocturna (17:00 - 20:00 COT)";
+      reservePct = 0.45;
+      lotFractionPct = 0.25;
+      trailingBounceTrigger = 0.40;
+      harvestCallbackPct = 0.20;
+      reason = "Ventana dorada de cosecha. Ceñir el Trailing al 0.20% y tomar ganancias con +0.65% para asegurar USDT en el bolsillo antes del corte asiático.";
+      recommendation = "🌆 Vender y recoger ganancias del día. Maximizar saldo en USDT para recibir la sesión asiática en liquidez.";
+    }
+
+    const reservedUsdt = Math.round(freeUsdt * reservePct * 100) / 100;
+    const spendableUsdt = Math.max(0, Math.round((freeUsdt - reservedUsdt) * 100) / 100);
+
+    return {
+      sessionKey,
+      sessionTitle,
+      totalFreeUsdt: freeUsdt,
+      reservedUsdt,
+      spendableUsdt,
+      lotFractionPct,
+      trailingBounceTrigger,
+      harvestCallbackPct,
+      reason,
+      recommendation,
+      updatedAt: Date.now()
+    };
+  }
+
   /** Construye la respuesta a partir de la caché (síncrono, instantáneo) */
   getStatusData() {
     const rawPositions = this.readJson(".trailing-positions.json");
@@ -692,9 +776,12 @@ export class DashboardServer {
       sessionPlan: (() => {
         try {
           const spFile = path.resolve(process.cwd(), ".session-liquidity-plan.json");
-          if (fs.existsSync(spFile)) return JSON.parse(fs.readFileSync(spFile, "utf-8"));
+          if (fs.existsSync(spFile)) {
+            const data = JSON.parse(fs.readFileSync(spFile, "utf-8"));
+            if (Date.now() - (data.updatedAt || 0) < 60000) return data;
+          }
         } catch(e) {}
-        return null;
+        return this.computeSessionPlan(cash);
       })(),
       projections:
         p && p.cycles.length > 0
