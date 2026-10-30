@@ -148,8 +148,9 @@ export class SupabaseDbService {
       }
 
       for (const row of data || []) {
-        map.set(row.symbol, {
-          symbol: row.symbol,
+        const item = {
+          symbol: row.symbol.startsWith('PEPEUSDT_lot_') ? 'PEPEUSDT' : row.symbol,
+          lotId: row.symbol,
           buyPrice: parseFloat(row.buy_price),
           qty: parseFloat(row.qty),
           investedUsdt: parseFloat(row.invested_usdt),
@@ -159,8 +160,10 @@ export class SupabaseDbService {
           strategy: row.strategy,
           customCallbackPct: row.custom_callback_pct ? parseFloat(row.custom_callback_pct) : undefined,
           customTimeframe: row.custom_timeframe || undefined,
+          customMinGainPct: row.symbol.includes('_lot_') ? 10.0 : undefined,
           partialProfitTaken: row.partial_profit_taken === true
-        });
+        };
+        map.set(row.symbol, item);
       }
       return map;
     } catch (err: any) {

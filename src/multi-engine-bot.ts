@@ -1276,7 +1276,8 @@ export class TrailingMasterBot {
       }
 
       console.log(`🎯 [Venta Parcial 50%] Vendiendo ${sellQtyStr} ${asset} en ${pos.symbol} a ~${exitPrice} para asegurar ganancia en la cima...`);
-      const sellRes = await this.client.newOrder(pos.symbol, "SELL", "MARKET", {
+      const tradeSym = pos.symbol.includes("_lot_") ? pos.symbol.split("_")[0] : pos.symbol;
+      const sellRes = await this.client.newOrder(tradeSym, "SELL", "MARKET", {
         quantity: sellQtyStr,
         newOrderRespType: "FULL",
         recvWindow: 60000
@@ -1354,7 +1355,8 @@ export class TrailingMasterBot {
 
   async executeTrailingSell(pos: ActivePosition, exitPrice: number, hitHardCap: boolean, isStopLoss: boolean = false, reasonOverride?: string): Promise<boolean> {
     try {
-      const asset = pos.symbol.replace("USDT", "");
+      const actualSymbol = pos.symbol.includes('_lot_') ? pos.symbol.split('_')[0] : pos.symbol;
+      const asset = actualSymbol.replace("USDT", "");
       let freeBal = await this.getFreeBalance(asset);
 
       // Si falta saldo (barrido a Earn), rescatarlo antes de vender
@@ -1366,7 +1368,7 @@ export class TrailingMasterBot {
       // Vender solo la cantidad de esta posición (no tocar otros saldos)
       const sellBase = Math.min(freeBal, pos.qty);
 
-      const exInfo = await this.client.exchangeInfo({ symbol: pos.symbol });
+      const exInfo = await this.client.exchangeInfo({ symbol: actualSymbol });
       const sInfo = exInfo.data.symbols[0];
       const stepSize = parseFloat(sInfo.filters.find((f: any) => f.filterType === "LOT_SIZE").stepSize);
       const qtyDec = Math.max(0, Math.round(-Math.log10(stepSize)));
@@ -3761,6 +3763,11 @@ export class TrailingMasterBot {
       this.cycleCount = (this.cycleCount || 0) + 1;
       if (this.cycleCount % 6 === 1) {
         await this.syncOrphanPositions();
+      }
+
+      // Recargar posiciones dinámicamente para adoptar cualquier nuevo lote comprado
+      if ((this.cycleCount || 0) % 3 === 0) {
+        await this.loadTrailingPositions();
       }
 
       // 1. Monitorear y rastrear posiciones abiertas en Trailing Stop
