@@ -745,54 +745,33 @@ export class DashboardServer {
 
     // 2. Fusionar trades locales con deduplicación inteligente contra Binance
     for (const l of localLedger) {
-      let existingKey: string | undefined;
-      for (const [k, c] of (syncMap as Map<string, any>).entries()) {
-        if (l.orderId && c.orderId && String(c.orderId) === String(l.orderId)) {
-          existingKey = k;
-          break;
-        }
+      const alreadyInBinance = binanceCycles.some((c: any) => {
+        if (c.orderId && l.orderId && String(c.orderId) === String(l.orderId)) return true;
         if (c.symbol === l.symbol) {
           const priceDiff = Math.abs((c.avgSell || 0) - (l.sellPrice || 0)) / (c.avgSell || 1);
           const timeDiff = Math.abs((c.time || 0) - (l.time || 0));
-          if (priceDiff < 0.01 && timeDiff < 6 * 3600 * 1000) {
-            existingKey = k;
-            break;
-          }
+          if (priceDiff < 0.01 && timeDiff < 6 * 3600 * 1000) return true;
         }
-      }
+        return false;
+      });
 
-      if (existingKey) {
-        // Si el trade proviene de ejecución del bot, priorizar los datos reales de entrada y PnL de su lote
-        // para evitar discrepancias donde Binance empareja contra compras históricas antiguas ajenas al ciclo del bot
-        const existing = syncMap.get(existingKey);
-        if (l.source === 'bot_execution' || (l.pnlUsdt !== undefined && l.buyPrice !== undefined)) {
-          syncMap.set(existingKey, {
-            ...existing,
-            avgBuy: l.buyPrice ?? existing.avgBuy,
-            avgSell: l.sellPrice ?? existing.avgSell,
-            costUsdt: l.costUsdt ?? existing.costUsdt,
-            proceedsUsdt: l.proceedsUsdt ?? existing.proceedsUsdt,
-            pnlUsdt: l.pnlUsdt ?? existing.pnlUsdt,
-            pnlPct: l.pnlPct ?? existing.pnlPct,
-            strategy: l.strategy || existing.strategy
+      if (!alreadyInBinance) {
+        const key = String(l.orderId || (l.symbol + "_" + Math.round(l.time / 1000)));
+        if (!syncMap.has(key)) {
+          syncMap.set(key, {
+            symbol: l.symbol,
+            orderId: l.orderId,
+            time: l.time,
+            qty: l.qty,
+            avgBuy: l.buyPrice,
+            avgSell: l.sellPrice,
+            costUsdt: l.costUsdt,
+            proceedsUsdt: l.proceedsUsdt,
+            feesUsdt: l.feesUsdt,
+            pnlUsdt: l.pnlUsdt,
+            pnlPct: l.pnlPct
           });
         }
-      } else {
-        const key = String(l.orderId || (l.symbol + '_' + Math.round(l.time / 1000)));
-        syncMap.set(key, {
-          symbol: l.symbol,
-          orderId: l.orderId,
-          time: l.time,
-          qty: l.qty,
-          avgBuy: l.buyPrice,
-          avgSell: l.sellPrice,
-          costUsdt: l.costUsdt,
-          proceedsUsdt: l.proceedsUsdt,
-          feesUsdt: l.feesUsdt,
-          pnlUsdt: l.pnlUsdt,
-          pnlPct: l.pnlPct,
-          strategy: l.strategy
-        });
       }
     }
 
