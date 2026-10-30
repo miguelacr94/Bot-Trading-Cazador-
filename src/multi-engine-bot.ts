@@ -1471,6 +1471,68 @@ export class TrailingMasterBot {
   /**
    * Si Binance barrió el saldo a Simple Earn (Auto-Subscribe), lo rescata a Spot.
    */
+  // 🛡️ VERIFICADOR DE COSTO REAL CONTRA BINANCE (mismo método LIFO que la "Lista de Ventas")
+  // El precio en memoria (pos.buyPrice) puede estar mal si un lote se fusionó; Binance es la fuente de verdad.
+  private shieldNotifyAt: Map<string, number> = new Map();
+  private shouldNotifyShield(key: string): boolean {
+    const last = this.shieldNotifyAt.get(key) || 0;
+    if (Date.now() - last < 30 * 60 * 1000) return false;
+    this.shieldNotifyAt.set(key, Date.now());
+    return true;
+  }
+
+  private async verifyRealCostWithBinance(symbol: string, sellQty: number, price: number): Promise<{ ok: boolean; cost: number; estPnl: number; reason?: string }> {
+    try {
+      const asset = symbol.replace("USDT", "");
+      const res = await this.client.myTrades(symbol, { limit: 1000, recvWindow: 60000 });
+      const trades = ((res && res.data) || []).slice().sort((a: any, b: any) => a.time - b.time || a.id - b.id);
+      const orders: { orderId: number; isBuyer: boolean; fills: any[] }[] = [];
+      for (const t of trades) {
+        const last = orders[orders.length - 1];
+        if (last && last.orderId === t.orderId) last.fills.push(t);
+        else orders.push({ orderId: t.orderId, isBuyer: t.isBuyer, fills: [t] });
+      }
+      const lots: { qty: number; unitCost: number }[] = [];
+      for (const o of orders) {
+        let qty = 0, quote = 0, feeBase = 0, feeUsdt = 0;
+        for (const f of o.fills) {
+          qty += parseFloat(f.qty);
+          quote += parseFloat(f.quoteQty);
+          const c = parseFloat(f.commission);
+          if (f.commissionAsset === asset) feeBase += c;
+          else if (f.commissionAsset === "USDT") feeUsdt += c;
+        }
+        if (o.isBuyer) {
+          const net = qty - feeBase;
+          if (net > 0) lots.push({ qty: net, unitCost: (quote + feeUsdt) / net });
+          continue;
+        }
+        let rem = qty;
+        while (rem > 1e-12 && lots.length) {
+          const l = lots[lots.length - 1];
+          const take = Math.min(l.qty, rem);
+          l.qty -= take; rem -= take;
+          if (l.qty <= 1e-12) lots.pop();
+        }
+      }
+      let rem = sellQty, cost = 0;
+      for (let i = lots.length - 1; i >= 0 && rem > 1e-12; i--) {
+        const take = Math.min(lots[i].qty, rem);
+        cost += take * lots[i].unitCost;
+        rem -= take;
+      }
+      if (rem > sellQty * 0.01) {
+        return { ok: false, cost, estPnl: NaN, reason: `${rem.toFixed(6)} ${asset} sin costo verificable en el historial de Binance` };
+      }
+      const matched = sellQty - rem;
+      const estPnl = matched * price * (1 - 0.001) - cost; // descuenta comisión de venta 0.1%
+      return { ok: estPnl > cost * 0.001, cost, estPnl }; // margen extra para comisiones en BNB
+    } catch (e: any) {
+      // FAIL-CLOSED: si no se puede verificar, NO se vende
+      return { ok: false, cost: 0, estPnl: NaN, reason: "No se pudo consultar el historial de Binance: " + (e.response?.data?.msg || e.message) };
+    }
+  }
+
   private async redeemFromEarnIfNeeded(asset: string, needed: number): Promise<void> {
     try {
       const res = await this.client.getFlexibleProductPosition({ asset, recvWindow: 60000 });
@@ -1547,6 +1609,11 @@ export class TrailingMasterBot {
 
       console.log(`🎯 [Venta Parcial 50%] Vendiendo ${sellQtyStr} ${asset} en ${pos.symbol} a ~${exitPrice} para asegurar ganancia en la cima...`);
       const tradeSym = pos.symbol.includes("_lot_") ? pos.symbol.split("_")[0] : pos.symbol;
+      const realCheckP = await this.verifyRealCostWithBinance(tradeSym, sellQty, exitPrice);
+      if (!realCheckP.ok) {
+        console.error(`🛑 [CORE SHIELD: COSTO REAL] Venta parcial de ${pos.symbol} BLOQUEADA: ${realCheckP.reason || "Binance la registraría como pérdida (" + realCheckP.estPnl.toFixed(3) + " USDT)"}`);
+        return false;
+      }
       const sellRes = await this.client.newOrder(tradeSym, "SELL", "MARKET", {
         quantity: sellQtyStr,
         newOrderRespType: "FULL",
@@ -1556,7 +1623,7 @@ export class TrailingMasterBot {
       const grossUsdt = parseFloat(sellRes.data.cummulativeQuoteQty);
       const sellFee = this.feesToUsdt(sellRes.data.fills, asset);
       const avgSell = grossUsdt / parseFloat(sellRes.data.executedQty);
-      const costBasis = pos.investedUsdt * (sellQty / pos.qty);
+      const costBasis = realCheckP.cost > 0 ? realCheckP.cost : pos.investedUsdt * (sellQty / pos.qty);
       const profitUsdt = grossUsdt - sellFee - costBasis;
       const netPct = costBasis > 0 ? (profitUsdt / costBasis) * 100 : 0;
 
@@ -1660,7 +1727,7 @@ export class TrailingMasterBot {
         // BLOQUEO TOTAL INQUEBRANTABLE SI EL PRECIO ES MENOR O IGUAL A LA COMPRA
         if (curCheckPrice <= pos.buyPrice || estGainPct < minNetFloor) {
           console.error(`🛑 [CORE SHIELD: VENTA A PÉRDIDA BLOQUEADA] ${pos.symbol}: Precio ${curCheckPrice} <= Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}%). Venta CANCELADA.`);
-          try {
+          if (this.shouldNotifyShield("price_" + pos.symbol)) try {
             await this.notifier.send(
               `🛑 <b>[CORE SHIELD: VENTA A PÉRDIDA BLOQUEADA]</b> 🛡️\n\n` +
               `• <b>Moneda:</b> <b>${pos.symbol}</b>\n` +
@@ -1686,6 +1753,25 @@ export class TrailingMasterBot {
         }
       }
 
+      // 🛡️ SEGUNDA LLAVE (COSTO REAL EN BINANCE): se calcula lo que REALMENTE costaron las monedas a vender.
+      // Si Binance registraría la venta como PÉRDIDA, se bloquea (salvo venta manual con allowLoss=true).
+      const realCheck = await this.verifyRealCostWithBinance(actualSymbol, sellQty, curCheckPrice);
+      if (!realCheck.ok && !(isManualExit && allowLoss)) {
+        const why = realCheck.reason || `Binance la registraría como PÉRDIDA (${realCheck.estPnl.toFixed(3)} USDT, costo real ${realCheck.cost.toFixed(2)} USDT)`;
+        console.error(`🛑 [CORE SHIELD: COSTO REAL] Venta de ${sellQtyStr} ${asset} BLOQUEADA: ${why}`);
+        if (this.shouldNotifyShield("real_" + pos.symbol)) {
+          try {
+            await this.notifier.send(
+              `🛑 <b>[CORE SHIELD: VENTA BLOQUEADA]</b> 🛡️\n\n` +
+              `• <b>Moneda:</b> ${pos.symbol}\n` +
+              `• <b>Motivo:</b> ${why}\n\n` +
+              `💎 <i>No se vendió nada. Las monedas siguen en tu cuenta esperando un precio con ganancia real.</i>`
+            );
+          } catch (e) {}
+        }
+        return false;
+      }
+
       const sellRes = await this.client.newOrder(actualSymbol, "SELL", "MARKET", {
         quantity: sellQtyStr,
         newOrderRespType: "FULL",
@@ -1695,7 +1781,8 @@ export class TrailingMasterBot {
       const grossUsdt = parseFloat(sellRes.data.cummulativeQuoteQty);
       const sellFee = this.feesToUsdt(sellRes.data.fills, asset);
       const avgSell = grossUsdt / parseFloat(sellRes.data.executedQty);
-      const costBasis = pos.investedUsdt * (sellQty / pos.qty);
+      // Costo REAL según Binance (así Telegram, Supabase y la Lista de Ventas muestran la misma cifra)
+      const costBasis = realCheck.cost > 0 ? realCheck.cost : pos.investedUsdt * (sellQty / pos.qty);
       const profitUsdt = grossUsdt - sellFee - costBasis;
       if (profitUsdt > 0) {
         if (!this.controls.recoveryTracker) {
@@ -3343,6 +3430,12 @@ export class TrailingMasterBot {
         const qtyDec = Math.max(0, Math.round(-Math.log10(stepSize)));
         const sellQtyStr = (Math.floor(bal / stepSize) * stepSize).toFixed(qtyDec);
 
+        const realV = await this.verifyRealCostWithBinance(symbol, parseFloat(sellQtyStr), curPrice);
+        if (!realV.ok) {
+          return `🛑 <b>[VENTA BLOQUEADA EN EL CORE]</b>\n\n` +
+            `• ${realV.reason || `Binance la registraría como PÉRDIDA (${realV.estPnl.toFixed(3)} USDT)`}\n\n` +
+            `Si de verdad quieres asumirla: <code>/forzar_venta_perdida ${asset} CONFIRMAR</code> o el botón rojo del Dashboard.`;
+        }
         const res = await this.client.newOrder(symbol, "SELL", "MARKET", { quantity: sellQtyStr, recvWindow: 60000 });
         const soldQuote = parseFloat(res.data.cummulativeQuoteQty);
         return `✅ <b>Venta ejecutada:</b> Se vendieron ${sellQtyStr} ${asset} por $${soldQuote.toFixed(2)} USDT.`;
