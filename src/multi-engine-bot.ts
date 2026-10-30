@@ -417,6 +417,7 @@ export class TrailingMasterBot {
               // Calcular precio promedio ponderado real recorriendo hacia atrás hasta cubrir el balance
               let coveredQty = 0;
               let weightedCost = 0;
+              let highestBuyPrice = 0;
               for (let i = buyTrades.length - 1; i >= 0; i--) {
                 const t = buyTrades[i];
                 const tQty = parseFloat(t.qty);
@@ -425,10 +426,13 @@ export class TrailingMasterBot {
                 const useQty = Math.min(tQty, need);
                 coveredQty += useQty;
                 weightedCost += useQty * tPrice;
+                if (tPrice > highestBuyPrice) highestBuyPrice = tPrice;
                 if (coveredQty >= total * 0.98) break;
               }
               if (coveredQty > 0) {
-                buyPrice = weightedCost / coveredQty;
+                const avgPrice = weightedCost / coveredQty;
+                // BLINDAJE SUPREMO: El buyPrice NUNCA puede ser menor al precio más alto pagado por cualquier moneda en la bolsa
+                buyPrice = Math.max(avgPrice, highestBuyPrice);
                 buyTime = buyTrades[buyTrades.length - 1].time || Date.now();
               }
             }
@@ -1310,10 +1314,19 @@ export class TrailingMasterBot {
           freeBal = await this.getFreeBalance(asset);
         }
         if (freeBal < pos.qty * 0.1) {
-          console.log("🧹 " + symbol + " ya fue vendida en Binance (saldo cero). Retirando de memoria.");
-          this.activeTrailingPositions.delete(symbol);
-          this.saveTrailingPositions();
-          continue;
+          let hasRemainingTokens = false;
+          try {
+            const acc = await this.client.account({ recvWindow: 60000 });
+            const bObj = acc.data.balances.find((b: any) => b.asset === asset);
+            const totalSpot = parseFloat(bObj?.free || "0") + parseFloat(bObj?.locked || "0");
+            if (totalSpot >= pos.qty * 0.1) hasRemainingTokens = true;
+          } catch {}
+          if (!hasRemainingTokens) {
+            console.log("🧹 " + symbol + " ya fue vendida en Binance (saldo cero confirmado). Retirando de memoria.");
+            this.activeTrailingPositions.delete(symbol);
+            this.saveTrailingPositions();
+            continue;
+          }
         }
 
         const ticker = await this.client.tickerPrice(actualSymbol);
@@ -1637,21 +1650,38 @@ export class TrailingMasterBot {
         return false;
       }
 
-      // 🛡️ REGLA SUPREMA DE BLINDAJE SPOT: NUNCA VENDER A PÉRDIDA AUTOMÁTICAMENTE
+      // 🛡️ REGLA SUPREMA DE ORO DEL CORE: NUNCA VENDER A PÉRDIDA AUTOMÁTICAMENTE BAJO NINGÚN CONCEPTO
       const curCheckPrice = exitPrice || parseFloat((await this.client.tickerPrice(actualSymbol)).data.price);
       const estGainPct = ((curCheckPrice - pos.buyPrice) / pos.buyPrice) * 100;
       const minNetFloor = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.30) ? 0.28 : 0.45;
 
       if (!isManualExit) {
-        // En cualquier salida automática (trailing, callback, etc.): BLOQUEO TOTAL SI HAY PÉRDIDA O GANANCIA INSUFICIENTE
+        // En cualquier salida automática (trailing, callback, agotamiento, mecha de rechazo):
+        // BLOQUEO TOTAL INQUEBRANTABLE SI EL PRECIO ES MENOR O IGUAL A LA COMPRA
         if (curCheckPrice <= pos.buyPrice || estGainPct < minNetFloor) {
-          console.error(`🛡️ [VENTA A PÉRDIDA AUTOMÁTICA BLOQUEADA] ${pos.symbol}: Precio ${curCheckPrice} <= Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}%). Venta CANCELADA sin tocar Binance.`);
+          console.error(`🛑 [CORE SHIELD: VENTA A PÉRDIDA BLOQUEADA] ${pos.symbol}: Precio ${curCheckPrice} <= Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}%). Venta CANCELADA.`);
+          try {
+            await this.notifier.send(
+              `🛑 <b>[CORE SHIELD: VENTA A PÉRDIDA BLOQUEADA]</b> 🛡️\n\n` +
+              `• <b>Moneda:</b> <b>${pos.symbol}</b>\n` +
+              `• 📍 <b>Precio de Entrada:</b> $${fmtPrice(pos.buyPrice)}\n` +
+              `• 💰 <b>Precio Actual:</b> $${fmtPrice(curCheckPrice)} (<b>${estGainPct.toFixed(2)}%</b>)\n\n` +
+              `⛔ <b>Acción cancelada en el core:</b> Por regla suprema, el bot NUNCA vende a pérdida automáticamente.\n` +
+              `💎 <i>Tus monedas se mantienen intactas en Spot esperando el rebote. Cero riesgo de venta en rojo.</i>`
+            );
+          } catch(e) {}
+          return false;
+        }
+
+        // AISLAMIENTO ESTRICTO DE LOTES: Jamás vender más de la cantidad de este lote
+        if (sellQty > pos.qty * 1.001) {
+          console.error(`🛑 [CORE SHIELD: AISLAMIENTO DE LOTE] ${pos.symbol}: sellQty ${sellQty} > pos.qty ${pos.qty}.`);
           return false;
         }
       } else {
-        // Salida manual desde el Dashboard: si está a pérdida, requiere confirmación explícita con alerta
+        // Salida manual: si está a pérdida, requiere confirmación explícita con alerta (allowLoss=true)
         if ((curCheckPrice <= pos.buyPrice || estGainPct < 0) && !allowLoss) {
-          console.error(`🛡️ [VENTA MANUAL A PÉRDIDA BLOQUEADA] ${pos.symbol}: Requiere confirmación explícita con alerta en el Dashboard (allowLoss=true).`);
+          console.error(`🛑 [CORE SHIELD: VENTA MANUAL BLOQUEADA] ${pos.symbol}: Requiere confirmación explícita (allowLoss=true).`);
           return false;
         }
       }
@@ -2912,10 +2942,20 @@ export class TrailingMasterBot {
           return "ℹ️ No hay ninguna oportunidad pendiente en este momento.";
         }
         const opp = this.pendingOpportunity;
+
+        // 🛡️ REGLA SUPREMA: NINGUNA APROBACIÓN PUEDE NUNCA EJECUTAR UNA VENTA EN PÉRDIDA
+        // Verificar que la oportunidad sea una compra estratégica y nunca una venta en negativo
+        if (opp.strategy !== "smart_dca" && opp.strategy !== "trailing_rebound" && opp.strategy !== "micro_grid" && opp.strategy !== "cazador_weekend") {
+          this.pendingOpportunity = null;
+          this.savePendingOpportunity();
+          return "⚠️ Oportunidad no reconocida. Operación descartada por seguridad.";
+        }
+
         this.pendingOpportunity = null;
         this.savePendingOpportunity();
         setTimeout(() => this.executeOpportunity(opp), 100);
-        return `🚀 <b>¡APROBADO!</b> Ejecutando <b>${opp.strategyName}</b> en <b>${opp.symbol}</b> por ${opp.amount.toFixed(2)} USDT...`;
+        return `🚀 <b>¡APROBADO!</b> Ejecutando <b>${opp.strategyName}</b> en <b>${opp.symbol}</b> por ${opp.amount.toFixed(2)} USDT...\n\n` +
+               `🛡️ <b>Blindaje del Core Activo:</b> Esta compra crea un lote 100% independiente. Por regla suprema, NUNCA se venderá en negativo.`;
       }
 
       if (cmd === "/ignorar" || cmd === "ignorar") {
@@ -3243,20 +3283,56 @@ export class TrailingMasterBot {
 
       if (cmd === "/vender" || cmd === "vender") {
         if (!arg1) {
-          return "❓ <b>Uso:</b> <code>/vender &lt;MONEDA&gt;</code>\nEjemplo: <code>/vender sol</code>\nVende todo al mercado inmediatamente.";
+          return "❓ <b>Uso:</b> <code>/vender &lt;MONEDA&gt;</code>\nEjemplo: <code>/vender sol</code>\n<i>Por seguridad del core, solo vende si la posición está en GANANCIA neta.</i>";
         }
         const asset = arg1.replace("USDT", "");
         const symbol = `${asset}USDT`;
 
-        const openOrders = await this.client.openOrders({ symbol, recvWindow: 60000 });
-        for (const o of openOrders.data) {
-          await this.client.cancelOrder(symbol, { orderId: o.orderId, recvWindow: 60000 });
+        let pos: ActivePosition | null = null;
+        let posKey: string | null = null;
+        for (const [k, p] of this.activeTrailingPositions.entries()) {
+          const cleanK = k.split("_")[0];
+          const cleanP = (p.symbol || "").split("_")[0];
+          if (k === symbol || cleanK === symbol || cleanP === symbol) {
+            pos = p;
+            posKey = k;
+            break;
+          }
         }
-        this.activeTrailingPositions.delete(symbol);
-        this.saveTrailingPositions();
-        this.buyWatches.delete(symbol);
-        this.saveBuyWatches();
 
+        let curPrice = 0;
+        try {
+          const t = await this.client.tickerPrice(symbol);
+          curPrice = parseFloat(t.data.price);
+        } catch {
+          return `❌ No se pudo consultar el precio actual de ${symbol} en Binance.`;
+        }
+
+        if (pos) {
+          const gainPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
+          if (curPrice <= pos.buyPrice || gainPct < 0) {
+            return `🛑 <b>[VENTA A PÉRDIDA BLOQUEADA EN EL CORE]</b> 🛡️\n\n` +
+              `• <b>Moneda:</b> <b>${symbol}</b>\n` +
+              `• 📍 <b>Precio de Compra:</b> $${fmtPrice(pos.buyPrice)}\n` +
+              `• 💰 <b>Precio Actual:</b> $${fmtPrice(curPrice)} (<b>${gainPct.toFixed(2)}% PÉRDIDA</b>)\n\n` +
+              `⛔ <b>Por regla suprema del core</b>, está terminantemente PROHIBIDO vender en pérdida por comando simple.\n` +
+              `🔒 <i>Tus monedas permanecen intactas en Spot esperando el rebote. El bot NUNCA cancela una posición en negativo.</i>\n\n` +
+              `💡 <i>Si de verdad deseas asumir esta pérdida y salir manualmente, debes confirmarlo desde el Dashboard web con el botón rojo de doble confirmación, o escribir:</i>\n` +
+              `<code>/forzar_venta_perdida ${asset} CONFIRMAR</code>`;
+          }
+
+          // Si está en ganancia, ejecutar salida segura a través del motor
+          const sold = await this.executeTrailingSell(pos, curPrice, false, false, "MANUAL_TELEGRAM", true, false);
+          if (sold) {
+            if (posKey) this.activeTrailingPositions.delete(posKey);
+            await this.saveTrailingPositions();
+            return `✅ <b>¡Venta en Ganancia Ejecutada!</b> 🎯\nSe vendió <b>${symbol}</b> a $${fmtPrice(curPrice)} (+${gainPct.toFixed(2)}% neto).`;
+          } else {
+            return `⚠️ No se pudo completar la venta de ${symbol}.`;
+          }
+        }
+
+        // Si no hay posición registrada en memoria pero hay balance libre en Binance
         const acc = await this.client.account({ recvWindow: 60000 });
         const bal = parseFloat(acc.data.balances.find((b: any) => b.asset === asset)?.free || "0");
         if (bal <= 0) return `❌ No tienes balance libre de ${asset} para vender.`;
@@ -3270,6 +3346,60 @@ export class TrailingMasterBot {
         const res = await this.client.newOrder(symbol, "SELL", "MARKET", { quantity: sellQtyStr, recvWindow: 60000 });
         const soldQuote = parseFloat(res.data.cummulativeQuoteQty);
         return `✅ <b>Venta ejecutada:</b> Se vendieron ${sellQtyStr} ${asset} por $${soldQuote.toFixed(2)} USDT.`;
+      }
+
+      if (cmd === "/forzar_venta_perdida") {
+        if (!arg1 || arg2 !== "CONFIRMAR") {
+          return `⚠️ <b>CONFIRMACIÓN REQUERIDA PARA VENDER EN PÉRDIDA</b> ⚠️\n\n` +
+            `Para autorizar la venta en PÉRDIDA de una moneda, debes escribir exactamente:\n` +
+            `<code>/forzar_venta_perdida ${arg1 || "MONEDA"} CONFIRMAR</code>\n\n` +
+            `<i>🛑 Nota: En Spot los tokens son tuyos; nunca hay liquidación. Esperar el rebote siempre protege tu capital.</i>`;
+        }
+        const asset = arg1.replace("USDT", "");
+        const symbol = `${asset}USDT`;
+
+        let pos: ActivePosition | null = null;
+        let posKey: string | null = null;
+        for (const [k, p] of this.activeTrailingPositions.entries()) {
+          const cleanK = k.split("_")[0];
+          const cleanP = (p.symbol || "").split("_")[0];
+          if (k === symbol || cleanK === symbol || cleanP === symbol) {
+            pos = p;
+            posKey = k;
+            break;
+          }
+        }
+
+        let curPrice = 0;
+        try {
+          const t = await this.client.tickerPrice(symbol);
+          curPrice = parseFloat(t.data.price);
+        } catch {
+          return `❌ No se pudo consultar el precio actual de ${symbol} en Binance.`;
+        }
+
+        if (pos) {
+          const sold = await this.executeTrailingSell(pos, curPrice, false, false, "FORCED_LOSS_TELEGRAM", true, true);
+          if (sold) {
+            if (posKey) this.activeTrailingPositions.delete(posKey);
+            await this.saveTrailingPositions();
+            return `🛑 <b>Venta en pérdida autorizada y ejecutada:</b> Se cerró ${symbol} a $${fmtPrice(curPrice)}.`;
+          } else {
+            return `❌ Error ejecutando la venta forzada de ${symbol}.`;
+          }
+        }
+
+        // Si no está trackeada pero el usuario ordena vender
+        const acc = await this.client.account({ recvWindow: 60000 });
+        const bal = parseFloat(acc.data.balances.find((b: any) => b.asset === asset)?.free || "0");
+        if (bal <= 0) return `❌ No tienes balance libre de ${asset} para vender.`;
+        const exInfo = await this.client.exchangeInfo({ symbol });
+        const sInfo = exInfo.data.symbols[0];
+        const stepSize = parseFloat(sInfo.filters.find((f: any) => f.filterType === "LOT_SIZE").stepSize);
+        const qtyDec = Math.max(0, Math.round(-Math.log10(stepSize)));
+        const sellQtyStr = (Math.floor(bal / stepSize) * stepSize).toFixed(qtyDec);
+        const res = await this.client.newOrder(symbol, "SELL", "MARKET", { quantity: sellQtyStr, recvWindow: 60000 });
+        return `🛑 <b>Venta forzada ejecutada:</b> Se vendieron ${sellQtyStr} ${asset} por $${parseFloat(res.data.cummulativeQuoteQty).toFixed(2)} USDT.`;
       }
 
       if (cmd === "/modo" || cmd === "modo") {
