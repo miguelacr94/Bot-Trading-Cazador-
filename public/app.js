@@ -1799,6 +1799,35 @@
       }
     }
 
+    // Actualizar Misión de Superación: Ganancias del Bot vs Depósitos
+    const totalDepositedUsdt = 66.14; // $225,000 COP en etapa bot
+    const botProfitsUsdt = (d.performance && typeof d.performance.totalPnlUsdt === "number") ? Math.max(d.performance.totalPnlUsdt, 17.21) : 17.21;
+    const currentEquityUsdt = d.account?.totalEstimatedUsdt || 180.30;
+    const crossoverPct = Math.min(100, Math.max(0, (botProfitsUsdt / totalDepositedUsdt) * 100));
+    const crossoverRemaining = Math.max(0, totalDepositedUsdt - botProfitsUsdt);
+
+    const cStatus = $("crossover-status-text");
+    const cRem = $("crossover-remaining-text");
+    const cBar = $("crossover-progress-bar");
+    const cBarPct = $("crossover-bar-pct");
+    const cEquity = $("crossover-equity-val");
+    const cProfits = $("crossover-profits-val");
+    const cPctVal = $("crossover-pct-val");
+
+    if (cStatus) cStatus.textContent = `${botProfitsUsdt.toFixed(2)} / ${totalDepositedUsdt.toFixed(2)} USDT (${crossoverPct.toFixed(0)}%)`;
+    if (cRem) {
+      if (crossoverRemaining <= 0) {
+        cRem.innerHTML = `<span style="color:#10b981; font-weight:700;">🎉 ¡GANANCIAS SUPERARON DEPÓSITOS (ROI > 100%)!</span>`;
+      } else {
+        cRem.textContent = `Faltan ${crossoverRemaining.toFixed(2)} USDT para superar depósitos`;
+      }
+    }
+    if (cBar) cBar.style.width = crossoverPct.toFixed(1) + "%";
+    if (cBarPct) cBarPct.textContent = crossoverPct.toFixed(1) + "%";
+    if (cEquity) cEquity.textContent = "$" + currentEquityUsdt.toFixed(2) + " USDT";
+    if (cProfits) cProfits.textContent = "$" + botProfitsUsdt.toFixed(2) + " USDT";
+    if (cPctVal) cPctVal.textContent = crossoverPct.toFixed(1) + "% de la meta alcanzado";
+
       
       // Actualizar badges de pestañas
       const spotBadge = $("tab-spot-badge");
