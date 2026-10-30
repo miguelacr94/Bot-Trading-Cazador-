@@ -1,16 +1,37 @@
 (() => {
-  const COP_PER_USDT = 4200;
+  let COP_PER_USDT = 3103;
   let pnlChart = null;
   let historySignature = "";
   let crossoverChart = null;
   let crossoverCurrency = localStorage.getItem("crossover_currency") || "COP";
   let latestStatusData = null;
-  let customDeposits = JSON.parse(localStorage.getItem("bot_custom_deposits") || "null") || [
-    { id: 1, date: "16 Oct", cop: 50000, usdt: 15.71, note: "Depósito inicial ciclo Spot" },
-    { id: 2, date: "19 Oct", cop: 75000, usdt: 22.50, note: "Ampliación de capital" },
-    { id: 3, date: "22 Oct", cop: 50000, usdt: 15.10, note: "Aprovechar caídas mercado" },
-    { id: 4, date: "29 Oct", cop: 50000, usdt: 12.83, note: "Capital oportunidad PEPE" }
+
+  const LIFETIME_BINANCE_DEPOSITS = [
+    { id: 1, date: "30 Oct 2025", cop: 50000, usdt: 15.71, note: "Depósito inicial Binance (PSE)" },
+    { id: 2, date: "20 Nov 2025", cop: 50000, usdt: 15.71, note: "Depósito PSE Bancolombia" },
+    { id: 3, date: "09 Dic 2025", cop: 50000, usdt: 15.71, note: "Depósito PSE Bancolombia" },
+    { id: 4, date: "26 Ene 2026", cop: 100000, usdt: 31.42, note: "Recarga capital PSE" },
+    { id: 5, date: "31 Ene 2026", cop: 50000, usdt: 15.71, note: "Recarga PSE Binance" },
+    { id: 6, date: "31 Ene 2026", cop: 50000, usdt: 15.71, note: "Recarga PSE Binance" },
+    { id: 7, date: "16 Oct 2026", cop: 50000, usdt: 15.72, note: "Inicio ciclo Spot Bot (PSE)" },
+    { id: 8, date: "19 Oct 2026", cop: 50000, usdt: 15.71, note: "Ampliación Spot Bot (PSE)" },
+    { id: 9, date: "22 Oct 2026", cop: 50000, usdt: 15.71, note: "Aprovechar caídas (Bre-B)" },
+    { id: 10, date: "29 Oct 2026", cop: 50000, usdt: 16.11, note: "Capital oportunidad PEPE" }
   ];
+
+  const BOT_CYCLE_DEPOSITS = [
+    { id: 7, date: "16 Oct 2026", cop: 50000, usdt: 15.72, note: "Inicio ciclo Spot Bot (PSE)" },
+    { id: 8, date: "19 Oct 2026", cop: 50000, usdt: 15.71, note: "Ampliación Spot Bot (PSE)" },
+    { id: 9, date: "22 Oct 2026", cop: 50000, usdt: 15.71, note: "Aprovechar caídas (Bre-B)" },
+    { id: 10, date: "29 Oct 2026", cop: 50000, usdt: 16.11, note: "Capital oportunidad PEPE" }
+  ];
+
+  let savedDeposits = JSON.parse(localStorage.getItem("bot_custom_deposits") || "null");
+  if (!savedDeposits || savedDeposits.length <= 4) {
+    savedDeposits = LIFETIME_BINANCE_DEPOSITS;
+    localStorage.setItem("bot_custom_deposits", JSON.stringify(savedDeposits));
+  }
+  let customDeposits = savedDeposits;
 
   // ---------- utilidades ----------
   const $ = (id) => document.getElementById(id);
@@ -135,8 +156,11 @@
       }
     }
     const pf = d.portfolio;
-    setText($("kpi-total-usdt-num"), `$${fmt(pf.totalEstimatedUsdt)}`);
-    setText($("kpi-total-cop"), `≈ $${cop(pf.totalEstimatedCop)} COP`);
+    if (pf.copRate || pf.copPerUsdt) {
+      COP_PER_USDT = pf.copRate || pf.copPerUsdt;
+    }
+    setText($("kpi-total-usdt-num"), `${fmt(pf.totalEstimatedUsdt)}`);
+    setText($("kpi-total-cop"), `≈ ${cop(pf.totalEstimatedCop)} COP (@ ${Math.round(COP_PER_USDT)} Binance)`);
 
     if (d.accountAvailable) {
       setText($("kpi-free-usdt-num"), `$${fmt((pf.usdtFree || 0) + (pf.usdtEarn || 0))}`);
@@ -1919,8 +1943,9 @@
     const grossLossesCop = Math.abs(grossLossesUsdt) * COP_PER_USDT;
     const netBotCop = netBotUsdt * COP_PER_USDT;
 
-    const equityUsdt = d.portfolio?.totalEstimatedUsdt || 180.30;
-    const equityCop = equityUsdt * COP_PER_USDT;
+    const equityUsdt = d.portfolio?.totalEstimatedUsdt || 181.25;
+    if (d.portfolio?.copRate || d.portfolio?.copPerUsdt) COP_PER_USDT = d.portfolio.copRate || d.portfolio.copPerUsdt;
+    const equityCop = d.portfolio?.totalEstimatedCop || (equityUsdt * COP_PER_USDT);
 
     // 4. Promediar (Rentabilidad %, Promedio por operación y Win Rate)
     // Fórmula exacta solicitada por el usuario:
@@ -2038,6 +2063,26 @@
       });
     }
 
+    const btnPresetLifetime = $("crossover-btn-preset-lifetime");
+    if (btnPresetLifetime) {
+      btnPresetLifetime.addEventListener("click", () => {
+        customDeposits = [...LIFETIME_BINANCE_DEPOSITS];
+        localStorage.setItem("bot_custom_deposits", JSON.stringify(customDeposits));
+        renderCrossoverDepositsTable();
+        if (latestStatusData) updateCrossoverSection(latestStatusData);
+      });
+    }
+
+    const btnPresetBot = $("crossover-btn-preset-bot");
+    if (btnPresetBot) {
+      btnPresetBot.addEventListener("click", () => {
+        customDeposits = [...BOT_CYCLE_DEPOSITS];
+        localStorage.setItem("bot_custom_deposits", JSON.stringify(customDeposits));
+        renderCrossoverDepositsTable();
+        if (latestStatusData) updateCrossoverSection(latestStatusData);
+      });
+    }
+
     const btnPreset100 = $("crossover-btn-preset-100");
     if (btnPreset100) {
       btnPreset100.addEventListener("click", () => {
@@ -2053,12 +2098,7 @@
     const btnReset = $("crossover-btn-reset-deposits");
     if (btnReset) {
       btnReset.addEventListener("click", () => {
-        customDeposits = [
-          { id: 1, date: "16 Oct", cop: 50000, usdt: 15.71, note: "Depósito inicial ciclo Spot" },
-          { id: 2, date: "19 Oct", cop: 75000, usdt: 22.50, note: "Ampliación de capital" },
-          { id: 3, date: "22 Oct", cop: 50000, usdt: 15.10, note: "Aprovechar caídas mercado" },
-          { id: 4, date: "29 Oct", cop: 50000, usdt: 12.83, note: "Capital oportunidad PEPE" }
-        ];
+        customDeposits = [...LIFETIME_BINANCE_DEPOSITS];
         localStorage.setItem("bot_custom_deposits", JSON.stringify(customDeposits));
         renderCrossoverDepositsTable();
         if (latestStatusData) updateCrossoverSection(latestStatusData);

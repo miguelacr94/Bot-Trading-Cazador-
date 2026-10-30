@@ -27,6 +27,10 @@ export class DashboardServer {
   private port: number;
   private timers: NodeJS.Timeout[] = [];
 
+  public getCopRate(): number {
+    return this.prices["USDTCOP"] && this.prices["USDTCOP"] > 1000 ? this.prices["USDTCOP"] : 3103;
+  }
+
   // Caché (último valor bueno conocido)
   private prices: Record<string, number> = {};
   private radarMeta: Record<string, { rsi: number; dropPct: number }> = {};
@@ -65,11 +69,11 @@ export class DashboardServer {
   private trackedSymbols(): string[] {
     const pos = this.readJson(".trailing-positions.json").map(([s]) => (s || "").split("_")[0]);
     const buys = this.readJson(".trailing-buys.json").map(([s]) => (s || "").split("_")[0]);
-    const allKnown = ["ETHUSDT","SOLUSDT","AVAXUSDT","BTCUSDT","BNBUSDT","XRPUSDT","PEPEUSDT","DOGEUSDT","BONKUSDT","SHIBUSDT","WIFUSDT"];
+    const allKnown = ["ETHUSDT","SOLUSDT","AVAXUSDT","BTCUSDT","BNBUSDT","XRPUSDT","PEPEUSDT","DOGEUSDT","BONKUSDT","SHIBUSDT","WIFUSDT","USDTCOP"];
     const set = new Set([...PNL_SYMBOLS, ...allKnown, ...pos, ...buys]);
     return Array.from(set)
       .map((s: string) => (s || "").trim().toUpperCase())
-      .filter((s: string) => /^[A-Z0-9]+$/.test(s) && s.endsWith("USDT"));
+      .filter((s: string) => /^[A-Z0-9]+$/.test(s) && (s.endsWith("USDT") || s === "USDTCOP"));
   }
 
   /** Ejecuta una tarea de refresco sin solaparla consigo misma */
@@ -516,6 +520,7 @@ export class DashboardServer {
     const rawPositions = this.readJson(".trailing-positions.json");
     const rawBuys = this.readJson(".trailing-buys.json");
 
+    const copRate = this.getCopRate();
     let totalInvested = 0;
     let positionsValue = 0;
 
@@ -549,7 +554,7 @@ export class DashboardServer {
         progressPct: Math.max(0, Math.min(100, progressPct)),
         gainPct,
         pnlUsdt,
-        pnlCop: pnlUsdt * COP_PER_USDT,
+        pnlCop: pnlUsdt * copRate,
         highestPrice: pos.highestPrice,
         peakGainPct: ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100,
         stopPrice: pos.highestPrice * (1 - callback / 100),
@@ -746,7 +751,10 @@ export class DashboardServer {
       authError: this.authError,
       portfolio: {
         totalEstimatedUsdt: total,
-        totalEstimatedCop: total * COP_PER_USDT,
+        totalEstimatedCop: total * copRate,
+        copRate: copRate,
+        copPerUsdt: copRate,
+        p2pCopRate: 4200,
         usdtFree: this.usdtFree,
         usdtEarn: this.usdtEarn,
         totalInvested,
@@ -758,7 +766,7 @@ export class DashboardServer {
       performance: p
         ? {
             totalPnlUsdt: totalMergedPnl || (p ? p.totalPnl : 0),
-            totalPnlCop: p.totalPnl * COP_PER_USDT,
+            totalPnlCop: (totalMergedPnl || (p ? p.totalPnl : 0)) * copRate,
             wins: p.wins,
             losses: p.losses,
             cyclesCount: p.cycles.length,
@@ -797,13 +805,13 @@ export class DashboardServer {
               return {
                 daysTracked: Math.round(days),
                 dailyAvgUsdt: dailyRunRate,
-                dailyAvgCop: dailyRunRate * COP_PER_USDT,
+                dailyAvgCop: dailyRunRate * copRate,
                 p30dUsdt: dailyRunRate * 30,
-                p30dCop: dailyRunRate * 30 * COP_PER_USDT,
+                p30dCop: dailyRunRate * 30 * copRate,
                 p60dUsdt: dailyRunRate * 60,
-                p60dCop: dailyRunRate * 60 * COP_PER_USDT,
+                p60dCop: dailyRunRate * 60 * copRate,
                 p90dUsdt: dailyRunRate * 90,
-                p90dCop: dailyRunRate * 90 * COP_PER_USDT,
+                p90dCop: dailyRunRate * 90 * copRate,
               };
             })()
           : null,

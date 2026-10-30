@@ -2331,7 +2331,7 @@
                 </span>
               </div>
               <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 3px;">
-                Comparativa gráfica interactiva: Suma de tus depósitos vs lo generado por el bot (ganancias cobradas, pérdidas restadas y promedios).
+                Comparativa gráfica interactiva: Suma de TODOS tus depósitos desde el inicio de Binance ($550,000 COP) vs saldo real y ganancias generadas por el bot.
               </div>
             </div>
           </div>
@@ -2359,12 +2359,15 @@
             <div style="font-size: 0.82rem; font-weight: 700; color: #cbd5e1;">
               💼 Registro Detallado de Depósitos de Bolsillo
             </div>
-            <div style="display: flex; gap: 8px;">
-              <button id="crossover-btn-preset-100" type="button" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); color: #93c5fd; font-size: 0.72rem; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                🧪 Probar Ejemplo (100 COP)
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="crossover-btn-preset-lifetime" type="button" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-size: 0.72rem; padding: 4px 11px; border-radius: 6px; cursor: pointer; font-weight: 700;">
+                👑 Todo el Historial Binance ($550,000 COP)
               </button>
-              <button id="crossover-btn-reset-deposits" type="button" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #cbd5e1; font-size: 0.72rem; padding: 4px 10px; border-radius: 6px; cursor: pointer;">
-                🔄 Restablecer Reales ($225,000 COP)
+              <button id="crossover-btn-preset-bot" type="button" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); color: #93c5fd; font-size: 0.72rem; padding: 4px 11px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                🤖 Ciclo del Bot ($200,000 COP)
+              </button>
+              <button id="crossover-btn-preset-100" type="button" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #cbd5e1; font-size: 0.72rem; padding: 4px 10px; border-radius: 6px; cursor: pointer;">
+                🧪 Probar 100 COP
               </button>
             </div>
           </div>
@@ -2423,8 +2426,8 @@
               <!-- Tarjeta 1: Total Depositado -->
               <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 10px; padding: 10px 14px;">
                 <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">💼 Total Invertido (Depósitos)</div>
-                <div id="crossover-card-dep-val" style="font-size: 1.18rem; font-weight: 800; color: #60a5fa; margin-top: 2px;">$225,000 COP</div>
-                <div id="crossover-card-dep-sub" style="font-size: 0.72rem; color: #64748b;">≈ $66.14 USDT (4 depósitos)</div>
+                <div id="crossover-card-dep-val" style="font-size: 1.18rem; font-weight: 800; color: #60a5fa; margin-top: 2px;">$550,000 COP</div>
+                <div id="crossover-card-dep-sub" style="font-size: 0.72rem; color: #64748b;">≈ $173.22 USDT (10 depósitos en Binance)</div>
               </div>
 
               <!-- Tarjeta 2: Ganancia Neta Real del Bot -->
