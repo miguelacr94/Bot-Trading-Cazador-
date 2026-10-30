@@ -2283,6 +2283,64 @@
         </div>
       </div>
 
+      <!-- DIVISIÓN INTELIGENTE DE SALDO: BOT VS OPERACIONES MANUALES -->
+      <div id="wallet-split-banner" style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 12px; padding: 14px 20px; margin: 0 0 18px 0; box-shadow: 0 4px 18px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+          
+          <!-- Lado Izquierdo: Título y Concepto -->
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 10px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">
+              ⚖️
+            </div>
+            <div>
+              <div style="font-weight: 800; font-size: 0.95rem; color: #c084fc; display: flex; align-items: center; gap: 8px;">
+                DIVISIÓN DE SALDO: BOT VS OPERACIONES MANUALES
+                <span style="background: rgba(139, 92, 246, 0.2); color: #d8b4fe; font-size: 0.7rem; padding: 2px 7px; border-radius: 4px; font-weight: 700;">CAPITAL BLINDADO</span>
+              </div>
+              <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 2px;">
+                El bot solo opera su cuota asignada. Tu saldo manual está 100% blindado para que crees tus propias operaciones en cualquier moneda del radar.
+              </div>
+            </div>
+          </div>
+
+          <!-- Lado Central: Tarjetas de Saldo -->
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            
+            <!-- Saldo Bot -->
+            <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 8px 14px; text-align: right;">
+              <div style="font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 4px; justify-content: flex-end;">
+                <span style="display: inline-block; width: 6px; height: 6px; background: #3b82f6; border-radius: 50%;"></span>
+                🤖 Saldo Bot (Automático)
+              </div>
+              <div id="split-bot-usdt" style="font-size: 1.05rem; font-weight: 800; color: #60a5fa; margin-top: 1px;">$0.00 USDT</div>
+              <div id="split-bot-cop" style="font-size: 0.7rem; color: #64748b;">≈ $0 COP</div>
+            </div>
+
+            <!-- Saldo Manual -->
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 8px 14px; text-align: right;">
+              <div style="font-size: 0.68rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 4px; justify-content: flex-end;">
+                <span style="display: inline-block; width: 6px; height: 6px; background: #10b981; border-radius: 50%;"></span>
+                👤 Saldo Manual (Tus Órdenes)
+              </div>
+              <div id="split-manual-usdt" style="font-size: 1.05rem; font-weight: 800; color: #34d399; margin-top: 1px;">$0.00 USDT</div>
+              <div id="split-manual-cop" style="font-size: 0.7rem; color: #64748b;">≈ $0 COP</div>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="btn-open-wallet-transfer" type="button" onclick="window.openWalletTransferModal()" style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); color: #d8b4fe; padding: 8px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s;">
+                <span>⇄ Transferir Saldo</span>
+              </button>
+              <button id="btn-open-manual-buy-custom" type="button" onclick="window.openManualBuyModal()" style="background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3); transition: all 0.2s;">
+                <span>⚡ Operar Moneda</span>
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
       <!-- CENTINELA ALPHA: RECOVERY PROGRESS BAR -->
       <div id="recovery-container" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(16, 185, 129, 0.08)); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 14px 18px; margin: 15px 0 20px 0; box-shadow: 0 4px 14px rgba(0,0,0,0.25);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
@@ -2625,6 +2683,7 @@
                 <th>Caída 24h</th>
                 <th>RSI (15m)</th>
                 <th>Estado</th>
+                <th style="text-align: right;">Acción</th>
               </tr>
             </thead>
             <tbody id="radar-tbody">
@@ -3571,5 +3630,129 @@
   </div>
 
   <script src="/app.js?v=20261030_1225"></script>
+<!-- MODAL DE TRANSFERENCIA DE SALDO (BOT <-> MANUAL) -->
+  <div id="wallet-transfer-modal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(6px); z-index: 99999; align-items: center; justify-content: center; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #0f172a, #1e293b); border: 1px solid rgba(139, 92, 246, 0.4); border-radius: 14px; width: 100%; max-width: 440px; padding: 22px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+        <div style="font-weight: 800; font-size: 1rem; color: #c084fc; display: flex; align-items: center; gap: 8px;">
+          <span>⇄</span> Transferir Saldo
+        </div>
+        <button type="button" onclick="window.closeWalletTransferModal()" style="background: transparent; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer;">✕</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">Dirección de la Transferencia</label>
+          <select id="transfer-direction" style="width: 100%; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 9px 12px; color: #fff; font-size: 0.85rem; font-weight: 600;" onchange="window.updateTransferModalPreview()">
+            <option value="bot_to_manual">🤖 Saldo del Bot ➔ 👤 Saldo Manual</option>
+            <option value="manual_to_bot">👤 Saldo Manual ➔ 🤖 Saldo del Bot</option>
+          </select>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 14px; font-size: 0.78rem;">
+          <div style="display: flex; justify-content: space-between; color: #94a3b8; margin-bottom: 4px;">
+            <span>Disponible en origen:</span>
+            <span id="transfer-avail-origin" style="color: #38bdf8; font-weight: 700;">$0.00 USDT</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; color: #94a3b8;">
+            <span>Destino actual:</span>
+            <span id="transfer-dest-current" style="color: #34d399; font-weight: 700;">$0.00 USDT</span>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">Monto a Transferir (USDT)</label>
+          <input id="transfer-amount-input" type="number" step="0.01" min="1" placeholder="Ej: 15.00" style="width: 100%; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px 14px; color: #fff; font-size: 1.1rem; font-weight: 800;" />
+          <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+            <button type="button" onclick="window.setTransferQuickAmount(5)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer;">$5</button>
+            <button type="button" onclick="window.setTransferQuickAmount(10)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer;">$10</button>
+            <button type="button" onclick="window.setTransferQuickAmount(20)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer;">$20</button>
+            <button type="button" onclick="window.setTransferQuickPercent(0.5)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer;">50%</button>
+            <button type="button" onclick="window.setTransferQuickPercent(1.0)" style="background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: #d8b4fe; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: 700;">Todo</button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+          <button type="button" onclick="window.closeWalletTransferModal()" style="flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer;">Cancelar</button>
+          <button type="button" onclick="window.executeWalletTransfer()" id="btn-confirm-transfer" style="flex: 1; background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: none; color: #fff; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 10px rgba(139,92,246,0.4);">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE OPERACIÓN MANUAL DESDE EL RADAR (CON TRAILING TAKE PROFIT) -->
+  <div id="manual-buy-modal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(6px); z-index: 99999; align-items: center; justify-content: center; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #0f172a, #1e293b); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 14px; width: 100%; max-width: 480px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+        <div style="font-weight: 800; font-size: 1.05rem; color: #34d399; display: flex; align-items: center; gap: 8px;">
+          <span>⚡</span> Crear Operación Manual con Trailing
+        </div>
+        <button type="button" onclick="window.closeManualBuyModal()" style="background: transparent; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer;">✕</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <!-- Selector de Moneda y Estado -->
+        <div>
+          <label style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">Moneda a Operar (del Radar o Catálogo)</label>
+          <select id="manual-buy-symbol-select" style="width: 100%; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px 12px; color: #fff; font-size: 0.95rem; font-weight: 700;" onchange="window.updateManualBuySymbolStats()">
+            <!-- Se inyectan dinámicamente -->
+          </select>
+        </div>
+
+        <!-- Mini Radar Card -->
+        <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 10px 14px; font-size: 0.78rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <span style="color: #94a3b8;">Precio Actual: </span>
+              <span id="manual-buy-cur-price" style="color: #f1f5f9; font-weight: 700;">$0.00</span>
+            </div>
+            <div>
+              <span style="color: #94a3b8;">Caída 24h: </span>
+              <span id="manual-buy-cur-drop" style="color: #38bdf8; font-weight: 700;">0.00%</span>
+            </div>
+            <div>
+              <span style="color: #94a3b8;">RSI 15m: </span>
+              <span id="manual-buy-cur-rsi" style="color: #10b981; font-weight: 700;">50.0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Saldo Manual Disponible -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 12px; font-size: 0.78rem;">
+          <span style="color: #94a3b8;">👤 Saldo Manual Disponible:</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="manual-buy-avail-text" style="color: #34d399; font-weight: 800; font-size: 0.9rem;">$0.00 USDT</span>
+            <button type="button" onclick="window.quickTransferToManual()" style="background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: #d8b4fe; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; cursor: pointer;">+ Añadir más</button>
+          </div>
+        </div>
+
+        <!-- Monto de Inversión -->
+        <div>
+          <label style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">Monto de Compra (USDT)</label>
+          <input id="manual-buy-amount-input" type="number" step="0.01" min="10" placeholder="Mínimo 10.00 USDT" style="width: 100%; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 10px 14px; color: #fff; font-size: 1.15rem; font-weight: 800;" />
+          <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+            <button type="button" onclick="window.setManualBuyQuick(10)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer;">$10 Min</button>
+            <button type="button" onclick="window.setManualBuyQuick(15)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer;">$15</button>
+            <button type="button" onclick="window.setManualBuyQuick(25)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer;">$25</button>
+            <button type="button" onclick="window.setManualBuyQuickPercent(0.5)" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer;">50% Manual</button>
+            <button type="button" onclick="window.setManualBuyQuickPercent(1.0)" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-size: 0.72rem; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: 700;">Todo Manual</button>
+          </div>
+        </div>
+
+        <!-- Trailing Take Profit Config -->
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px 14px; font-size: 0.75rem; color: #cbd5e1;">
+          <div style="font-weight: 700; color: #60a5fa; margin-bottom: 4px;">🎯 Estrategia de Venta: Trailing Take Profit Automático</div>
+          <div>• Disparo inicial al <b>+0.80%</b>: al alcanzarlo, el seguro se activa y persigue la cima sin límite.</div>
+          <div>• Retroceso (Callback) de venta: <b>0.25%</b> desde el pico más alto.</div>
+          <div style="color: #34d399; margin-top: 4px; font-weight: 600;">🛡️ Candado estricto: Cero ventas a pérdida. Si el precio no sube, nunca venderá en pérdida.</div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 8px;">
+          <button type="button" onclick="window.closeManualBuyModal()" style="flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer;">Cancelar</button>
+          <button type="button" onclick="window.executeManualBuy()" id="btn-confirm-manual-buy" style="flex: 2; background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 15px rgba(16,185,129,0.4);">🚀 Comprar Ahora</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

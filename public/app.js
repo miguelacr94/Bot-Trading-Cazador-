@@ -5,6 +5,8 @@
   let crossoverChart = null;
   let crossoverCurrency = localStorage.getItem("crossover_currency") || "COP";
   let latestStatusData = null;
+  let latestWalletSplit = { manualUsdt: 25.0, botUsdt: 0, totalFreeUsdt: 0, copRate: 3103, manualCop: 77575, botCop: 0 };
+  let latestRadarList = [];
 
   const LIFETIME_BINANCE_DEPOSITS = [
     { id: 1, date: "30 Oct 2025", cop: 50000, usdt: 15.71, note: "Depósito inicial Binance (PSE)" },
@@ -452,7 +454,7 @@
     const isLoss = (p.pnlUsdt < -0.00001) || (p.gainPct < -0.01);
     const isGain = (p.pnlUsdt > 0.00001) || (p.gainPct > 0.01);
 
-    const stratName = p.strategy === "centinela_alpha" ? "🤖 Alpha (20%)" : (p.lotIndex > 1 ? `🛡️ Lote #${p.lotIndex}` : "🏹 Lote 1");
+    const stratName = (p.isManual || p.strategy === "manual") ? "👤 Manual" : (p.strategy === "centinela_alpha" ? "🤖 Alpha (20%)" : (p.lotIndex > 1 ? `🛡️ Lote #${p.lotIndex}` : "🏹 Lote 1"));
     setText(f("stratbadge"), stratName);
     setText(f("qty"), `${fmt(p.qty)} ${p.base} • Invertido: ${fmt(p.investedUsdt)} USDT`);
     setText(f("buy"), `${fmt(p.buyPrice)}`);
@@ -653,7 +655,8 @@
         row.dataset.symbol = r.symbol;
         row.innerHTML = `<td><strong>${r.symbol.replace("USDT", "")}</strong></td>
           <td data-f="price"></td><td data-f="drop"></td>
-          <td><span data-f="rsi" class="rsi-pill rsi-neutral"></span></td><td data-f="status"></td>`;
+          <td><span data-f="rsi" class="rsi-pill rsi-neutral"></span></td><td data-f="status"></td>
+          <td data-f="action" style="text-align: right;"></td>`;
         tbody.appendChild(row);
       }
       existing.delete(r.symbol);
@@ -674,7 +677,13 @@
       else { st = "📡 Escaneando"; color = "var(--text-dim)"; }
       setText(f("status"), st);
       setStyle(f("status"), "color", color);
+
+      const actEl = f("action");
+      if (actEl) {
+        actEl.innerHTML = `<button type="button" class="btn-radar-manual" onclick="window.openManualBuyModal('${r.symbol}', ${r.curPrice || 0}, ${r.rsi || 50}, ${r.dropPct || 0})" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #fff; border: 1px solid rgba(255,255,255,0.2); padding: 5px 11px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 6px rgba(37,99,235,0.3); transition: transform 0.15s;"><span>⚡ Operar</span></button>`;
+      }
     });
+    latestRadarList = list || [];
     existing.forEach((row) => row.remove());
   }
 
@@ -2133,6 +2142,245 @@
     }
   }
 
+  // ---------- División de Saldo: Bot vs Manual & Modales ----------
+  function updateWalletSplitUi(ws) {
+    if (!ws) return;
+    latestWalletSplit = ws;
+    const botUsdtEl = $("split-bot-usdt");
+    const botCopEl = $("split-bot-cop");
+    const manualUsdtEl = $("split-manual-usdt");
+    const manualCopEl = $("split-manual-cop");
+
+    const cop = ws.copRate || COP_PER_USDT || 3103;
+    if (botUsdtEl) botUsdtEl.textContent = "$" + fmt(ws.botUsdt) + " USDT";
+    if (botCopEl) botCopEl.textContent = "≈ $" + copFmt(ws.botUsdt * cop) + " COP";
+    if (manualUsdtEl) manualUsdtEl.textContent = "$" + fmt(ws.manualUsdt) + " USDT";
+    if (manualCopEl) manualCopEl.textContent = "≈ $" + copFmt(ws.manualUsdt * cop) + " COP";
+  }
+
+  function copFmt(v) {
+    return Math.round(v).toLocaleString("es-CO");
+  }
+
+  window.openWalletTransferModal = function() {
+    const modal = $("wallet-transfer-modal");
+    if (!modal) return;
+    modal.style.display = "flex";
+    window.updateTransferModalPreview();
+  };
+
+  window.closeWalletTransferModal = function() {
+    const modal = $("wallet-transfer-modal");
+    if (modal) modal.style.display = "none";
+  };
+
+  window.updateTransferModalPreview = function() {
+    const dir = $("transfer-direction")?.value || "bot_to_manual";
+    const originEl = $("transfer-avail-origin");
+    const destEl = $("transfer-dest-current");
+    const ws = latestWalletSplit;
+    if (dir === "bot_to_manual") {
+      if (originEl) originEl.textContent = "$" + fmt(ws.botUsdt) + " USDT (Saldo Bot)";
+      if (destEl) destEl.textContent = "$" + fmt(ws.manualUsdt) + " USDT (Saldo Manual)";
+    } else {
+      if (originEl) originEl.textContent = "$" + fmt(ws.manualUsdt) + " USDT (Saldo Manual)";
+      if (destEl) destEl.textContent = "$" + fmt(ws.botUsdt) + " USDT (Saldo Bot)";
+    }
+  };
+
+  window.setTransferQuickAmount = function(amt) {
+    const inp = $("transfer-amount-input");
+    if (inp) inp.value = amt;
+  };
+
+  window.setTransferQuickPercent = function(pct) {
+    const dir = $("transfer-direction")?.value || "bot_to_manual";
+    const ws = latestWalletSplit;
+    const maxVal = dir === "bot_to_manual" ? ws.botUsdt : ws.manualUsdt;
+    const inp = $("transfer-amount-input");
+    if (inp) inp.value = (maxVal * pct).toFixed(2);
+  };
+
+  window.executeWalletTransfer = async function() {
+    const dir = $("transfer-direction")?.value || "bot_to_manual";
+    const inp = $("transfer-amount-input");
+    const amt = parseFloat(inp?.value || "0");
+    if (isNaN(amt) || amt <= 0) {
+      alert("Por favor ingresa un monto válido a transferir.");
+      return;
+    }
+
+    const btn = $("btn-confirm-transfer");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Transfiriendo…";
+    }
+
+    try {
+      const res = await fetch("/api/wallet-split/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: dir, amount: amt })
+      });
+      const data = await res.json();
+      if (data.success && data.walletSplit) {
+        updateWalletSplitUi(data.walletSplit);
+        window.closeWalletTransferModal();
+        if (inp) inp.value = "";
+      } else {
+        alert("Error en la transferencia: " + (data.error || "desconocido"));
+      }
+    } catch (e) {
+      alert("Error de conexión: " + e.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Confirmar";
+      }
+    }
+  };
+
+  // Modal de Operación Manual
+  let manualBuySelectedSymbol = "ETHUSDT";
+
+  window.openManualBuyModal = function(sym, price, rsi, drop) {
+    const modal = $("manual-buy-modal");
+    if (!modal) return;
+
+    // Poblar selector de monedas
+    const sel = $("manual-buy-symbol-select");
+    if (sel) {
+      const defaultCoins = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "PEPEUSDT", "DOGEUSDT", "BONKUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "WIFUSDT", "SHIBUSDT"];
+      const radarCoins = latestRadarList.map(r => r.symbol);
+      const allUnique = Array.from(new Set([...radarCoins, ...defaultCoins]));
+      sel.innerHTML = allUnique.map(s => {
+        const rad = latestRadarList.find(r => r.symbol === s);
+        const dropStr = (rad && rad.dropPct) ? " (-" + rad.dropPct.toFixed(1) + "%)" : "";
+        return "<option value=\"" + s + "\">" + s.replace("USDT", "") + " / USDT" + dropStr + "</option>";
+      }).join("");
+
+      if (sym && allUnique.includes(sym)) {
+        sel.value = sym;
+      }
+    }
+
+    manualBuySelectedSymbol = sel?.value || sym || "ETHUSDT";
+    window.updateManualBuySymbolStats(price, rsi, drop);
+
+    // Actualizar saldo manual disponible
+    const availEl = $("manual-buy-avail-text");
+    if (availEl) {
+      availEl.textContent = "$" + fmt(latestWalletSplit.manualUsdt) + " USDT";
+    }
+
+    modal.style.display = "flex";
+  };
+
+  window.closeManualBuyModal = function() {
+    const modal = $("manual-buy-modal");
+    if (modal) modal.style.display = "none";
+  };
+
+  window.updateManualBuySymbolStats = function(overridePrice, overrideRsi, overrideDrop) {
+    const sel = $("manual-buy-symbol-select");
+    const sym = sel?.value || manualBuySelectedSymbol;
+    manualBuySelectedSymbol = sym;
+
+    const rad = latestRadarList.find(r => r.symbol === sym);
+    const price = overridePrice || rad?.curPrice;
+    const rsi = overrideRsi != null ? overrideRsi : rad?.rsi;
+    const drop = overrideDrop != null ? overrideDrop : rad?.dropPct;
+
+    const prEl = $("manual-buy-cur-price");
+    const dropEl = $("manual-buy-cur-drop");
+    const rsiEl = $("manual-buy-cur-rsi");
+
+    if (prEl) prEl.textContent = price ? "$" + fmt(price) : "—";
+    if (dropEl) {
+      dropEl.textContent = drop != null ? "-" + Number(drop).toFixed(2) + "%" : "0.00%";
+      dropEl.style.color = (drop != null && drop >= 1.5) ? "#f43f5e" : "#38bdf8";
+    }
+    if (rsiEl) {
+      rsiEl.textContent = rsi != null ? Number(rsi).toFixed(1) : "50.0";
+      rsiEl.style.color = (rsi != null && rsi <= 40) ? "#10b981" : "#94a3b8";
+    }
+  };
+
+  window.setManualBuyQuick = function(amt) {
+    const inp = $("manual-buy-amount-input");
+    if (inp) inp.value = amt;
+  };
+
+  window.setManualBuyQuickPercent = function(pct) {
+    const inp = $("manual-buy-amount-input");
+    const maxVal = latestWalletSplit.manualUsdt || 0;
+    if (inp) inp.value = Math.max(10, Math.floor(maxVal * pct * 100) / 100).toFixed(2);
+  };
+
+  window.quickTransferToManual = function() {
+    window.closeManualBuyModal();
+    window.openWalletTransferModal();
+  };
+
+  window.executeManualBuy = async function() {
+    const sym = manualBuySelectedSymbol;
+    const inp = $("manual-buy-amount-input");
+    const amt = parseFloat(inp?.value || "0");
+    if (isNaN(amt) || amt < 10) {
+      alert("El monto mínimo de compra en Binance Spot es 10.00 USDT.");
+      return;
+    }
+
+    if (amt > latestWalletSplit.manualUsdt) {
+      const diff = (amt - latestWalletSplit.manualUsdt).toFixed(2);
+      if (confirm("Tu saldo manual es de $" + fmt(latestWalletSplit.manualUsdt) + " USDT. ¿Deseas transferir automáticamente $" + diff + " USDT desde el saldo del bot para completar esta compra?")) {
+        try {
+          await fetch("/api/wallet-split/transfer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ direction: "bot_to_manual", amount: parseFloat(diff) })
+          });
+        } catch (e) {}
+      } else {
+        return;
+      }
+    }
+
+    const btn = $("btn-confirm-manual-buy");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Enviando orden a Binance…";
+    }
+
+    try {
+      const res = await fetch("/api/manual/buy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: sym,
+          usdtAmount: amt,
+          triggerGainPct: 0.8,
+          callbackPct: 0.25
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("🚀 ¡Orden de compra manual para " + sym + " por $" + amt.toFixed(2) + " USDT enviada al bot!\n\nEl Trailing Take Profit rastreará picos en tiempo real con candado estricto contra pérdidas.");
+        window.closeManualBuyModal();
+        if (inp) inp.value = "";
+      } else {
+        alert("Error al enviar compra: " + (data.error || "desconocido"));
+      }
+    } catch (e) {
+      alert("Error de conexión: " + e.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "🚀 Comprar Ahora";
+      }
+    }
+  };
+
   async function tick() {
     fetchStrategies();
     try {
@@ -2170,6 +2418,7 @@
 
     // Actualizar Misión de Superación: Ganancias del Bot vs Depósitos
     latestStatusData = d;
+    if (d.walletSplit) updateWalletSplitUi(d.walletSplit);
     updateCrossoverSection(d);
 
       

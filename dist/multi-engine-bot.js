@@ -302,6 +302,31 @@ export class TrailingMasterBot {
         }
     }
     activeTrailingPositions = new Map();
+    walletSplit = { manualUsdt: 25.0, lastUpdated: 0 };
+    loadWalletSplit() {
+        try {
+            const f = path.resolve(process.cwd(), ".wallet-split.json");
+            if (fs.existsSync(f)) {
+                const d = JSON.parse(fs.readFileSync(f, "utf-8"));
+                if (typeof d.manualUsdt === "number")
+                    this.walletSplit.manualUsdt = d.manualUsdt;
+            }
+        }
+        catch { }
+    }
+    saveWalletSplit() {
+        try {
+            const f = path.resolve(process.cwd(), ".wallet-split.json");
+            fs.writeFileSync(f, JSON.stringify(this.walletSplit, null, 2), "utf-8");
+        }
+        catch { }
+    }
+    deductFromManualWallet(amount) {
+        this.loadWalletSplit();
+        this.walletSplit.manualUsdt = Math.max(0, this.walletSplit.manualUsdt - amount);
+        this.saveWalletSplit();
+        console.log("💼 [BILLETERA MANUAL] Descontados $" + amount.toFixed(2) + " USDT. Saldo manual restante: $" + this.walletSplit.manualUsdt.toFixed(2) + " USDT.");
+    }
     recentlySoldSymbols = new Map();
     buyWatches = new Map();
     ignoredDca = new Map();
@@ -538,6 +563,34 @@ export class TrailingMasterBot {
                             await this.saveTrailingPositions();
                             await this.notifier.send(`🌐 <b>[VENTA MANUAL CONFIRMADA]</b> Posición <b>${pos.symbol}</b> cerrada desde el Dashboard a ${fmtPrice(curPrice)}.`);
                         }
+                    }
+                }
+                else if (data.action === "manual_buy" && data.symbol && data.usdtAmount) {
+                    const sym = String(data.symbol).trim().toUpperCase();
+                    const amount = parseFloat(data.usdtAmount);
+                    console.log("🌐 [COMPRA MANUAL DESDE RADAR] Recibida orden para " + sym + " por $" + amount + " USDT...");
+                    if (amount >= this.minUsdtToTrade) {
+                        const ok = await this.executeSmartBuy(sym, amount, "Manual desde Radar Web", "trailing_rebound");
+                        if (ok) {
+                            const pos = this.activeTrailingPositions.get(sym);
+                            if (pos) {
+                                pos.isManual = true;
+                                if (data.triggerGainPct)
+                                    pos.customMinGainPct = parseFloat(data.triggerGainPct);
+                                if (data.callbackPct)
+                                    pos.customCallbackPct = parseFloat(data.callbackPct);
+                                await this.saveTrailingPositions();
+                            }
+                            this.deductFromManualWallet(amount);
+                            await this.notifier.send("👤 <b>[COMPRA MANUAL CONFIRMADA DESDE RADAR]</b> 🚀\n\n" +
+                                "• <b>Moneda:</b> <b>" + sym + "</b>\n" +
+                                "• <b>Inversión:</b> $" + amount.toFixed(2) + " USDT (Saldo Manual)\n" +
+                                "• <b>Trailing Take Profit:</b> Activa al +" + (data.triggerGainPct || 0.8).toFixed(2) + "% (retroceso " + (data.callbackPct || 0.25).toFixed(2) + "%)\n\n" +
+                                "🛡️ <i>Protegida 100% contra ventas a pérdida y rastreando picos en tiempo real.</i>");
+                        }
+                    }
+                    else {
+                        console.error("Monto de compra manual inválido: " + amount);
                     }
                 }
                 else if (data.action === "lock_profit" && data.id) {
@@ -1681,7 +1734,9 @@ export class TrailingMasterBot {
                     continue;
                 }
                 const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
-                const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
+                this.loadWalletSplit();
+                const botAvailableUsdt = Math.max(0, usdt - this.walletSplit.manualUsdt);
+                const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(botAvailableUsdt);
                 const reqBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
                 // CANDADO ESTRICTO DE RESERVA: Solo comprar si el saldo GASTABLE supera el mínimo ($10 USDT)
                 if (bounce >= reqBounce && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
@@ -2150,6 +2205,64 @@ export class TrailingMasterBot {
                         `👉 /aprobar | /ignorar\n`;
                 }
                 return msg;
+            }
+            if (cmd === "/billetera" || cmd === "/saldos" || cmd === "/saldo_split") {
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const freeUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                this.loadWalletSplit();
+                const manual = Math.min(freeUsdt, this.walletSplit.manualUsdt);
+                const bot = Math.max(0, freeUsdt - manual);
+                const cop = 3103;
+                return "💼 <b>DIVISIÓN DE SALDO: BOT VS MANUAL</b> ⚖️\n\n" +
+                    "🤖 <b>Saldo del Bot (Automático):</b> <b>$" + bot.toFixed(2) + " USDT</b> (≈ $" + Math.round(bot * cop).toLocaleString("es-CO") + " COP)\n" +
+                    "<i>(Asignado al Cazador Trailing y órdenes Smart DCA)</i>\n\n" +
+                    "👤 <b>Saldo Manual (Tus Operaciones):</b> <b>$" + manual.toFixed(2) + " USDT</b> (≈ $" + Math.round(manual * cop).toLocaleString("es-CO") + " COP)\n" +
+                    "<i>(100% blindado y reservado para tus compras manuales)</i>\n\n" +
+                    "💧 <b>Total Disponible en Binance:</b> $" + freeUsdt.toFixed(2) + " USDT\n\n" +
+                    "👉 Para transferir usa: <code>/pasar_manual &lt;monto&gt;</code> o <code>/pasar_bot &lt;monto&gt;</code>";
+            }
+            if (cmd === "/pasar_manual" || cmd.startsWith("/pasar_manual_")) {
+                const amtStr = cmd.includes("_") ? cmd.split("_").pop() : arg1;
+                const amt = parseFloat(amtStr || "0");
+                if (isNaN(amt) || amt <= 0) {
+                    return "❓ <b>Uso:</b> <code>/pasar_manual &lt;MONTO&gt;</code>\nEjemplo: <code>/pasar_manual 20</code> (pasa 20 USDT del bot al saldo manual).";
+                }
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const freeUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                this.loadWalletSplit();
+                const maxAvail = Math.max(0, freeUsdt - this.walletSplit.manualUsdt);
+                const toTransfer = Math.min(amt, maxAvail);
+                if (toTransfer <= 0) {
+                    return "⚠️ Saldo insuficiente en el bot para transferir. El bot solo tiene $" + maxAvail.toFixed(2) + " USDT libres.";
+                }
+                this.walletSplit.manualUsdt += toTransfer;
+                this.saveWalletSplit();
+                const newBot = Math.max(0, freeUsdt - this.walletSplit.manualUsdt);
+                return "✅ <b>TRANSFERENCIA EXITOSA</b>\n\n" +
+                    "• Pasados al Saldo Manual: <b>+$" + toTransfer.toFixed(2) + " USDT</b>\n" +
+                    "• 👤 <b>Nuevo Saldo Manual:</b> $" + this.walletSplit.manualUsdt.toFixed(2) + " USDT\n" +
+                    "• 🤖 <b>Nuevo Saldo Bot:</b> $" + newBot.toFixed(2) + " USDT";
+            }
+            if (cmd === "/pasar_bot" || cmd.startsWith("/pasar_bot_")) {
+                const amtStr = cmd.includes("_") ? cmd.split("_").pop() : arg1;
+                const amt = parseFloat(amtStr || "0");
+                if (isNaN(amt) || amt <= 0) {
+                    return "❓ <b>Uso:</b> <code>/pasar_bot &lt;MONTO&gt;</code>\nEjemplo: <code>/pasar_bot 15</code> (pasa 15 USDT del saldo manual al bot).";
+                }
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const freeUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                this.loadWalletSplit();
+                const toTransfer = Math.min(amt, this.walletSplit.manualUsdt);
+                if (toTransfer <= 0) {
+                    return "⚠️ No tienes saldo manual para transferir al bot. Saldo manual actual: $" + this.walletSplit.manualUsdt.toFixed(2) + " USDT.";
+                }
+                this.walletSplit.manualUsdt = Math.max(0, this.walletSplit.manualUsdt - toTransfer);
+                this.saveWalletSplit();
+                const newBot = Math.max(0, freeUsdt - this.walletSplit.manualUsdt);
+                return "✅ <b>TRANSFERENCIA EXITOSA</b>\n\n" +
+                    "• Pasados al Saldo del Bot: <b>+$" + toTransfer.toFixed(2) + " USDT</b>\n" +
+                    "• 🤖 <b>Nuevo Saldo Bot:</b> $" + newBot.toFixed(2) + " USDT\n" +
+                    "• 👤 <b>Nuevo Saldo Manual:</b> $" + this.walletSplit.manualUsdt.toFixed(2) + " USDT";
             }
             if (cmd === "/presupuesto" || cmd === "presupuesto") {
                 const acc = await this.client.account({ recvWindow: 60000 });
@@ -3748,7 +3861,9 @@ export class TrailingMasterBot {
             const usdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
             const time = new Date().toLocaleTimeString();
             // Orquestador Autónomo de Liquidez y Sesiones (COT)
-            const sessionPlan = this.getSessionLiquidityPlan(usdt);
+            this.loadWalletSplit();
+            const botSpendableUsdt = Math.max(0, usdt - this.walletSplit.manualUsdt);
+            const sessionPlan = this.getSessionLiquidityPlan(botSpendableUsdt);
             this.lastSessionPlan = sessionPlan;
             this.saveSessionPlan(sessionPlan);
             // Notificar cambio de sesión relevante

@@ -31,6 +31,42 @@ export class DashboardServer {
     return this.prices["USDTCOP"] && this.prices["USDTCOP"] > 1000 ? this.prices["USDTCOP"] : 3103;
   }
 
+  public getWalletSplit(totalFreeUsdt = 0): { manualUsdt: number; botUsdt: number; totalFreeUsdt: number; copRate: number; manualCop: number; botCop: number } {
+    let manualUsdt = 25.0; // presupuesto inicial manual por defecto si hay saldo
+    try {
+      const f = path.resolve(process.cwd(), ".wallet-split.json");
+      if (fs.existsSync(f)) {
+        const data = JSON.parse(fs.readFileSync(f, "utf-8"));
+        if (typeof data.manualUsdt === "number") manualUsdt = data.manualUsdt;
+      }
+    } catch {}
+
+    if (totalFreeUsdt > 0) {
+      manualUsdt = Math.max(0, Math.min(totalFreeUsdt, manualUsdt));
+    } else {
+      manualUsdt = Math.max(0, manualUsdt);
+    }
+    const botUsdt = Math.max(0, totalFreeUsdt - manualUsdt);
+    const copRate = this.getCopRate();
+    return {
+      manualUsdt,
+      botUsdt,
+      totalFreeUsdt,
+      copRate,
+      manualCop: Math.round(manualUsdt * copRate),
+      botCop: Math.round(botUsdt * copRate)
+    };
+  }
+
+  public saveWalletSplit(manualUsdt: number) {
+    try {
+      const f = path.resolve(process.cwd(), ".wallet-split.json");
+      fs.writeFileSync(f, JSON.stringify({ manualUsdt, lastUpdated: Date.now() }, null, 2), "utf-8");
+    } catch (e: any) {
+      console.error("Error guardando wallet-split:", e.message);
+    }
+  }
+
   // Caché (último valor bueno conocido)
   private prices: Record<string, number> = {};
   private radarMeta: Record<string, { rsi: number; dropPct: number }> = {};
@@ -749,6 +785,7 @@ export class DashboardServer {
       pricesFresh: Date.now() - this.lastPriceOk < 15000,
       accountAvailable: this.usdtFree !== null,
       authError: this.authError,
+      walletSplit: this.getWalletSplit((this.usdtFree ?? 0) + (this.usdtEarn ?? 0)),
       portfolio: {
         totalEstimatedUsdt: total,
         totalEstimatedCop: total * copRate,
@@ -1647,6 +1684,89 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
         });
         return;
       }
+      if (parsedUrl.pathname === "/api/wallet-split" && req.method === "GET") {
+        try {
+          const freeUsdt = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
+          const split = this.getWalletSplit(freeUsdt);
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify(split));
+        } catch (e: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/wallet-split/transfer" && req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const freeUsdt = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
+            const currentSplit = this.getWalletSplit(freeUsdt);
+            const amt = Math.max(0, parseFloat(data.amount) || 0);
+
+            let newManual = currentSplit.manualUsdt;
+            if (data.direction === "bot_to_manual") {
+              const maxFromBot = Math.max(0, freeUsdt - currentSplit.manualUsdt);
+              const toMove = Math.min(amt, maxFromBot);
+              newManual += toMove;
+            } else if (data.direction === "manual_to_bot") {
+              const toMove = Math.min(amt, currentSplit.manualUsdt);
+              newManual -= toMove;
+            }
+
+            this.saveWalletSplit(newManual);
+            const updated = this.getWalletSplit(freeUsdt);
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: true, walletSplit: updated }));
+          } catch (e: any) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/manual/buy" && req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const sym = (data.symbol || "").trim().toUpperCase();
+            const amount = parseFloat(data.usdtAmount);
+            if (!sym || isNaN(amount) || amount < 10) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Monto inválido (mínimo 10 USDT) o símbolo requerido." }));
+              return;
+            }
+
+            const actionFile = path.resolve(process.cwd(), ".position-action.json");
+            fs.writeFileSync(
+              actionFile,
+              JSON.stringify({
+                action: "manual_buy",
+                symbol: sym,
+                usdtAmount: amount,
+                triggerGainPct: data.triggerGainPct || 0.8,
+                callbackPct: data.callbackPct || 0.25,
+                time: Date.now()
+              }, null, 2),
+              "utf-8"
+            );
+
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: true, message: "Orden de compra manual enviada al bot." }));
+          } catch (e: any) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+
       if (
         parsedUrl.pathname === "/api/positions/manual-sell" &&
         req.method === "POST"
