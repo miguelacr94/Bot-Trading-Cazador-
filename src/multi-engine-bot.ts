@@ -505,7 +505,7 @@ export class TrailingMasterBot {
     this.loadPendingOpportunity();
     this.loadIgnoredDca();
     this.dashboardServer = new DashboardServer();
-    this.dashboardServer.start();
+    if (process.env.BOT_NO_AUTOSTART !== "1") this.dashboardServer.start();
   }
 
   private saveIgnoredDca() {

@@ -21,7 +21,9 @@
     "start:prod": "node --max-old-space-size=64 dist/multi-engine-bot.js",
     "dashboard": "tsx src/dashboard-server.ts",
     "futures": "tsx src/futures-engine.ts",
-    "futures:sim": "tsx src/futures-engine.ts"
+    "futures:sim": "tsx src/futures-engine.ts",
+    "test": "tsx test/safety-guard.test.ts",
+    "test:safety": "tsx test/safety-guard.test.ts"
   },
   "dependencies": {
     "@binance/connector": "^3.3.0",
