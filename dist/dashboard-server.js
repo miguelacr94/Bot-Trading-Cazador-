@@ -389,6 +389,7 @@ export class DashboardServer {
                 highestPrice: pos.highestPrice,
                 peakGainPct: ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100,
                 stopPrice: pos.highestPrice * (1 - callback / 100),
+                lockedFloorGainPct: pos.lockedFloorGainPct || null,
                 callbackPct: callback,
                 isCustomCallback: !!pos.customCallbackPct,
                 suggestedCallback: sym.includes("PEPE") ||
@@ -1272,6 +1273,44 @@ export class DashboardServer {
                             "Content-Type": "application/json; charset=utf-8",
                         });
                         res.end(JSON.stringify({ success: true, controls }));
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            if (parsedUrl.pathname === "/api/positions/lock-floor" &&
+                req.method === "POST") {
+                let body = "";
+                req.on("data", (chunk) => (body += chunk));
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const actionFile = path.resolve(process.cwd(), ".opportunity-action.json");
+                        fs.writeFileSync(actionFile, JSON.stringify({ action: "lock_floor", symbol: data.symbol, pct: data.pct, time: Date.now() }, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                        res.end(JSON.stringify({ success: true }));
+                    }
+                    catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            if (parsedUrl.pathname === "/api/positions/lock-profit" &&
+                req.method === "POST") {
+                let body = "";
+                req.on("data", (chunk) => (body += chunk));
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const actionFile = path.resolve(process.cwd(), ".position-action.json");
+                        fs.writeFileSync(actionFile, JSON.stringify({ action: "lock_profit", id: data.id, targetGainPct: data.targetGainPct, time: Date.now() }, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                        res.end(JSON.stringify({ success: true, message: "Candado de ganancia registrado" }));
                     }
                     catch (e) {
                         res.writeHead(400, { "Content-Type": "application/json" });

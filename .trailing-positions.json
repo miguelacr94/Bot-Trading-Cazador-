@@ -85,7 +85,8 @@
       "activated": true,
       "buyTime": 1793313420232,
       "strategy": "trailing_rebound",
-      "customMinGainPct": 10
+      "customMinGainPct": 10,
+      "lockedFloorGainPct": 8
     }
   ]
 ]

@@ -570,11 +570,6 @@ export class TrailingMasterBot {
         fs.writeFileSync(file, JSON.stringify(this.pendingOpportunity, null, 2));
       } else if (fs.existsSync(file)) {
         fs.unlinkSync(file);
-        if (data.action === lock_floor && data.symbol) {
-          console.log(`🌐 Acción recibida desde Dashboard: ASEGURAR PISO ${data.symbol} a ${data.pct || 'pico actual'}%`);
-          await this.lockPositionFloor(data.symbol, data.pct);
-          return;
-        }
       }
     } catch(e: any) {}
   }
@@ -650,6 +645,33 @@ export class TrailingMasterBot {
     } catch (e: any) {
       return { success: false, msg: e.message };
     }
+  }
+
+  private async checkPositionActionFile() {
+    try {
+      const file = path.resolve(process.cwd(), ".position-action.json");
+      if (fs.existsSync(file)) {
+        const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+        fs.unlinkSync(file);
+        if (data.action === "lock_profit" && data.id) {
+          const pos = this.activeTrailingPositions.get(data.id);
+          if (pos) {
+            pos.activated = true;
+            if (data.targetGainPct && data.targetGainPct > 0) {
+              pos.customMinGainPct = data.targetGainPct;
+            }
+            this.saveTrailingPositions();
+            const lockedVal = (pos.customMinGainPct || data.targetGainPct || 0.8).toFixed(2);
+            const msg = "🔒 <b>[CANDADO MANUAL ASEGURADO: " + pos.symbol + "]</b>\n\n" +
+              "• Ganancia asegurada fijada en: <b>+" + lockedVal + "%</b>\n" +
+              "• Si el precio retrocede, venderá asegurando este piso.\n" +
+              "• Si sigue subiendo, ¡seguirá persiguiendo la cima con Trailing Take Profit! 🚀";
+            await this.notifier.send(msg);
+            console.log("🔒 Candado asegurado para " + pos.symbol + " en +" + lockedVal + "%");
+          }
+        }
+      }
+    } catch(e: any) {}
   }
 
   private async checkOpportunityActionFile() {
@@ -3831,6 +3853,7 @@ export class TrailingMasterBot {
       }
 
       await this.checkOpportunityActionFile();
+      await this.checkPositionActionFile();
       await this.checkOpportunityTimeout();
       await this.checkMarketRegime();
       await this.checkTimeframeAdvisor();

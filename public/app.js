@@ -242,6 +242,17 @@
         </div>
       </div>
 
+      <!-- Botón Asegurar Piso en Pico -->
+      <div class="pos-lock-floor-box" style="margin-top:10px; padding:8px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px;">🔒 Asegurar Piso</div>
+          <div style="font-size:11px; color:var(--text-muted);" data-f="lockfloordesc">Sin piso amarrado</div>
+        </div>
+        <button class="btn-lock-floor" data-f="btnlockfloor" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px;">
+          🔒 Asegurar Ganancia
+        </button>
+      </div>
+
       <div class="pos-footer">
         <span class="pnl-label">Ganancia flotante</span>
         <div style="text-align:right">
@@ -272,6 +283,37 @@
           }
         } catch(err) {
           console.error("Error setting timeframe:", err);
+        }
+        return;
+      }
+
+      // Click en botón Asegurar Piso
+      const lockFloorBtn = e.target.closest(".btn-lock-floor");
+      if (lockFloorBtn) {
+        const id = currentP.id || currentP.symbol;
+        const currentGain = currentP.gainPct || 0;
+        const peakGain = currentP.peakGainPct || currentGain;
+        const suggestedLock = Math.max(0.5, Math.floor(currentGain * 10) / 10);
+        
+        const userInput = prompt(`🔒 Asegurar piso para ${currentP.symbol}:\n\nGanancia actual: +${currentGain.toFixed(2)}%\nPico alcanzado: +${peakGain.toFixed(2)}%\n\nIngresa el porcentaje mínimo de ganancia a blindar (si cae de aquí vende asegurando; si sube sigue persiguiendo la cima):`, suggestedLock.toFixed(1));
+        
+        if (userInput !== null && !isNaN(parseFloat(userInput))) {
+          const pct = parseFloat(userInput);
+          try {
+            const res = await fetch("/api/positions/lock-profit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, symbol: currentP.symbol, targetGainPct: pct })
+            });
+            const d = await res.json();
+            if (d.success) {
+              currentP.lockedFloorGainPct = pct;
+              updatePositionCard(card, currentP);
+              if (typeof showToast === "function") showToast(`🔒 Piso de ${currentP.symbol} asegurado en +${pct.toFixed(2)}%`);
+            }
+          } catch(err) {
+            console.error("Error locking profit floor:", err);
+          }
         }
         return;
       }
@@ -343,6 +385,30 @@
     setClass(pnl, "pnl-value " + (gain ? "pos-profit" : "pos-loss"));
     setText(pnl, `${s}${fmt(p.pnlUsdt)} USDT (${s}${p.gainPct.toFixed(2)}%)`);
     setText(f("pnlcop"), `≈ ${s}${cop(p.pnlCop)} COP`);
+
+    // Actualizar indicador de piso asegurado
+    if (f("lockfloordesc")) {
+      if (p.lockedFloorGainPct && p.lockedFloorGainPct > 0) {
+        setText(f("lockfloordesc"), "Blindado en: +" + p.lockedFloorGainPct.toFixed(2) + "%");
+        setStyle(f("lockfloordesc"), "color", "var(--accent-green)");
+        if (f("btnlockfloor")) {
+          setText(f("btnlockfloor"), "🔒 Editar (+" + p.lockedFloorGainPct.toFixed(1) + "%)");
+          setStyle(f("btnlockfloor"), "background", "rgba(16, 185, 129, 0.2)");
+          setStyle(f("btnlockfloor"), "border", "1px solid var(--accent-green)");
+          setStyle(f("btnlockfloor"), "color", "var(--accent-green)");
+        }
+      } else {
+        const curG = p.gainPct || 0;
+        setText(f("lockfloordesc"), curG > 0 ? "Libre (actual +" + curG.toFixed(1) + "%)" : "Sin piso amarrado");
+        setStyle(f("lockfloordesc"), "color", "var(--text-muted)");
+        if (f("btnlockfloor")) {
+          setText(f("btnlockfloor"), "🔒 Asegurar Piso");
+          setStyle(f("btnlockfloor"), "background", "linear-gradient(135deg, #10b981, #059669)");
+          setStyle(f("btnlockfloor"), "border", "none");
+          setStyle(f("btnlockfloor"), "color", "#fff");
+        }
+      }
+    }
 
     // Timeframe Dinámico y Sugerencia Centinela
     const tfVal = (p.timeframe || "1h").toLowerCase();
