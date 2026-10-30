@@ -47,10 +47,13 @@ export class DashboardServer {
         return [];
     }
     trackedSymbols() {
-        const pos = this.readJson(".trailing-positions.json").map(([s]) => s);
-        const buys = this.readJson(".trailing-buys.json").map(([s]) => s);
+        const pos = this.readJson(".trailing-positions.json").map(([s]) => (s || "").split("_")[0]);
+        const buys = this.readJson(".trailing-buys.json").map(([s]) => (s || "").split("_")[0]);
         const allKnown = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "PEPEUSDT", "DOGEUSDT", "BONKUSDT", "SHIBUSDT", "WIFUSDT"];
-        return Array.from(new Set([...PNL_SYMBOLS, ...allKnown, ...pos, ...buys]));
+        const set = new Set([...PNL_SYMBOLS, ...allKnown, ...pos, ...buys]);
+        return Array.from(set)
+            .map((s) => (s || "").trim().toUpperCase())
+            .filter((s) => /^[A-Z0-9]+$/.test(s) && s.endsWith("USDT"));
     }
     /** Ejecuta una tarea de refresco sin solaparla consigo misma */
     async guarded(name, fn) {
@@ -67,15 +70,38 @@ export class DashboardServer {
         }
     }
     async refreshPrices() {
-        const syms = this.trackedSymbols();
-        const url = `${BINANCE_PUBLIC}/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(syms))}`;
-        const res = await fetch(url);
-        if (!res.ok)
-            return;
-        const arr = await res.json();
-        for (const t of arr)
-            this.prices[t.symbol] = parseFloat(t.price);
-        this.lastPriceOk = Date.now();
+        try {
+            const syms = this.trackedSymbols();
+            if (!syms.length)
+                return;
+            const url = `${BINANCE_PUBLIC}/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(syms))}`;
+            const res = await fetch(url);
+            if (res.ok) {
+                const arr = await res.json();
+                for (const t of arr)
+                    this.prices[t.symbol] = parseFloat(t.price);
+                this.lastPriceOk = Date.now();
+            }
+            else {
+                const errText = await res.text();
+                console.error(`⚠️ Error en lote de precios Binance (${res.status}): ${errText}`);
+                // Fallback robusto: consultar endpoint global
+                const fallbackRes = await fetch(`${BINANCE_PUBLIC}/api/v3/ticker/price`);
+                if (fallbackRes.ok) {
+                    const allArr = await fallbackRes.json();
+                    const targetSet = new Set(syms);
+                    for (const t of allArr) {
+                        if (targetSet.has(t.symbol))
+                            this.prices[t.symbol] = parseFloat(t.price);
+                    }
+                    this.lastPriceOk = Date.now();
+                    console.log(`✅ Precios recuperados vía fallback para ${Object.keys(this.prices).length} pares.`);
+                }
+            }
+        }
+        catch (err) {
+            console.error("⚠️ Excepción en refreshPrices:", err.message);
+        }
     }
     async refreshRadar() {
         for (const sym of PNL_SYMBOLS) {

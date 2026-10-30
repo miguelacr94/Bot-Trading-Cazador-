@@ -552,7 +552,8 @@ export class TrailingMasterBot {
         let totalInvested = 0;
         for (const [sym, pos] of this.activeTrailingPositions.entries()) {
             try {
-                const t = await this.client.tickerPrice(sym);
+                const cleanSym = (pos.symbol || sym).split('_')[0];
+                const t = await this.client.tickerPrice(cleanSym);
                 const cur = parseFloat(t.data.price);
                 const gainPct = ((cur - pos.buyPrice) / pos.buyPrice) * 100;
                 const pnlUsdt = (cur - pos.buyPrice) * pos.qty;
@@ -853,7 +854,8 @@ export class TrailingMasterBot {
                     continue;
                 if (pos.lastDcaTime && (Date.now() - pos.lastDcaTime) < 3 * 3600 * 1000)
                     continue;
-                const curPrice = parseFloat((await this.client.tickerPrice(sym)).data.price);
+                const cleanSym = (pos.symbol || sym).split('_')[0];
+                const curPrice = parseFloat((await this.client.tickerPrice(cleanSym)).data.price);
                 const dropPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
                 const lastIgnored = this.ignoredDca.get(sym);
                 if (lastIgnored) {
@@ -1809,7 +1811,8 @@ export class TrailingMasterBot {
                         const lotNum = p.lotIndex ? `Lote #${p.lotIndex}` : "Lote Único";
                         let curP = p.buyPrice;
                         try {
-                            curP = parseFloat((await this.client.tickerPrice(p.symbol)).data.price);
+                            const cleanSym = (p.symbol || id).split('_')[0];
+                            curP = parseFloat((await this.client.tickerPrice(cleanSym)).data.price);
                         }
                         catch (e) { }
                         const gP = ((curP - p.buyPrice) / p.buyPrice) * 100;
@@ -2351,7 +2354,8 @@ export class TrailingMasterBot {
                     for (const [sym, p] of this.activeTrailingPositions.entries()) {
                         let cur = p.buyPrice;
                         try {
-                            const t = await this.client.tickerPrice(sym);
+                            const cleanSym = (p.symbol || sym).split('_')[0];
+                            const t = await this.client.tickerPrice(cleanSym);
                             cur = parseFloat(t.data.price);
                         }
                         catch (e) { }
