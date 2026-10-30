@@ -1108,20 +1108,35 @@ export class TrailingMasterBot {
                     pos.highestPrice = curPrice;
                     console.log(`📈 Nuevo pico en ${symbol}: ${curPrice} (+${gainPct.toFixed(2)}%)`);
                     this.saveTrailingPositions();
-                    // Si el pico subió al menos un 0.12%, avisar a Telegram
-                    const jumpPct = ((curPrice - oldPeak) / oldPeak) * 100;
-                    if (jumpPct >= 0.12) {
+                    // Notificar nuevo pico relevante con opción táctil de asegurar piso
+                    const nowMs = Date.now();
+                    const lastTime = pos.lastPeakNotifiedTime || 0;
+                    const lastGain = pos.lastPeakNotifiedGain || 0;
+                    const gainDiff = gainPct - lastGain;
+                    // Se notifica en:
+                    // 1. Ganancia actual >= +0.80% (ganancia real neta)
+                    // 2. Cooldown mínimo de 2.5 min para evitar spam
+                    // 3. Subida de al menos +0.30% desde la última alerta O cruce de hito redondo (+1.0%, +1.5%, +2.0%, etc.)
+                    const isMilestone = Math.floor(gainPct * 2) > Math.floor(lastGain * 2);
+                    if (gainPct >= 0.80 && (nowMs - lastTime >= 150000) && (gainDiff >= 0.30 || isMilestone)) {
+                        pos.lastPeakNotifiedTime = nowMs;
+                        pos.lastPeakNotifiedGain = gainPct;
+                        this.saveTrailingPositions();
                         const callback = this.getCallbackPct(symbol, pos);
                         const stopPrice = curPrice * (1 - callback / 100);
                         const minLockedGain = ((stopPrice - pos.buyPrice) / pos.buyPrice) * 100;
-                        const tierDesc = gainPct >= 3.0 ? "Candado Extremo (0.15%)" : (gainPct >= 2.2 ? "Ceñido Euforia (0.20%)" : (gainPct >= 1.4 ? "Consolidación (0.30%)" : "Respiro Normal (0.45%)"));
-                        const floorNote = pos.lockedFloorGainPct ? `\n🔒 <b>Piso Asegurado Férreo:</b> +${pos.lockedFloorGainPct.toFixed(2)}% NETO\n` : "";
+                        const cleanSym = symbol.replace("USDT", "");
+                        const suggestedFloor = Math.max(0.30, Math.floor(gainPct * 100) / 100);
+                        const cmdPiso = `/piso_${cleanSym}_${Math.round(suggestedFloor * 100)}`;
+                        const floorNote = pos.lockedFloorGainPct ? `\n🔒 <b>Piso Manual Ya Amarrado:</b> +${pos.lockedFloorGainPct.toFixed(2)}% NETO\n` : "";
                         const peakAlert = `📈 <b>¡NUEVO PICO ALCANZADO: ${symbol}!</b> 🚀\n\n` +
-                            `• <b>Nuevo techo:</b> ${fmtPrice(curPrice)} (<b>+${gainPct.toFixed(2)}%</b>)\n` +
-                            `• 🛡️ <b>Nuevo piso garantizado:</b> ${fmtPrice(stopPrice)}\n` +
-                            `• 💵 <b>Ganancia amarrada:</b> +${minLockedGain.toFixed(2)}% NETO\n` +
-                            `• ⚡ <b>Trailing Dinámico:</b> ${callback.toFixed(2)}% (${tierDesc})\n\n` +
-                            `🏹 <i>El bot persigue la cima con candado dinámico...</i>`;
+                            `• <b>Entrada:</b> ${fmtPrice(pos.buyPrice)}\n` +
+                            `• <b>Pico alcanzado:</b> ${fmtPrice(curPrice)} (<b>+${gainPct.toFixed(2)}%</b>)\n` +
+                            `• 🛡️ <b>Piso Trailing dinámico:</b> ${fmtPrice(stopPrice)} (+${minLockedGain.toFixed(2)}% neto)\n` +
+                            floorNote +
+                            `\n🔒 <b>¿Deseas asegurar este pico ahora mismo?</b>\n` +
+                            `👉 Toca aquí: <code>${cmdPiso}</code>\n` +
+                            `<i>(O amárralo en el botón del Dashboard web)</i>`;
                         await this.notifier.send(peakAlert);
                     }
                 }
@@ -1632,13 +1647,9 @@ export class TrailingMasterBot {
                         activeMemeCount++;
                     const trigger = curPrice * (1 + TRAILING_BUY_BOUNCE_PCT / 100);
                     console.log(`🎯 Trailing Buy ARMADO en ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Caída ${dropPct.toFixed(2)}%)`);
-                    const isPinbarAlert = hasPinbarRejection ? `• 🕯️ <b>Vela de Rechazo:</b> Mecha inferior del <b>${(lowerWickRatio * 100).toFixed(0)}%</b> (Absorción de suelo)\n` : "";
-                    await this.notifier.send(`🎯 <b>[TRAILING BUY ARMADO: ${isMeme ? "🐕 MEME " : ""}${sym}]</b>\n\n` +
-                        `• Caída detectada: <b>-${dropPct.toFixed(2)}%</b> (RSI ${rsi.toFixed(1)})\n` +
-                        isPinbarAlert +
-                        `• Precio actual: ${fmtPrice(curPrice)}\n` +
-                        `• 🔻 El bot ahora persigue el <b>piso más bajo</b> tick a tick.\n` +
-                        `• ✅ Comprará cuando rebote <b>+${TRAILING_BUY_BOUNCE_PCT}%</b> desde el piso (hoy: ${trigger.toFixed(4)}).`);
+                    // SILENCIADO POR SOLICITUD: No enviar spam en Telegram al armar vigilancia.
+                    // Solo se notificará cuando la compra se ejecute de verdad en executeSmartBuy.
+                    console.log(`🎯 [TRAILING BUY ARMADO] ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Caída -${dropPct.toFixed(2)}%)`);
                 }
             }
             catch (e) { }
@@ -1704,6 +1715,85 @@ export class TrailingMasterBot {
             const cmd = parts[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const arg1 = parts[1]?.toUpperCase();
             const arg2 = parts[2];
+            // Comando interactivo para asegurar piso: /piso_SYMBOL_PCT o /piso SYMBOL PCT
+            if (cmd.startsWith("/piso_") || cmd.startsWith("/asegurar_") || cmd === "/piso" || cmd === "/asegurar" || cmd === "piso" || cmd === "asegurar") {
+                let targetSym = "";
+                let targetPct = 0;
+                if (cmd.startsWith("/piso_") || cmd.startsWith("/asegurar_")) {
+                    const prefix = cmd.startsWith("/piso_") ? "/piso_" : "/asegurar_";
+                    const rawParts = cmd.slice(prefix.length).split("_");
+                    targetSym = rawParts[0].toUpperCase();
+                    if (!targetSym.endsWith("USDT"))
+                        targetSym += "USDT";
+                    const rawPctNum = parseFloat(rawParts[1] || "0");
+                    targetPct = rawPctNum >= 10 ? rawPctNum / 100 : rawPctNum;
+                }
+                else {
+                    targetSym = (arg1 || "").toUpperCase();
+                    if (targetSym && !targetSym.endsWith("USDT"))
+                        targetSym += "USDT";
+                    targetPct = parseFloat(arg2 || "0");
+                }
+                if (!targetSym || isNaN(targetPct) || targetPct <= 0) {
+                    return "ℹ️ <b>Uso correcto:</b> <code>/piso MONEDA PORCENTAJE</code>\nEjemplo: <code>/piso XRP 0.80</code> o toca el enlace rápido en las alertas de pico.";
+                }
+                let foundPos = null;
+                for (const [k, p] of this.activeTrailingPositions.entries()) {
+                    const cleanK = k.split("_")[0];
+                    const cleanP = (p.symbol || "").split("_")[0];
+                    if (k === targetSym || cleanK === targetSym || cleanP === targetSym) {
+                        foundPos = p;
+                        break;
+                    }
+                }
+                if (!foundPos) {
+                    return `❌ No se encontró posición abierta para <b>${targetSym}</b>.`;
+                }
+                const res = await this.lockPositionFloor(foundPos.symbol || foundPos.lotId || targetSym, targetPct);
+                if (res.success) {
+                    return `🔒 <b>¡PISO ASEGURADO EN ${foundPos.symbol}!</b> ✅\n\n` +
+                        `• Ganancia asegurada: <b>+${targetPct.toFixed(2)}% NETO</b>\n` +
+                        `• Si el precio retrocede, venderá asegurando este piso.\n` +
+                        `• Si sigue subiendo, ¡seguirá persiguiendo la cima con Trailing Take Profit! 🚀`;
+                }
+                else {
+                    return `⚠️ No se pudo fijar el piso: ${res.msg}`;
+                }
+            }
+            // Consolidado del día a solicitud
+            if (cmd === "/consolidado" || cmd === "consolidado" || cmd === "/reporte_dia" || cmd === "reporte_dia") {
+                return await this.generateConsolidatedDailyReport();
+            }
+            // Tomar de la cosecha / reserva
+            if (cmd.startsWith("/tomar_cosecha") || cmd === "/cosecha" || cmd === "cosecha") {
+                let targetSym = "";
+                if (cmd.startsWith("/tomar_cosecha_")) {
+                    targetSym = cmd.replace("/tomar_cosecha_", "").toUpperCase();
+                    if (!targetSym.endsWith("USDT"))
+                        targetSym += "USDT";
+                }
+                else {
+                    targetSym = (arg1 || "").toUpperCase();
+                    if (targetSym && !targetSym.endsWith("USDT"))
+                        targetSym += "USDT";
+                }
+                if (!targetSym) {
+                    return "ℹ️ <b>Uso:</b> <code>/tomar_cosecha MONEDA</code>\nEjemplo: <code>/tomar_cosecha SOLUSDT</code> para autorizar compra con la reserva protegida.";
+                }
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const freeUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                const amountToUse = Math.min(15.0, Math.max(10.0, freeUsdt));
+                if (freeUsdt < 10.0) {
+                    return `⚠️ Saldo insuficiente en Binance (${freeUsdt.toFixed(2)} USDT) para tomar de la cosecha.`;
+                }
+                const ok = await this.executeSmartBuy(targetSym, amountToUse, "Oportunidad de Oro (Fondo de Cosecha)", "trailing_rebound");
+                if (ok) {
+                    return `🚀 <b>¡COMPRA DE COSECHA EJECUTADA!</b>\nSe tomaron ${amountToUse.toFixed(2)} USDT de la reserva para comprar <b>${targetSym}</b> en suelo de alta probabilidad.`;
+                }
+                else {
+                    return `⚠️ No se pudo ejecutar la compra en ${targetSym}.`;
+                }
+            }
             if (cmd === "/viabilidad_futuros" || cmd === "viabilidad_futuros" || cmd === "/viabilidad" || cmd === "viabilidad") {
                 const viability = await this.futuresEngine.evaluateMarketViability();
                 const acc = await this.client.account({ recvWindow: 60000 });
@@ -3459,6 +3549,50 @@ export class TrailingMasterBot {
         }
     }
     // --- CENTINELA DE LIQUIDEZ (50 USDT) Y VIABILIDAD DE FUTUROS ---
+    lastHarvestNotifyTime = 0;
+    async checkPrimeHarvestOpportunities(reservedUsdt) {
+        if (reservedUsdt < 15.0)
+            return false;
+        // Cooldown de 4 horas para no ser repetitivo
+        if (Date.now() - this.lastHarvestNotifyTime < 4 * 3600 * 1000)
+            return false;
+        if (this.pendingOpportunity)
+            return false;
+        const primeCandidates = ["SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"];
+        for (const sym of primeCandidates) {
+            if (this.activeTrailingPositions.has(sym))
+                continue;
+            try {
+                const klines = await this.client.klines(sym, "1h", { limit: 25 });
+                const closes = klines.data.map((k) => parseFloat(k[4]));
+                const rsi = this.calculateRSI(closes, 14);
+                const lastK = klines.data[klines.data.length - 1];
+                const open = parseFloat(lastK[1]), high = parseFloat(lastK[2]), low = parseFloat(lastK[3]), close = parseFloat(lastK[4]);
+                const range = high - low;
+                const lowerWick = Math.min(open, close) - low;
+                const wickRatio = range > 0 ? (lowerWick / range) : 0;
+                // Oportunidad de oro: RSI 1H <= 30 y absorción o sobreventa profunda <= 28
+                if (rsi <= 30 || (rsi <= 35 && wickRatio >= 0.35)) {
+                    this.lastHarvestNotifyTime = Date.now();
+                    const cleanSym = sym.replace("USDT", "");
+                    const amountToSuggest = Math.min(15.0, Math.floor(reservedUsdt * 0.5 * 100) / 100);
+                    const alertMsg = `💎 <b>¡OPORTUNIDAD DE ORO DETECTADA (COSECHA)!</b> 🎯\n\n` +
+                        `• <b>Moneda:</b> <b>${sym}</b>\n` +
+                        `• 📊 <b>Fundamento Institucional:</b> RSI 1H en <b>${rsi.toFixed(1)}</b> con absorción institucional (${(wickRatio * 100).toFixed(0)}% mecha inferior).\n` +
+                        `• 🌾 <b>Fondo de Cosecha / Reserva Protegida:</b> <b>${reservedUsdt.toFixed(2)} USDT</b>\n` +
+                        `• 💵 <b>Monto sugerido para entrar:</b> <b>${amountToSuggest.toFixed(2)} USDT</b>\n\n` +
+                        `<b>¿Deseas autorizar tomar estos fondos de la cosecha para cazar el suelo?</b>\n` +
+                        `👉 Toca: <code>/tomar_cosecha_${cleanSym}</code> — <i>Ejecutar compra</i>\n` +
+                        `👉 Toca: <code>/ignorar</code> — <i>Mantener reserva protegida</i>`;
+                    await this.notifier.send(alertMsg);
+                    console.log(`💎 Alerta de oportunidad de cosecha enviada para ${sym}`);
+                    return true;
+                }
+            }
+            catch (e) { }
+        }
+        return false;
+    }
     isCheckingLiquidity = false;
     lastLiquidityAlertTime = 0;
     async checkLiquidityAndFuturesViability(freeUsdt) {
@@ -3661,8 +3795,8 @@ export class TrailingMasterBot {
                     }
                 }
             }
-            else if (usdt >= this.minUsdtToTrade && sessionPlan.spendableUsdt < this.minUsdtToTrade) {
-                console.log(`🌙 [RESERVA NOCTURNA] Compras pausadas: ${usdt.toFixed(2)} USDT en cuenta (${sessionPlan.reservedUsdt.toFixed(2)} protegidos para Londres a las 03:00 COT).`);
+            else if (sessionPlan.reservedUsdt >= 15.0) {
+                await this.checkPrimeHarvestOpportunities(sessionPlan.reservedUsdt);
             }
         }
         catch (e) {
@@ -3777,6 +3911,11 @@ export class TrailingMasterBot {
         msg += `💵 <b>TOTAL NETO GENERADO EN EL DÍA:</b>\n`;
         msg += `🟢 <b>+${totalPnlDay.toFixed(3)} USDT</b> (≈ <b>+${totalCopDay.toLocaleString("es-CO")} COP</b>)\n`;
         msg += `==============================\n\n`;
+        const debtRemain = Math.max(0, (rec?.targetUsdt || 105.64) - (rec?.recoveredUsdt || 4.05));
+        const debtPct = Math.min(100, ((rec?.recoveredUsdt || 4.05) / (rec?.targetUsdt || 105.64)) * 100);
+        msg += `🎯 <b>4. Misión Deuda y Recuperación:</b>\n`;
+        msg += `• Recuperado hasta hoy: <b>+${rec.recoveredUsdt.toFixed(2)} USDT</b> (${debtPct.toFixed(1)}%)\n`;
+        msg += `• Saldo restante por saldar: <b>${debtRemain.toFixed(2)} USDT</b> (Meta: ${rec.targetUsdt.toFixed(2)} USDT)\n\n`;
         msg += `🛡️ <b>POSICIONES ACTIVAS VIGILADAS PARA MAÑANA:</b>\n`;
         msg += `• Spot: ${this.activeTrailingPositions.size} posiciones vivas persiguiendo picos\n`;
         msg += `• Futuros: ${futPositions.length} posiciones abiertas con Trailing activo\n\n`;
