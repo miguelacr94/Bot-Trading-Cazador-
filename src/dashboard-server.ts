@@ -1031,6 +1031,7 @@ export class DashboardServer {
             JSON.stringify({
               controls,
               pendingOpportunity: pending,
+              weekendMode: this.isWeekendMode(),
               serverTime: Date.now(),
             }),
           );
@@ -1085,7 +1086,7 @@ export class DashboardServer {
                 cazador_weekend: 0,
                 futures: f,
               };
-              controls.strategies.cazador_weekend = false;
+              controls.strategies.cazador_weekend = w > 0;
             } else {
               controls.allocations = {
                 trailing_rebound: t,
@@ -1094,8 +1095,13 @@ export class DashboardServer {
                 cazador_weekend: w,
                 futures: f,
               };
-              controls.strategies.cazador_weekend = true;
+              controls.strategies.cazador_weekend = w > 0;
             }
+            // Sincronizar switches con los porcentajes asignados
+            controls.strategies.trailing_rebound = t > 0;
+            controls.strategies.smart_dca = d > 0;
+            controls.strategies.micro_grid = g > 0;
+            if (f > 0) controls.strategies.futures = true;
             await this.saveControls(controls);
             res.writeHead(200, {
               "Content-Type": "application/json; charset=utf-8",
@@ -1619,19 +1625,75 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
           try {
             const data = JSON.parse(body || "{}");
             const controls = await this.loadControls();
-            if (
-              data.strategy &&
-              controls.strategies[data.strategy] !== undefined
-            ) {
-              controls.strategies[data.strategy] =
-                !controls.strategies[data.strategy];
-              
+            if (!controls.strategies) controls.strategies = {};
+            if (!controls.allocations) controls.allocations = { trailing_rebound: 50, smart_dca: 30, micro_grid: 0, cazador_weekend: 20 };
+            if (!controls.baseAllocations) controls.baseAllocations = { ...controls.allocations };
+
+            if (data.strategy) {
+              const currentVal = !!controls.strategies[data.strategy];
+              const newVal = typeof data.enabled === "boolean" ? data.enabled : !currentVal;
+              controls.strategies[data.strategy] = newVal;
+
+              if (data.strategy === "smart_dca") {
+                if (newVal) {
+                  if ((controls.allocations.smart_dca || 0) < 15) {
+                    const needed = 25 - (controls.allocations.smart_dca || 0);
+                    controls.allocations.trailing_rebound = Math.max(10, (controls.allocations.trailing_rebound || 50) - needed);
+                    controls.allocations.smart_dca = 25;
+                    controls.baseAllocations.trailing_rebound = controls.allocations.trailing_rebound;
+                    controls.baseAllocations.smart_dca = 25;
+                  }
+                } else {
+                  const freed = controls.allocations.smart_dca || 0;
+                  controls.allocations.trailing_rebound = (controls.allocations.trailing_rebound || 50) + freed;
+                  controls.allocations.smart_dca = 0;
+                  controls.baseAllocations.trailing_rebound = controls.allocations.trailing_rebound;
+                  controls.baseAllocations.smart_dca = 0;
+                }
+              }
+
+              if (data.strategy === "micro_grid") {
+                if (newVal) {
+                  if ((controls.allocations.micro_grid || 0) < 15) {
+                    const needed = 15 - (controls.allocations.micro_grid || 0);
+                    controls.allocations.trailing_rebound = Math.max(10, (controls.allocations.trailing_rebound || 50) - needed);
+                    controls.allocations.micro_grid = 15;
+                    controls.baseAllocations.trailing_rebound = controls.allocations.trailing_rebound;
+                    controls.baseAllocations.micro_grid = 15;
+                  }
+                } else {
+                  const freed = controls.allocations.micro_grid || 0;
+                  controls.allocations.trailing_rebound = (controls.allocations.trailing_rebound || 50) + freed;
+                  controls.allocations.micro_grid = 0;
+                  controls.baseAllocations.trailing_rebound = controls.allocations.trailing_rebound;
+                  controls.baseAllocations.micro_grid = 0;
+                }
+              }
+
+              if (data.strategy === "cazador_weekend") {
+                if (newVal) {
+                  if ((controls.allocations.cazador_weekend || 0) < 15) {
+                    const needed = 15 - (controls.allocations.cazador_weekend || 0);
+                    controls.allocations.trailing_rebound = Math.max(10, (controls.allocations.trailing_rebound || 50) - needed);
+                    controls.allocations.cazador_weekend = 15;
+                    controls.baseAllocations.trailing_rebound = controls.allocations.trailing_rebound;
+                    controls.baseAllocations.cazador_weekend = 15;
+                  }
+                } else {
+                  const freed = controls.allocations.cazador_weekend || 0;
+                  controls.allocations.trailing_rebound = (controls.allocations.trailing_rebound || 50) + freed;
+                  controls.allocations.cazador_weekend = 0;
+                  controls.baseAllocations.trailing_rebound = controls.allocations.trailing_rebound;
+                  controls.baseAllocations.cazador_weekend = 0;
+                }
+              }
+
               if (data.strategy === "futures") {
                 try {
                   const futStateF = path.resolve(process.cwd(), ".futures-sim-state.json");
                   if (fs.existsSync(futStateF)) {
                     const futSt = JSON.parse(fs.readFileSync(futStateF, "utf-8"));
-                    futSt.enabled = controls.strategies.futures;
+                    futSt.enabled = newVal;
                     fs.writeFileSync(futStateF, JSON.stringify(futSt, null, 2), "utf-8");
                   }
                 } catch {}
