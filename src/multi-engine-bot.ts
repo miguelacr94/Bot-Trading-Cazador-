@@ -567,6 +567,10 @@ export class TrailingMasterBot {
   private walletSplit: { manualUsdt: number; lastUpdated: number } = { manualUsdt: 25.0, lastUpdated: 0 };
 
   private loadWalletSplit() {
+    if (this.controls?.strategySettings?.walletSplit?.manualUsdt !== undefined) {
+      this.walletSplit.manualUsdt = parseFloat(this.controls.strategySettings.walletSplit.manualUsdt || "0");
+      return;
+    }
     try {
       const f = path.resolve(process.cwd(), ".wallet-split.json");
       if (fs.existsSync(f)) {
@@ -577,6 +581,10 @@ export class TrailingMasterBot {
   }
 
   private saveWalletSplit() {
+    this.walletSplit.lastUpdated = Date.now();
+    if (!this.controls.strategySettings) this.controls.strategySettings = {};
+    this.controls.strategySettings.walletSplit = this.walletSplit;
+    this.saveStrategyControls();
     try {
       const f = path.resolve(process.cwd(), ".wallet-split.json");
       fs.writeFileSync(f, JSON.stringify(this.walletSplit, null, 2), "utf-8");

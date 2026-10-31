@@ -83,6 +83,7 @@ export class DashboardServer {
   } | null = null;
   private cachedDbTrades: any[] = [];
   private cachedRecoveryTracker: any = null;
+  private cachedPositions: [string, any][] = [];
 
   constructor(port = PORT) {
     this.port = port;
@@ -166,7 +167,7 @@ export class DashboardServer {
   }
 
   private trackedSymbols(): string[] {
-    const pos = this.readJson(".trailing-positions.json").map(([s]) => (s || "").split("_")[0]);
+    const pos = (this.cachedPositions.length > 0 ? this.cachedPositions : this.readJson(".trailing-positions.json")).map(([s]) => (s || "").split("_")[0]);
     const buys = this.readJson(".trailing-buys.json").map(([s]) => (s || "").split("_")[0]);
     let dbCoins: string[] = [];
     try {
@@ -633,7 +634,7 @@ export class DashboardServer {
 
   /** Construye la respuesta a partir de la caché (síncrono, instantáneo) */
   getStatusData() {
-    const rawPositions = this.readJson(".trailing-positions.json");
+    const rawPositions = this.cachedPositions.length > 0 ? this.cachedPositions : this.readJson(".trailing-positions.json");
     const rawBuys = this.readJson(".trailing-buys.json");
 
     const copRate = this.getCopRate();
@@ -936,12 +937,52 @@ export class DashboardServer {
     };
   }
 
+  public async refreshCloudData(): Promise<void> {
+    if (!supabaseDb.isAvailable()) return;
+    try {
+      const activeMap = await supabaseDb.loadActivePositions();
+      if (activeMap && activeMap.size > 0) {
+        this.cachedPositions = Array.from(activeMap.entries()).map(([k, p]: [string, any]) => [
+          k,
+          {
+            ...p,
+            id: p.symbol || k,
+            symbol: (p.symbol || k).split("_")[0],
+            buyPrice: p.buyPrice || p.buy_price || 0,
+            qty: p.qty || 0,
+            investedUsdt: p.investedUsdt || p.invested_usdt || 0,
+            highestPrice: p.highestPrice || p.highest_price || p.buyPrice || p.buy_price || 0,
+            activated: p.activated === true,
+            buyTime: p.buyTime || p.buy_time || Date.now(),
+            strategy: p.strategy || "trailing_rebound",
+            customCallbackPct: p.customCallbackPct ?? p.custom_callback_pct ?? null,
+            customTimeframe: p.customTimeframe ?? p.custom_timeframe ?? null,
+            partialProfitTaken: p.partialProfitTaken === true || p.partial_profit_taken === true
+          }
+        ]);
+      }
+
+      const controls = await supabaseDb.loadStrategyControls();
+      if (controls && controls.recoveryTracker) {
+        this.cachedRecoveryTracker = controls.recoveryTracker;
+      }
+
+      const closed = await supabaseDb.loadClosedTrades(30);
+      if (closed && closed.length > 0) {
+        this.cachedDbTrades = closed;
+      }
+    } catch (e: any) {
+      console.error("Error sincronizando cloudData desde Supabase:", e.message);
+    }
+  }
+
   private startRefreshLoops() {
     const every = (name: string, ms: number, fn: () => Promise<void>) => {
       const run = () => this.guarded(name, fn);
       run();
       this.timers.push(setInterval(run, ms));
     };
+    every("cloudData", 5000, () => this.refreshCloudData());
     every("prices", 2000, () => this.refreshPrices());
     every("account", 15000, () => this.refreshAccount());
     every("radar", 60000, () => this.refreshRadar());
