@@ -658,7 +658,7 @@ export class DashboardServer {
       totalInvested += pos.investedUsdt;
       positionsValue += pos.qty * curPrice;
       return {
-        id: pos.id || symbolOrId,
+        id: pos.lotId || (pos.id && pos.id !== sym ? pos.id : symbolOrId),
         symbol: sym,
         lotIndex: pos.lotIndex || 1,
         strategy: pos.strategy || "trailing_rebound",
@@ -946,7 +946,8 @@ export class DashboardServer {
           k,
           {
             ...p,
-            id: p.symbol || k,
+            id: p.lotId || k,
+            lotId: p.lotId || k,
             symbol: (p.symbol || k).split("_")[0],
             buyPrice: p.buyPrice || p.buy_price || 0,
             qty: p.qty || 0,

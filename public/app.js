@@ -216,7 +216,8 @@
   function createPositionCard(p) {
     const card = document.createElement("div");
     card.className = "position-card";
-    card.dataset.id = p.id || p.symbol;
+    const cardKey = p.id || (p.symbol + (p.lotIndex && p.lotIndex > 1 ? "_lot_" + p.lotIndex : ""));
+    card.dataset.id = cardKey;
     card.dataset.symbol = p.symbol;
     card.innerHTML = `
       <div class="pos-head">
@@ -627,19 +628,35 @@
     const empty = $("positions-empty");
     setText($("active-positions-count"), `${list.length} lote(s) activo(s)`);
 
+    if (!list || list.length === 0) {
+      box.innerHTML = "";
+      setStyle(empty, "display", "block");
+      return;
+    }
+
     const existing = new Map();
-    box.querySelectorAll(".position-card").forEach((c) => existing.set(c.dataset.id || c.dataset.symbol, c));
+    box.querySelectorAll(".position-card").forEach((c) => {
+      const key = c.dataset.id;
+      if (key && !existing.has(key)) {
+        existing.set(key, c);
+      } else {
+        c.remove(); // Eliminar de inmediato tarjetas duplicadas de ciclos anteriores
+      }
+    });
 
     list.forEach((p) => {
-      const cardKey = p.id || p.symbol;
+      const cardKey = p.id || (p.symbol + (p.lotIndex && p.lotIndex > 1 ? "_lot_" + p.lotIndex : ""));
       let card = existing.get(cardKey);
-      if (!card) { card = createPositionCard(p); box.appendChild(card); }
+      if (!card) {
+        card = createPositionCard(p);
+        box.appendChild(card);
+      }
       updatePositionCard(card, p);
       existing.delete(cardKey);
     });
-    existing.forEach((card) => card.remove());
 
-    setStyle(empty, "display", list.length === 0 ? "block" : "none");
+    existing.forEach((card) => card.remove());
+    setStyle(empty, "display", "none");
   }
 
   // ---------- radar (reconciliación por símbolo) ----------
