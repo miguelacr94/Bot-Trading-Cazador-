@@ -297,7 +297,9 @@ export class SupabaseDbService {
         return [];
       }
 
-      return (data || []).map((row) => ({
+      return (data || [])
+        .filter((row) => row.order_id !== 999001 && row.source !== "TEST")
+        .map((row) => ({
         symbol: row.symbol,
         orderId: row.order_id,
         time: parseInt(row.time),

@@ -17,6 +17,8 @@ import { supabaseDb } from "../src/supabase-db.js";
 supabaseDb.saveActivePositions = async () => true;
 supabaseDb.deleteActivePosition = async () => true;
 supabaseDb.recordClosedTrade = async () => true;
+supabaseDb.saveClosedTrade = async () => true;
+supabaseDb.saveActivePosition = async () => true;
 
 interface TestStats {
   total: number;

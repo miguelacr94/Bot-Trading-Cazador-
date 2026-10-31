@@ -281,7 +281,9 @@ export class SupabaseDbService {
                 console.error("Error cargando closed_trades desde Supabase:", error.message);
                 return [];
             }
-            return (data || []).map((row) => ({
+            return (data || [])
+                .filter((row) => row.order_id !== 999001 && row.source !== "TEST")
+                .map((row) => ({
                 symbol: row.symbol,
                 orderId: row.order_id,
                 time: parseInt(row.time),
