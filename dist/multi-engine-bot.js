@@ -888,7 +888,13 @@ export class TrailingMasterBot {
             `👉 /aprobar — <i>Ejecutar [${opp.strategyName}]</i>\n` +
             `👉 /ignorar — <i>Descartar oportunidad</i>\n\n` +
             `🤖 <i>${this.controls.autoPilot ? `Modo Autónomo ACTIVO: Si no respondes en ${mins} min, el bot ejecutará automáticamente la recomendación.` : "Modo Manual ACTIVO: Esperará tu aprobación explícita."}</i>`;
-        await this.notifier.send(alertMsg);
+        const buttons = [
+            [
+                { text: `✅ Aprobar [${opp.strategyName}]`, callback_data: "/aprobar" },
+                { text: "❌ Descartar", callback_data: "/ignorar" }
+            ]
+        ];
+        await this.notifier.send(alertMsg, buttons);
         console.log(alertMsg.replace(/<[^>]*>/g, ""));
     }
     async executeSmartDca(pos, usdtAmount) {
@@ -1314,9 +1320,15 @@ export class TrailingMasterBot {
                             `• 🛡️ <b>Piso Trailing dinámico:</b> ${fmtPrice(stopPrice)} (+${minLockedGain.toFixed(2)}% neto)\n` +
                             floorNote +
                             `\n🔒 <b>¿Deseas asegurar este pico ahora mismo?</b>\n` +
-                            `👉 Toca aquí: <code>${cmdPiso}</code>\n` +
-                            `<i>(O amárralo en el botón del Dashboard web)</i>`;
-                        await this.notifier.send(peakAlert);
+                            `👉 Presiona el botón abajo o escribe: ${cmdPiso}\n` +
+                            `<i>(O amárralo en el Dashboard web)</i>`;
+                        const buttons = [
+                            [
+                                { text: `🔒 Asegurar Piso (+${minLockedGain.toFixed(1)}%)`, callback_data: cmdPiso },
+                                { text: "🚀 Seguir Persiguiendo Pico", callback_data: "/trailing" }
+                            ]
+                        ];
+                        await this.notifier.send(peakAlert, buttons);
                     }
                 }
                 // 💎 PASO A: VENTA PARCIAL 50/50 AL TOCAR PICO ALTO (>= +2.20%)
@@ -2098,8 +2110,8 @@ export class TrailingMasterBot {
                     msg += `  ${viability.favorableSymbols.join("\n  ")}\n`;
                 }
                 msg += `\n💡 <b>Recomendación:</b> ${viability.recommendedAction}\n\n` +
-                    `👉 <code>/futuros_real</code> para pasar a Real\n` +
-                    `👉 <code>/futuros_sim</code> para mantener Simulación`;
+                    `👉 /futuros_real para pasar a Real\n` +
+                    `👉 /futuros_sim para mantener Simulación`;
                 return msg;
             }
             if (cmd === "/futuros_real" || cmd === "futuros_real" || (cmd === "/futuros_modo" && arg1 === "REAL") || (cmd === "futuros_modo" && arg1 === "REAL")) {
@@ -2216,7 +2228,7 @@ export class TrailingMasterBot {
                     `• 💼 <b>Billetera Spot:</b> $${spotUsdt.toFixed(2)} USDT (Libre)\n` +
                     `• 🧪 <b>Billetera Futuros USD-M:</b> $${futBal.balance.toFixed(2)} USDT (Total) | $${futBal.available.toFixed(2)} USDT (Disponible)\n\n` +
                     `👉 Pasar $15 a Futuros: <code>/pasar_a_futuros 15</code>\n` +
-                    `👉 Pasar todo a Spot: <code>/pasar_a_spot</code>`;
+                    `👉 Pasar todo a Spot: /pasar_a_spot`;
             }
             if (cmd === "/futuros" || cmd === "futuros") {
                 const st = this.futuresEngine.getState();
@@ -2236,7 +2248,7 @@ export class TrailingMasterBot {
                     `• <b>USDT Bloqueado en órdenes:</b> ${lockedUsdt.toFixed(2)} USDT\n` +
                     `• <b>Meta de Liquidez (Centinela):</b> ≥ $50.00 USDT (${freeUsdt >= 50 ? "✅ Meta Superada" : "⏳ En Acumulación"})\n` +
                     `• <b>Alerta Automática:</b> ${this.controls.notified50UsdtThreshold ? "Notificado previamente" : "Vigilando activamente"}\n\n` +
-                    `👉 Consulta la viabilidad de futuros con: <code>/viabilidad_futuros</code>`;
+                    `👉 Consulta la viabilidad de futuros con: /viabilidad_futuros`;
             }
             if (cmd === "/cierre" || cmd === "cierre" || cmd === "/balance_diario" || cmd === "balance_diario") {
                 return await this.generateConsolidatedDailyReport();
@@ -3652,10 +3664,18 @@ export class TrailingMasterBot {
                 const alertMsg = `💤 <b>[MERCADO LATERAL / DÍA QUIETO DETECTADO]</b> 🌐\n\n` +
                     `• La volatilidad de 24h en Bitcoin es de apenas <b>${range24h.toFixed(2)}%</b> (${low.toFixed(0)} - ${high.toFixed(0)}).\n` +
                     `• 💡 <b>Recomendación del Centinela:</b> Activar <b>🌐 Micro-Grid</b> (Malla Lateral) con <b>30%</b> del presupuesto para cosechar micro-rebotes (+0.45% a +0.60%) mientras el mercado está quieto.\n\n` +
-                    `👉 /aprobar_grid — <i>Activar Micro-Grid ahora</i>\n` +
-                    `👉 /ignorar_grid — <i>Permanecer en Cazador Trailing</i>\n\n` +
+                    `👉 Toca un botón o escribe:
+` +
+                    `• /aprobar_grid — <i>Activar Micro-Grid ahora</i>\n` +
+                    `• /ignorar_grid — <i>Permanecer en Cazador Trailing</i>\n\n` +
                     `🤖 <i>${this.controls.autoPilot ? "Modo Autónomo ACTIVO: Si no respondes en 3 minutos, se activará automáticamente." : "Modo Manual: Esperando tu confirmación."}</i>`;
-                await this.notifier.send(alertMsg);
+                const buttons = [
+                    [
+                        { text: "🌐 Activar Micro-Grid", callback_data: "/aprobar_grid" },
+                        { text: "❌ Mantener Trailing", callback_data: "/ignorar_grid" }
+                    ]
+                ];
+                await this.notifier.send(alertMsg, buttons);
                 console.log(alertMsg.replace(/<[^>]*>/g, ""));
             }
             // B) FIN DE DÍA QUIETO / VOLATILIDAD REACTIVADA: Si el mercado despierta (range >= 2.5%)
@@ -4076,7 +4096,7 @@ export class TrailingMasterBot {
                         `• 💵 <b>Monto sugerido para entrar:</b> <b>${amountToSuggest.toFixed(2)} USDT</b>\n\n` +
                         `<b>¿Deseas autorizar tomar estos fondos de la cosecha para cazar el suelo?</b>\n` +
                         `👉 Toca: <code>/tomar_cosecha_${cleanSym}</code> — <i>Ejecutar compra</i>\n` +
-                        `👉 Toca: <code>/ignorar</code> — <i>Mantener reserva protegida</i>`;
+                        `👉 Toca: /ignorar — <i>Mantener reserva protegida</i>`;
                     await this.notifier.send(alertMsg);
                     console.log(`💎 Alerta de oportunidad de cosecha enviada para ${sym}`);
                     return true;
@@ -4127,9 +4147,16 @@ export class TrailingMasterBot {
                     }
                     msg += `\n⚙️ <b>¿Deseas invertir en Futuros o continuar en Spot?</b>\n\n`;
                     msg += `1️⃣ <b>Para activar Futuros Real (10-15 USDT margen / 2x-4x apalancamiento / SL -1.2%):</b>\n`;
-                    msg += `   👉 Toca: <code>/futuros_real</code> (o actívalo en el Dashboard web)\n\n`;
+                    msg += `   👉 Toca el botón abajo o escribe: /futuros_real\n\n`;
                     msg += `2️⃣ <b>Si prefieres no arriesgar en futuros:</b>\n`;
-                    msg += `   No necesitas hacer nada; el bot invertirá automáticamente estos <b>${freeUsdt.toFixed(2)} USDT</b> en las <b>estrategias Spot</b> (Cazador Trailing & Centinela Alpha) sin riesgo de liquidación.`;
+                    msg += `   Toca "🛡️ Continuar en Spot"; el bot invertirá automáticamente estos <b>${freeUsdt.toFixed(2)} USDT</b> en Spot sin riesgo de liquidación.`;
+                    const buttons = [
+                        [
+                            { text: "🚀 Activar Futuros Real", callback_data: "/futuros_real" },
+                            { text: "🛡️ Continuar en Spot", callback_data: "/futuros_sim" }
+                        ]
+                    ];
+                    await this.notifier.send(msg, buttons);
                 }
                 else {
                     msg += `⚠️ <b>Diagnóstico de Futuros:</b> 🔴 <b>NO RECOMENDADO / ALTO RIESGO (${viability.score}/100)</b>\n\n`;
@@ -4140,8 +4167,14 @@ export class TrailingMasterBot {
                     msg += `• <b>Diagnóstico:</b> ${viability.rationale}\n\n`;
                     msg += `🛡️ <b>Decisión Automática Aplicada:</b>\n`;
                     msg += `Como instruiste que solo se use futuros si el mercado es viable, estos fondos se mantendrán y desplegarán en las <b>estrategias Spot</b> (Cazador Trailing & Centinela Alpha) para operar con cero riesgo de liquidación.`;
+                    const buttons = [
+                        [
+                            { text: "🛡️ Operar en Spot", callback_data: "/futuros_sim" },
+                            { text: "📊 Ver Viabilidad", callback_data: "/viabilidad_futuros" }
+                        ]
+                    ];
+                    await this.notifier.send(msg, buttons);
                 }
-                await this.notifier.send(msg);
                 console.log("📢 Notificación de liquidez y viabilidad enviada a Telegram con éxito.");
             }
             catch (err) {

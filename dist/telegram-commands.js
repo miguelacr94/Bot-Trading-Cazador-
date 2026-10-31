@@ -125,6 +125,40 @@ export class TelegramCommands {
                 const data = await res.json();
                 for (const u of data.result ?? []) {
                     this.offset = u.update_id + 1;
+                    // 1. Manejo de botones interactivos (Inline Keyboard Callback Queries)
+                    if (u.callback_query) {
+                        const cb = u.callback_query;
+                        const fromChatId = String(cb.message?.chat?.id || cb.from?.id);
+                        if (fromChatId !== this.chatId)
+                            continue;
+                        const callbackData = (cb.data || "").trim();
+                        if (callbackData) {
+                            console.log(`📱 Telegram BOTÓN pulsado: ${callbackData}`);
+                            // Confirmar recepción al cliente de Telegram para apagar el relojito
+                            try {
+                                await fetch(this.api("answerCallbackQuery"), {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ callback_query_id: cb.id })
+                                });
+                            }
+                            catch { }
+                            let reply = "";
+                            try {
+                                reply = await this.handler(callbackData);
+                            }
+                            catch (handlerErr) {
+                                console.error("Error en handler de botón Telegram:", handlerErr.message);
+                                reply = `⚠️ Error procesando botón: ${handlerErr.message}`;
+                            }
+                            if (!reply || !reply.trim()) {
+                                reply = "👍 Acción ejecutada.";
+                            }
+                            await this.sendMessageChunk(reply);
+                        }
+                        continue;
+                    }
+                    // 2. Manejo de mensajes de texto normales
                     const msg = u.message;
                     if (!msg?.text || String(msg.chat.id) !== this.chatId)
                         continue;
