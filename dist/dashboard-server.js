@@ -805,6 +805,8 @@ export class DashboardServer {
         const totalMergedPnl = allMergedCycles.reduce((acc, c) => acc + (c.pnlUsdt || 0), 0);
         const totalWins = allMergedCycles.filter((c) => c.pnlUsdt >= 0).length;
         const totalLosses = allMergedCycles.filter((c) => c.pnlUsdt < 0).length;
+        const totalCycles = allMergedCycles.length;
+        const calculatedWinRate = totalCycles > 0 ? Math.round((totalWins / totalCycles) * 100) : 100;
         return {
             updatedAt: new Date().toISOString(),
             pricesFresh: Date.now() - this.lastPriceOk < 15000,
@@ -825,18 +827,14 @@ export class DashboardServer {
             },
             positions,
             radar,
-            performance: p
-                ? {
-                    totalPnlUsdt: totalMergedPnl || (p ? p.totalPnl : 0),
-                    totalPnlCop: (totalMergedPnl || (p ? p.totalPnl : 0)) * copRate,
-                    wins: p.wins,
-                    losses: p.losses,
-                    cyclesCount: p.cycles.length,
-                    winRate: p.cycles.length
-                        ? Math.round((p.wins / p.cycles.length) * 100)
-                        : 100,
-                }
-                : null,
+            performance: {
+                totalPnlUsdt: totalMergedPnl,
+                totalPnlCop: totalMergedPnl * copRate,
+                wins: totalWins,
+                losses: totalLosses,
+                cyclesCount: totalCycles,
+                winRate: calculatedWinRate,
+            },
             marketSentiment: this.fng || {
                 value: 50,
                 classification: "Neutral",
