@@ -37,6 +37,94 @@ const TRAILING_HARD_CAP_PCT = 15.0; // Techo ultra amplio (+15%) para perseguir 
 const TRAILING_BUY_BOUNCE_PCT = 0.25; // Compra cuando rebota +0.25% desde el piso más bajo
 const TRAILING_BUY_MAX_AGE_MS = 45 * 60 * 1000; // Vigilancia máxima: 45 minutos (permite refrescar suelos dinámicos)
 export class TrailingMasterBot {
+    get coreWatchlist() {
+        const list = this.controls?.coreWatchlist || this.controls?.strategySettings?.coreWatchlist;
+        return Array.isArray(list) && list.length > 0 ? list : CORE_WATCHLIST;
+    }
+    get memeWatchlist() {
+        const list = this.controls?.memeWatchlist || this.controls?.strategySettings?.memeWatchlist;
+        return Array.isArray(list) && list.length > 0 ? list : MEME_WATCHLIST;
+    }
+    get watchlist() {
+        return Array.from(new Set([...this.coreWatchlist, ...this.memeWatchlist]));
+    }
+    /**
+     * Agrega una moneda a la base de datos de monedas aceptadas (Supabase / Controles)
+     */
+    async addCoinToWatchlist(rawSymbol, category = "core") {
+        try {
+            let sym = (rawSymbol || "").trim().toUpperCase();
+            if (!sym)
+                return { success: false, message: "Símbolo inválido o vacío." };
+            if (!sym.endsWith("USDT") && !sym.endsWith("FDUSD") && !sym.endsWith("BTC")) {
+                sym += "USDT";
+            }
+            try {
+                const ticker = await this.client.tickerPrice(sym);
+                if (!ticker || !ticker.data || !ticker.data.price) {
+                    return { success: false, message: `El par ${sym} no responde con precio válido en Binance Spot.` };
+                }
+            }
+            catch (err) {
+                return { success: false, message: `Binance rechazó el par ${sym}: ${err.message || "Par no encontrado o no listado para trading spot"}.` };
+            }
+            const currentCore = [...this.coreWatchlist];
+            const currentMeme = [...this.memeWatchlist];
+            if (currentCore.includes(sym) || currentMeme.includes(sym)) {
+                return { success: false, message: `El par ${sym} ya está en la lista de monedas activas (${currentCore.includes(sym) ? "Clásicas/Core" : "Memecoins"}).` };
+            }
+            if (category === "meme") {
+                currentMeme.push(sym);
+            }
+            else {
+                currentCore.push(sym);
+            }
+            this.controls.coreWatchlist = currentCore;
+            this.controls.memeWatchlist = currentMeme;
+            if (!this.controls.strategySettings)
+                this.controls.strategySettings = {};
+            this.controls.strategySettings.coreWatchlist = currentCore;
+            this.controls.strategySettings.memeWatchlist = currentMeme;
+            this.saveStrategyControls();
+            console.log(`✅ [WATCHLIST DB] Moneda ${sym} agregada a la lista ${category.toUpperCase()} y guardada en Supabase.`);
+            return { success: true, message: `✅ <b>${sym}</b> ha sido agregada exitosamente a la lista <b>${category.toUpperCase()}</b> en la base de datos.` };
+        }
+        catch (err) {
+            return { success: false, message: `Error agregando moneda: ${err.message}` };
+        }
+    }
+    /**
+     * Elimina una moneda de la base de datos de monedas aceptadas (Supabase / Controles)
+     */
+    async removeCoinFromWatchlist(rawSymbol) {
+        try {
+            let sym = (rawSymbol || "").trim().toUpperCase();
+            if (!sym)
+                return { success: false, message: "Símbolo inválido o vacío." };
+            if (!sym.endsWith("USDT") && !sym.endsWith("FDUSD") && !sym.endsWith("BTC")) {
+                sym += "USDT";
+            }
+            const currentCore = [...this.coreWatchlist];
+            const currentMeme = [...this.memeWatchlist];
+            const inCore = currentCore.includes(sym);
+            const inMeme = currentMeme.includes(sym);
+            if (!inCore && !inMeme) {
+                return { success: false, message: `El par ${sym} no se encuentra en la lista activa de monedas.` };
+            }
+            this.controls.coreWatchlist = currentCore.filter(s => s !== sym);
+            this.controls.memeWatchlist = currentMeme.filter(s => s !== sym);
+            if (!this.controls.strategySettings)
+                this.controls.strategySettings = {};
+            this.controls.strategySettings.coreWatchlist = this.controls.coreWatchlist;
+            this.controls.strategySettings.memeWatchlist = this.controls.memeWatchlist;
+            this.saveStrategyControls();
+            console.log(`🗑️ [WATCHLIST DB] Moneda ${sym} eliminada de la lista y actualizada en Supabase.`);
+            return { success: true, message: `🗑️ <b>${sym}</b> ha sido retirada de la lista de monedas en la base de datos.` };
+        }
+        catch (err) {
+            return { success: false, message: `Error eliminando moneda: ${err.message}` };
+        }
+    }
     controls = {
         maxPositions: 7,
         strategies: {
@@ -140,7 +228,7 @@ export class TrailingMasterBot {
      * Determina la temporalidad óptima recomendada para cada moneda según su naturaleza y volatilidad.
      */
     getSuggestedTimeframe(symbol) {
-        if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE")) {
+        if (this.memeWatchlist.includes(symbol) || symbol.includes("PEPE")) {
             return {
                 timeframe: "15m",
                 reason: "Alta velocidad de impulsos (15m aprovecha mechas y rebotes sin retraso)"
@@ -193,7 +281,7 @@ export class TrailingMasterBot {
         }
         // 4. 🚀 TRAILING CEÑIDO ESCALONADO DINÁMICO (Tiered Dynamic Callback)
         // A medida que la ganancia sube, el lazo se ciñe automáticamente para capturar la cima intacta
-        const isMeme = MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE");
+        const isMeme = this.memeWatchlist.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE");
         const isMid = symbol.includes("AVAX") || symbol.includes("SOL");
         const baseCb = isMeme ? 0.45 : (isMid ? 0.35 : 0.25);
         if (pos && pos.buyPrice > 0 && pos.highestPrice > 0) {
@@ -220,7 +308,7 @@ export class TrailingMasterBot {
     async syncOrphanPositions() {
         try {
             const acc = await this.client.account({ recvWindow: 60000 });
-            const checkList = [...WATCHLIST, "PEPEUSDT"];
+            const checkList = this.watchlist;
             for (const sym of checkList) {
                 const asset = sym.replace("USDT", "");
                 // 🛡️ BLINDAJE SUPREMO: Verificar si YA existe cualquier lote o posición viva para esta moneda
@@ -385,6 +473,10 @@ export class TrailingMasterBot {
                     this.controls = dbCtrl;
                     if (this.controls.maxPositions === undefined)
                         this.controls.maxPositions = 7;
+                    if (!this.controls.coreWatchlist)
+                        this.controls.coreWatchlist = dbCtrl.coreWatchlist || CORE_WATCHLIST;
+                    if (!this.controls.memeWatchlist)
+                        this.controls.memeWatchlist = dbCtrl.memeWatchlist || MEME_WATCHLIST;
                     this.autoPilot = this.controls.autoPilot !== false;
                     console.log("☁️ [SUPABASE CLOUD] Controles y estrategia leídos desde Supabase DB.");
                     return;
@@ -451,6 +543,14 @@ export class TrailingMasterBot {
         try {
             this.controls.updatedAt = Date.now();
             this.controls.autoPilot = this.autoPilot;
+            if (!this.controls.coreWatchlist)
+                this.controls.coreWatchlist = this.coreWatchlist;
+            if (!this.controls.memeWatchlist)
+                this.controls.memeWatchlist = this.memeWatchlist;
+            if (!this.controls.strategySettings)
+                this.controls.strategySettings = {};
+            this.controls.strategySettings.coreWatchlist = this.controls.coreWatchlist;
+            this.controls.strategySettings.memeWatchlist = this.controls.memeWatchlist;
             fs.writeFileSync(path.resolve(process.cwd(), ".strategy-controls.json"), JSON.stringify(this.controls, null, 2));
             // Sincronización en la nube Supabase
             supabaseDb.saveStrategyControls(this.controls).catch(() => { });
@@ -856,7 +956,7 @@ export class TrailingMasterBot {
                 return false;
             const allocPct = this.controls.allocations?.centinela_alpha || 20;
             const budgetUsdt = Math.min(30, Math.max(12, Math.floor(usdt * (allocPct / 100) * 100) / 100));
-            const candidates = [...WATCHLIST, ...MEME_WATCHLIST];
+            const candidates = this.watchlist;
             let bestAsset = null;
             for (const sym of candidates) {
                 let isAlreadyOpen = false;
@@ -868,7 +968,7 @@ export class TrailingMasterBot {
                 }
                 if (isAlreadyOpen || this.buyWatches.has(sym))
                     continue;
-                const isMeme = MEME_WATCHLIST.includes(sym) || sym.includes("PEPE");
+                const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE");
                 const tf = isMeme ? "15m" : "1h";
                 try {
                     const klines = await this.client.klines(sym, tf, { limit: 35 });
@@ -1752,15 +1852,15 @@ export class TrailingMasterBot {
         // Contar cuántas memecoins tenemos activas (posiciones o vigilancias armadas)
         let activeMemeCount = 0;
         for (const [sym] of this.activeTrailingPositions.entries()) {
-            if (MEME_WATCHLIST.includes(sym))
+            if (this.memeWatchlist.includes(sym))
                 activeMemeCount++;
         }
         for (const [sym] of this.buyWatches.entries()) {
-            if (MEME_WATCHLIST.includes(sym))
+            if (this.memeWatchlist.includes(sym))
                 activeMemeCount++;
         }
-        for (const sym of WATCHLIST) {
-            const isMeme = MEME_WATCHLIST.includes(sym);
+        for (const sym of this.watchlist) {
+            const isMeme = this.memeWatchlist.includes(sym);
             // REGLA DE RIESGO DINÁMICA: Hasta 3 memecoins activas concurrentes (desbloquea oportunidades)
             if (isMeme && activeMemeCount >= 3) {
                 continue;
@@ -2252,6 +2352,9 @@ export class TrailingMasterBot {
                     `• /estrategias — <i>Panel general y switches de motores</i>\n` +
                     `• /presupuesto — <i>Distribución y USDT por estrategia</i>\n` +
                     `• /asignar — <i>Configurar % (ej: /asignar 40 25 0 35)</i>\n` +
+                    `• /monedas — <i>Lista de monedas aceptadas en Supabase DB</i>\n` +
+                    `• /agregar_moneda &lt;PAR&gt; [core|meme] — <i>Agregar moneda a la DB sin reiniciar</i>\n` +
+                    `• /quitar_moneda &lt;PAR&gt; — <i>Eliminar moneda de la DB al instante</i>\n` +
                     `• /regimen — <i>Diagnóstico de volatilidad y Día Quieto</i>\n` +
                     `• /weekend — <i>Estado y radar de Cazador Weekend</i>\n` +
                     `• /memes — <i>Canasta y radar de Memecoins (Top 5)</i>\n• /callback — <i>Ver y calibrar holgura de salida por moneda</i>\n` +
@@ -2330,6 +2433,46 @@ export class TrailingMasterBot {
                         `👉 /aprobar | /ignorar\n`;
                 }
                 return msg;
+            }
+            // Gestión de lista de monedas aceptadas en la Base de Datos
+            if (cmd === "/monedas" || cmd === "monedas" || cmd === "/watchlist" || cmd === "watchlist" || cmd === "/lista_monedas") {
+                const core = this.coreWatchlist;
+                const meme = this.memeWatchlist;
+                const total = this.watchlist.length;
+                let msg = `🪙 <b>LISTA DE MONEDAS ACTIVAS (BASE DE DATOS SUPABASE)</b> 📋\n\n`;
+                msg += `💎 <b>Monedas Clásicas / Core (${core.length}):</b>\n`;
+                core.forEach(s => {
+                    msg += `  • <code>${s}</code>\n`;
+                });
+                msg += `\n🐕 <b>Canasta Memecoins (${meme.length}):</b>\n`;
+                meme.forEach(s => {
+                    msg += `  • <code>${s}</code>\n`;
+                });
+                msg += `\n📊 <b>Total Monitoreadas:</b> ${total} pares USDT\n\n`;
+                msg += `⚙️ <b>Gestión Dinámica en la Nube:</b>\n`;
+                msg += `➕ <b>Para agregar:</b>\n`;
+                msg += `<code>/agregar_moneda SIMBOLO [core|meme]</code>\n`;
+                msg += `<i>Ej: /agregar_moneda ADA o /agregar_moneda FLOKI meme</i>\n\n`;
+                msg += `➖ <b>Para eliminar:</b>\n`;
+                msg += `<code>/quitar_moneda SIMBOLO</code>\n`;
+                msg += `<i>Ej: /quitar_moneda BONK</i>\n\n`;
+                msg += `<i>⚡ Sincronizado en tiempo real con Supabase sin reiniciar el bot.</i>`;
+                return msg;
+            }
+            if (cmd === "/agregar_moneda" || cmd === "agregar_moneda" || cmd === "/add_moneda" || cmd === "/add_coin") {
+                if (!arg1) {
+                    return "ℹ️ <b>Uso:</b> <code>/agregar_moneda &lt;SIMBOLO&gt; [core|meme]</code>\nEjemplo: <code>/agregar_moneda ADA</code> o <code>/agregar_moneda FLOKI meme</code>";
+                }
+                const category = (arg2 && arg2.toLowerCase() === "meme") ? "meme" : "core";
+                const result = await this.addCoinToWatchlist(arg1, category);
+                return result.message;
+            }
+            if (cmd === "/quitar_moneda" || cmd === "quitar_moneda" || cmd === "/del_moneda" || cmd === "/del_coin" || cmd === "/eliminar_moneda") {
+                if (!arg1) {
+                    return "ℹ️ <b>Uso:</b> <code>/quitar_moneda &lt;SIMBOLO&gt;</code>\nEjemplo: <code>/quitar_moneda BONK</code>";
+                }
+                const result = await this.removeCoinFromWatchlist(arg1);
+                return result.message;
             }
             if (cmd === "/billetera" || cmd === "/saldos" || cmd === "/saldo_split") {
                 const acc = await this.client.account({ recvWindow: 60000 });
@@ -2885,7 +3028,7 @@ export class TrailingMasterBot {
                 const openOrders = await this.client.openOrders({ recvWindow: 60000 });
                 const activeSymbols = new Set(openOrders.data.filter((o) => o.side === "SELL").map((o) => o.symbol));
                 let report = `📡 <b>RADAR INTELIGENTE DE MERCADO</b>\n\n`;
-                for (const sym of WATCHLIST) {
+                for (const sym of this.watchlist) {
                     try {
                         const [t24, k15] = await Promise.all([
                             this.client.ticker24hr(sym),
@@ -2913,7 +3056,7 @@ export class TrailingMasterBot {
                         else {
                             status = " ⚪ [Neutro]";
                         }
-                        const isMeme = MEME_WATCHLIST.includes(sym);
+                        const isMeme = this.memeWatchlist.includes(sym);
                         report += `• <b>${isMeme ? "🐕 " : "💎 "}${sym}:</b> ${fmtPrice(price)} | RSI: <b>${rsi.toFixed(1)}</b>${status}\n`;
                     }
                     catch (e) { }
@@ -2927,14 +3070,14 @@ export class TrailingMasterBot {
             if (cmd === "/memes" || cmd === "memes") {
                 let activeMeme = null;
                 for (const [sym, p] of this.activeTrailingPositions.entries()) {
-                    if (MEME_WATCHLIST.includes(sym)) {
+                    if (this.memeWatchlist.includes(sym)) {
                         activeMeme = `${sym} (Comprado a ${fmtPrice(p.buyPrice)})`;
                         break;
                     }
                 }
                 let armedMeme = null;
                 for (const [sym, w] of this.buyWatches.entries()) {
-                    if (MEME_WATCHLIST.includes(sym)) {
+                    if (this.memeWatchlist.includes(sym)) {
                         armedMeme = `${sym} (Piso ${fmtPrice(w.lowestPrice)})`;
                         break;
                     }
@@ -2945,7 +3088,7 @@ export class TrailingMasterBot {
                 msg += `• <b>Regla de Oro:</b> Máximo 1 sola posición memecoin activa a la vez\n`;
                 msg += `• <b>Callback de salida:</b> <b>0.25%</b> (Caza rápida en la cima)\n\n`;
                 msg += `<b>ESTADO EN VIVO (TOP 5 MEMES):</b>\n`;
-                for (const sym of MEME_WATCHLIST) {
+                for (const sym of this.memeWatchlist) {
                     try {
                         const [t24, k1h] = await Promise.all([
                             this.client.ticker24hr(sym),
@@ -2986,7 +3129,7 @@ export class TrailingMasterBot {
                     `• <b>Nunca vende en pérdida.</b>\n\n` +
                     `💰 <b>Capital:</b> 2 ranuras en paralelo (divide el USDT si hay ≥ $30).\n` +
                     `🛡️ <b>Diversificación:</b> No compra monedas donde ya tengamos posiciones u órdenes vivas.\n` +
-                    `📋 <b>Watchlist:</b> ${WATCHLIST.join(", ")}\n` +
+                    `📋 <b>Watchlist:</b> ${this.watchlist.join(", ")}\n` +
                     `🤖 <b>Piloto Autónomo:</b> ${this.autoPilot ? "🟢 ACTIVADO" : "🟡 MODO MANUAL"}`;
             }
             if (cmd === "/balance" || cmd === "balance") {
@@ -3270,7 +3413,7 @@ export class TrailingMasterBot {
             const session = this.getCurrentMarketSession();
             // Volatilidad promedio de Monedas Clásicas (ETH, SOL, AVAX, etc.)
             let coreSum = 0, coreCount = 0;
-            for (const s of CORE_WATCHLIST) {
+            for (const s of this.coreWatchlist) {
                 const t = tickerMap.get(s);
                 if (t) {
                     const h = parseFloat(t.highPrice), l = parseFloat(t.lowPrice);
@@ -3282,7 +3425,7 @@ export class TrailingMasterBot {
             // Volatilidad promedio de Canasta Memecoins (PEPE, DOGE, BONK, etc.)
             let memeSum = 0, memeCount = 0;
             let hottestMeme = { symbol: "PEPE", range: 0 };
-            for (const s of MEME_WATCHLIST) {
+            for (const s of this.memeWatchlist) {
                 const t = tickerMap.get(s);
                 if (t) {
                     const h = parseFloat(t.highPrice), l = parseFloat(t.lowPrice);
@@ -3581,7 +3724,7 @@ export class TrailingMasterBot {
             return false;
         if (usdt < this.minUsdtToTrade)
             return false;
-        for (const sym of WATCHLIST) {
+        for (const sym of this.watchlist) {
             try {
                 if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
                     continue;
@@ -3630,7 +3773,7 @@ export class TrailingMasterBot {
                 return true;
         }
         const candidates = [];
-        for (const sym of WATCHLIST) {
+        for (const sym of this.watchlist) {
             try {
                 if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
                     continue;
@@ -3813,7 +3956,7 @@ export class TrailingMasterBot {
             lot = this.minUsdtToTrade;
         }
         // Tope de riesgo para memecoins: máximo $50 USDT
-        if (MEME_WATCHLIST.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE")) {
+        if (this.memeWatchlist.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE")) {
             lot = Math.min(lot, 50);
         }
         return Math.min(lot, spendableUsdt);

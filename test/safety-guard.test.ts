@@ -441,6 +441,60 @@ async function runTestSuite() {
   }
 
   // =========================================================================
+  // SUITE 5: Gestión Dinámica de Monedas en DB (Supabase Watchlist)
+  // =========================================================================
+  console.log("\n🪙  SUITE 5: Gestión Dinámica de Monedas en DB (Supabase Watchlist)");
+  {
+    const bot = new TrailingMasterBot();
+    bot.client.tickerPrice = async (sym: string) => {
+      if (sym === "ADAUSDT" || sym === "FLOKIUSDT" || sym === "ETHUSDT") {
+        return { data: { symbol: sym, price: "0.55" } };
+      }
+      throw new Error("Invalid symbol");
+    };
+
+    // 5.1 Getters dinámicos
+    const initialCore = bot.coreWatchlist;
+    const initialMeme = bot.memeWatchlist;
+    const initialTotal = bot.watchlist;
+    assert(initialCore.includes("ETHUSDT"), "5.1 coreWatchlist contiene ETHUSDT");
+    assert(initialMeme.includes("PEPEUSDT"), "5.1 memeWatchlist contiene PEPEUSDT");
+    assert(initialTotal.length === initialCore.length + initialMeme.length, "5.1 watchlist consolida ambas categorías sin duplicados");
+
+    // 5.2 Agregar moneda válida (ADA)
+    const addRes = await bot.addCoinToWatchlist("ADA", "core");
+    assert(addRes.success, "5.2 addCoinToWatchlist agrega ADA con éxito");
+    assert(bot.coreWatchlist.includes("ADAUSDT"), "5.2 ADAUSDT está presente en coreWatchlist");
+    assert(bot.watchlist.includes("ADAUSDT"), "5.2 ADAUSDT está presente en watchlist total");
+
+    // 5.3 Rechazar duplicado
+    const dupRes = await bot.addCoinToWatchlist("ADAUSDT", "core");
+    assert(!dupRes.success, "5.3 addCoinToWatchlist rechaza moneda duplicada");
+
+    // 5.4 Eliminar moneda (ADA)
+    const delRes = await bot.removeCoinFromWatchlist("ADA");
+    assert(delRes.success, "5.4 removeCoinFromWatchlist elimina ADA con éxito");
+    assert(!bot.coreWatchlist.includes("ADAUSDT"), "5.4 ADAUSDT ya no está en coreWatchlist");
+    assert(!bot.watchlist.includes("ADAUSDT"), "5.4 ADAUSDT ya no está en watchlist total");
+
+    // 5.5 Comando Telegram /monedas
+    const listMsg = await bot.handleTelegramCommand("/monedas");
+    assert(listMsg.includes("LISTA DE MONEDAS ACTIVAS"), "5.5 /monedas genera cabecera informativa");
+    assert(listMsg.includes("ETHUSDT"), "5.5 /monedas lista monedas Core");
+    assert(listMsg.includes("PEPEUSDT"), "5.5 /monedas lista monedas Memecoin");
+
+    // 5.6 Comando Telegram /agregar_moneda FLOKI meme
+    const tgAddMsg = await bot.handleTelegramCommand("/agregar_moneda FLOKI meme");
+    assert(tgAddMsg.includes("agregada exitosamente"), "5.6 /agregar_moneda confirma adición");
+    assert(bot.memeWatchlist.includes("FLOKIUSDT"), "5.6 FLOKIUSDT registrado en memeWatchlist");
+
+    // 5.7 Comando Telegram /quitar_moneda FLOKI
+    const tgDelMsg = await bot.handleTelegramCommand("/quitar_moneda FLOKI");
+    assert(tgDelMsg.includes("retirada de la lista"), "5.7 /quitar_moneda confirma retiro");
+    assert(!bot.memeWatchlist.includes("FLOKIUSDT"), "5.7 FLOKIUSDT retirado de memeWatchlist");
+  }
+
+  // =========================================================================
   // RESUMEN FINAL
   // =========================================================================
   console.log("\n============================================================");

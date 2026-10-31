@@ -11,6 +11,8 @@ try {
 catch { }
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://wfpcvuzzopjfgdtdhobp.supabase.co";
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
+export const DEFAULT_CORE_WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT"];
+export const DEFAULT_MEME_WATCHLIST = ["PEPEUSDT", "DOGEUSDT", "BONKUSDT"];
 export class SupabaseDbService {
     client = null;
     isConnected = false;
@@ -60,6 +62,12 @@ export class SupabaseDbService {
             if (!data)
                 return null;
             const settings = data.strategy_settings || {};
+            const coreWatchlist = Array.isArray(settings.coreWatchlist) && settings.coreWatchlist.length > 0
+                ? settings.coreWatchlist
+                : DEFAULT_CORE_WATCHLIST;
+            const memeWatchlist = Array.isArray(settings.memeWatchlist) && settings.memeWatchlist.length > 0
+                ? settings.memeWatchlist
+                : DEFAULT_MEME_WATCHLIST;
             return {
                 strategies: data.strategies,
                 autoPilot: settings.autoPilot ?? data.auto_pilot ?? true,
@@ -67,7 +75,7 @@ export class SupabaseDbService {
                 maxPositions: settings.maxPositions ?? 7,
                 allocations: data.allocations,
                 baseAllocations: data.base_allocations,
-                strategySettings: settings,
+                strategySettings: { ...settings, coreWatchlist, memeWatchlist },
                 suggestions: data.suggestions,
                 trailingCallbacks: data.trailing_callbacks,
                 recoveryTracker: data.recovery_tracker,
@@ -77,6 +85,8 @@ export class SupabaseDbService {
                 cashReservePct: data.cash_reserve_pct ?? 25.0,
                 maxPerCoinPct: settings.maxPerCoinPct ?? data.max_per_coin_pct ?? 30.0,
                 aiEnabled: settings.aiEnabled ?? data.ai_enabled ?? false,
+                coreWatchlist,
+                memeWatchlist,
                 updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : Date.now()
             };
         }
@@ -89,12 +99,16 @@ export class SupabaseDbService {
         if (!this.client)
             return false;
         try {
+            const coreWatchlist = controls.coreWatchlist || controls.strategySettings?.coreWatchlist || DEFAULT_CORE_WATCHLIST;
+            const memeWatchlist = controls.memeWatchlist || controls.strategySettings?.memeWatchlist || DEFAULT_MEME_WATCHLIST;
             const strategySettingsPayload = {
                 ...(controls.strategySettings || {}),
                 maxPositions: controls.maxPositions ?? 7,
                 maxPerCoinPct: controls.maxPerCoinPct ?? 30.0,
                 autoPilot: controls.autoPilot !== false,
-                aiEnabled: controls.aiEnabled === true
+                aiEnabled: controls.aiEnabled === true,
+                coreWatchlist,
+                memeWatchlist
             };
             const record = {
                 id: "current",

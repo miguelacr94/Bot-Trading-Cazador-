@@ -102,11 +102,28 @@ export class DashboardServer {
     return [];
   }
 
+  private readControlsJson(): any {
+    try {
+      const f = path.resolve(process.cwd(), ".strategy-controls.json");
+      if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, "utf-8"));
+    } catch {}
+    return null;
+  }
+
   private trackedSymbols(): string[] {
     const pos = this.readJson(".trailing-positions.json").map(([s]) => (s || "").split("_")[0]);
     const buys = this.readJson(".trailing-buys.json").map(([s]) => (s || "").split("_")[0]);
+    let dbCoins: string[] = [];
+    try {
+      const ctrl = this.readControlsJson();
+      if (ctrl) {
+        const c1 = ctrl.coreWatchlist || ctrl.strategySettings?.coreWatchlist || [];
+        const c2 = ctrl.memeWatchlist || ctrl.strategySettings?.memeWatchlist || [];
+        dbCoins = [...c1, ...c2];
+      }
+    } catch {}
     const allKnown = ["ETHUSDT","SOLUSDT","AVAXUSDT","BTCUSDT","BNBUSDT","XRPUSDT","PEPEUSDT","DOGEUSDT","BONKUSDT","USDTCOP"];
-    const set = new Set([...PNL_SYMBOLS, ...allKnown, ...pos, ...buys]);
+    const set = new Set([...PNL_SYMBOLS, ...allKnown, ...dbCoins, ...pos, ...buys]);
     return Array.from(set)
       .map((s: string) => (s || "").trim().toUpperCase())
       .filter((s: string) => /^[A-Z0-9]+$/.test(s) && (s.endsWith("USDT") || s === "USDTCOP"));
@@ -206,7 +223,17 @@ export class DashboardServer {
         : [];
       let updated = false;
 
-      const candidates = ["ETH","SOL","AVAX","BTC","BNB","XRP","PEPE","DOGE","BONK"];
+      let candidates = ["ETH","SOL","AVAX","BTC","BNB","XRP","PEPE","DOGE","BONK"];
+      try {
+        const ctrl = this.readControlsJson();
+        if (ctrl) {
+          const c1 = (ctrl.coreWatchlist || ctrl.strategySettings?.coreWatchlist || []).map((s: string) => s.replace("USDT", ""));
+          const c2 = (ctrl.memeWatchlist || ctrl.strategySettings?.memeWatchlist || []).map((s: string) => s.replace("USDT", ""));
+          if (c1.length || c2.length) {
+            candidates = Array.from(new Set([...candidates, ...c1, ...c2]));
+          }
+        }
+      } catch {}
       for (const base of candidates) {
         const sym = base + "USDT";
         // 🛡️ Si ya existe CUALQUIER lote o posición de esta moneda en el disco, NO TOCAR

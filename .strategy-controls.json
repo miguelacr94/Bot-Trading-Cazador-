@@ -1,154 +1,53 @@
 {
+  "maxPositions": 7,
   "strategies": {
-    "futures": false,
+    "trailing_rebound": true,
     "smart_dca": true,
     "micro_grid": false,
-    "cazador_weekend": false,
-    "centinela_alpha": true,
-    "trailing_rebound": true
+    "cazador_weekend": true
   },
-  "autoPilot": true,
-  "approvalTimeoutSec": 180,
-  "maxPositions": 7,
   "allocations": {
-    "futures": 10,
-    "smart_dca": 25,
+    "trailing_rebound": 70,
+    "smart_dca": 30,
     "micro_grid": 0,
-    "cazador_weekend": 0,
-    "centinela_alpha": 20,
-    "trailing_rebound": 55
+    "cazador_weekend": 0
   },
   "baseAllocations": {
-    "futures": 10,
-    "smart_dca": 25,
+    "trailing_rebound": 50,
+    "smart_dca": 30,
     "micro_grid": 0,
-    "cazador_weekend": 0,
-    "centinela_alpha": 20,
-    "trailing_rebound": 55
+    "cazador_weekend": 20
   },
-  "strategySettings": {
-    "futures": {
-      "leverage": 2,
-      "timeframe": "15m",
-      "isSimulated": true,
-      "stopLossPct": 1.2,
-      "stopLossEnabled": true
-    },
-    "aiEnabled": false,
-    "autoPilot": true,
-    "smart_dca": {
-      "timeframe": "4h",
-      "stopLossPct": 6,
-      "stopLossEnabled": false
-    },
-    "micro_grid": {
-      "timeframe": "15m",
-      "stopLossPct": 2,
-      "stopLossEnabled": false
-    },
-    "maxPositions": 7,
-    "maxPerCoinPct": 30,
-    "cazador_weekend": {
-      "timeframe": "1h",
-      "stopLossPct": 5,
-      "stopLossEnabled": false
-    },
-    "trailing_rebound": {
-      "timeframe": "15m",
-      "stopLossPct": 3.5,
-      "stopLossEnabled": false
-    }
-  },
-  "suggestions": {
-    "smart_dca": {
-      "timeframe": "4h",
-      "stopLossPct": 6,
-      "reason": "Soportes mayores de 4H. Tolerancia de promediado segura.",
-      "criterios": [
-        "Soportes estructurales en temporalidad de 4 Horas",
-        "Umbral de caída acumulada ≥ -2.5% desde la compra",
-        "Cooldown de 2 horas entre compras consecutivas"
-      ],
-      "porQue": "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
-      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
-      "btcRange24h": 4.692322379961949,
-      "updatedAt": 1793313493741,
-      "expiresAt": 1793317093741,
-      "isCurrent": true,
-      "status": "applied"
-    },
-    "micro_grid": {
-      "timeframe": "15m",
-      "stopLossPct": 2,
-      "reason": "Mercado direccional activo (4.7%). Conviene cautela.",
-      "criterios": [
-        "Rango Bitcoin: 4.69% (Mercado con dirección)",
-        "Poco favorable para mallas fijas sin tendencia"
-      ],
-      "porQue": "Cuando el mercado tiene movimiento direccional, las estrategias de rejilla corren riesgo de quedar con compras atrapadas. Se sugiere mantener el presupuesto de Micro-Grid en 0% o con Stop-Loss estricto de -2.0% mientras el Trailing Hunter hace el trabajo pesado.",
-      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
-      "btcRange24h": 4.692322379961949,
-      "updatedAt": 1793313493741,
-      "expiresAt": 1793317093741,
-      "isCurrent": true,
-      "status": "applied"
-    },
-    "cazador_weekend": {
-      "timeframe": "1h",
-      "stopLossPct": 5,
-      "reason": "En espera hasta el viernes a las 17:00 COT.",
-      "criterios": [
-        "Días hábiles de semana (mercados tradicionales abiertos)",
-        "Capital trabajando al 100% en Cazador Trailing"
-      ],
-      "porQue": "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
-      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
-      "btcRange24h": 4.692322379961949,
-      "updatedAt": 1793313493741,
-      "expiresAt": 1793317093741,
-      "isCurrent": true,
-      "status": "applied"
-    },
-    "trailing_rebound": {
-      "timeframe": "15m",
-      "stopLossPct": 3.5,
-      "reason": "Alta velocidad detectada (BTC 4.7%, Memes 16.2%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
-      "criterios": [
-        "Rango Bitcoin: 4.69% (Fuerza direccional)",
-        "Rango Memecoins: 16.20% (Líder PEPE con 28.5%)",
-        "Sesión: Asia / Tokio (Consolidación y Rango Lateral)",
-        "Flujo de órdenes dinámico con ciclos de rebote veloces"
-      ],
-      "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m permite capturar rebotes rápidos (+1.2% a +2.0%) varias veces al día sin dejar capital atrapado.",
-      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
-      "btcRange24h": 4.692322379961949,
-      "updatedAt": 1793313493741,
-      "expiresAt": 1793317093741,
-      "isCurrent": true,
-      "status": "applied"
-    }
-  },
-  "trailingCallbacks": {
-    "ETHUSDT": 0.25,
-    "XRPUSDT": 0.25,
-    "default": 0.35,
-    "AVAXUSDT": 0.35,
-    "BONKUSDT": 0.45,
-    "DOGEUSDT": 0.45,
-    "PEPEUSDT": 0.45
-  },
-  "recoveryTracker": {
-    "targetUsdt": 100,
-    "tradesCount": 8,
-    "recoveredUsdt": 6.11,
-    "remainingUsdt": 93.89
-  },
-  "stopLossEnabled": false,
-  "stopLossPct": 4,
-  "timeframe": "1h",
-  "cashReservePct": 25,
-  "maxPerCoinPct": 30,
+  "autoPilot": true,
   "aiEnabled": false,
-  "updatedAt": 1793313493741,
-  "rejectedSuggestions": {}
+  "approvalTimeoutSec": 180,
+  "updatedAt": 1793452841354,
+  "coreWatchlist": [
+    "ETHUSDT",
+    "SOLUSDT",
+    "AVAXUSDT",
+    "BTCUSDT",
+    "BNBUSDT",
+    "XRPUSDT"
+  ],
+  "memeWatchlist": [
+    "PEPEUSDT",
+    "DOGEUSDT",
+    "BONKUSDT"
+  ],
+  "strategySettings": {
+    "coreWatchlist": [
+      "ETHUSDT",
+      "SOLUSDT",
+      "AVAXUSDT",
+      "BTCUSDT",
+      "BNBUSDT",
+      "XRPUSDT"
+    ],
+    "memeWatchlist": [
+      "PEPEUSDT",
+      "DOGEUSDT",
+      "BONKUSDT"
+    ]
+  }
 }

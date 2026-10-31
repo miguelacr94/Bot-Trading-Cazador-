@@ -86,11 +86,30 @@ export class DashboardServer {
         catch { }
         return [];
     }
+    readControlsJson() {
+        try {
+            const f = path.resolve(process.cwd(), ".strategy-controls.json");
+            if (fs.existsSync(f))
+                return JSON.parse(fs.readFileSync(f, "utf-8"));
+        }
+        catch { }
+        return null;
+    }
     trackedSymbols() {
         const pos = this.readJson(".trailing-positions.json").map(([s]) => (s || "").split("_")[0]);
         const buys = this.readJson(".trailing-buys.json").map(([s]) => (s || "").split("_")[0]);
+        let dbCoins = [];
+        try {
+            const ctrl = this.readControlsJson();
+            if (ctrl) {
+                const c1 = ctrl.coreWatchlist || ctrl.strategySettings?.coreWatchlist || [];
+                const c2 = ctrl.memeWatchlist || ctrl.strategySettings?.memeWatchlist || [];
+                dbCoins = [...c1, ...c2];
+            }
+        }
+        catch { }
         const allKnown = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "PEPEUSDT", "DOGEUSDT", "BONKUSDT", "USDTCOP"];
-        const set = new Set([...PNL_SYMBOLS, ...allKnown, ...pos, ...buys]);
+        const set = new Set([...PNL_SYMBOLS, ...allKnown, ...dbCoins, ...pos, ...buys]);
         return Array.from(set)
             .map((s) => (s || "").trim().toUpperCase())
             .filter((s) => /^[A-Z0-9]+$/.test(s) && (s.endsWith("USDT") || s === "USDTCOP"));
@@ -188,7 +207,18 @@ export class DashboardServer {
                 ? JSON.parse(fs.readFileSync(pFile, "utf-8"))
                 : [];
             let updated = false;
-            const candidates = ["ETH", "SOL", "AVAX", "BTC", "BNB", "XRP", "PEPE", "DOGE", "BONK"];
+            let candidates = ["ETH", "SOL", "AVAX", "BTC", "BNB", "XRP", "PEPE", "DOGE", "BONK"];
+            try {
+                const ctrl = this.readControlsJson();
+                if (ctrl) {
+                    const c1 = (ctrl.coreWatchlist || ctrl.strategySettings?.coreWatchlist || []).map((s) => s.replace("USDT", ""));
+                    const c2 = (ctrl.memeWatchlist || ctrl.strategySettings?.memeWatchlist || []).map((s) => s.replace("USDT", ""));
+                    if (c1.length || c2.length) {
+                        candidates = Array.from(new Set([...candidates, ...c1, ...c2]));
+                    }
+                }
+            }
+            catch { }
             for (const base of candidates) {
                 const sym = base + "USDT";
                 // 🛡️ Si ya existe CUALQUIER lote o posición de esta moneda en el disco, NO TOCAR
