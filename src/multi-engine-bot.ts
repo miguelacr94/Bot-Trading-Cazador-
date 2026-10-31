@@ -1025,7 +1025,17 @@ export class TrailingMasterBot {
 
   async executeOpportunity(opp: PendingOpportunity): Promise<boolean> {
     if (opp.strategy === "smart_dca") {
-      const pos = this.activeTrailingPositions.get(opp.symbol);
+      let pos = this.activeTrailingPositions.get(opp.symbol);
+      if (!pos) {
+        for (const [k, p] of this.activeTrailingPositions.entries()) {
+          const cK = k.split("_")[0];
+          const cP = (p.symbol || "").split("_")[0];
+          if (cK === opp.symbol || cP === opp.symbol) {
+            pos = p;
+            break;
+          }
+        }
+      }
       if (!pos) {
         console.error(`Posición para Smart DCA en ${opp.symbol} ya no existe.`);
         return false;
@@ -1068,16 +1078,17 @@ export class TrailingMasterBot {
 
   async executeSmartDca(pos: ActivePosition, usdtAmount: number): Promise<boolean> {
     try {
+      const cleanSym = (pos.symbol || "").split("_")[0];
       const investStr = (usdtAmount - 0.15).toFixed(2);
-      console.log(`🛡️ [Smart DCA] Ejecutando orden de seguridad de ${investStr} USDT en ${pos.symbol}...`);
+      console.log(`🛡️ [Smart DCA] Ejecutando orden de seguridad de ${investStr} USDT en ${cleanSym}...`);
 
-      const buyRes = await this.client.newOrder(pos.symbol, "BUY", "MARKET", {
+      const buyRes = await this.client.newOrder(cleanSym, "BUY", "MARKET", {
         quoteOrderQty: investStr,
         newOrderRespType: "FULL",
         recvWindow: 60000
       });
 
-      const asset = pos.symbol.replace("USDT", "");
+      const asset = cleanSym.replace("USDT", "");
       const spent = parseFloat(buyRes.data.cummulativeQuoteQty);
       const grossQty = parseFloat(buyRes.data.executedQty);
       let feeInBase = 0;
@@ -1087,16 +1098,36 @@ export class TrailingMasterBot {
       const newQty = grossQty - feeInBase;
 
       const buyPriceThisLot = spent / newQty;
-      const lotIndex = (pos.lotIndex || 1) + 1;
-      const newLotId = `${pos.symbol}_lot_${lotIndex}_${Date.now()}`;
+
+      // Calcular número exacto de lote según lotes activos de este activo
+      const existingLots = Array.from(this.activeTrailingPositions.entries()).filter(([k, p]) => {
+        const pSym = (p.symbol || k).split("_")[0];
+        return pSym === cleanSym;
+      });
+      const lotIndex = existingLots.length + 1;
+      const newLotId = `${cleanSym}_lot_${lotIndex}_${Date.now()}`;
 
       pos.lastDcaTime = Date.now();
       pos.dcaCount = (pos.dcaCount || 0) + 1;
 
+      // Meta de salida adaptativa según el lote: Lote 3 tiene rango expandido de rebote
+      let lotMinGainPct = 0.80;
+      if (lotIndex >= 3) {
+        const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
+        const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
+        if (isMeme) {
+          lotMinGainPct = 2.20; // Rango de rebote amplio en memecoins
+        } else if (btcRange >= 2.5) {
+          lotMinGainPct = 1.80; // Mercado con volumen
+        } else {
+          lotMinGainPct = 1.20; // Mercado lateral
+        }
+      }
+
       // 🛡️ REGLA DE ORO: CADA COMPRA ES UN LOTE 100% AISLADO (NUNCA COMBINAR)
       this.activeTrailingPositions.set(newLotId, {
         id: newLotId,
-        symbol: pos.symbol,
+        symbol: cleanSym,
         lotIndex: lotIndex,
         buyPrice: buyPriceThisLot,
         qty: newQty,
@@ -1106,22 +1137,26 @@ export class TrailingMasterBot {
         buyTime: Date.now(),
         strategy: "smart_dca",
         customCallbackPct: pos.customCallbackPct,
-        customTimeframe: pos.customTimeframe
+        customTimeframe: pos.customTimeframe,
+        customMinGainPct: lotMinGainPct
       });
       this.saveTrailingPositions();
 
-      const newTarget = (buyPriceThisLot * 1.008).toFixed(4);
+      const newTarget = (buyPriceThisLot * (1 + lotMinGainPct / 100)).toFixed(4);
+      const isExtreme = lotIndex >= 3;
+      const title = isExtreme
+        ? `🚨 <b>¡SMART DCA: LOTE #3 (RESCATE EXTREMO) CREADO!</b> 💎`
+        : `🛡️ <b>¡SMART DCA: NUEVO LOTE INDEPENDIENTE CREADO!</b> 🎯`;
 
-      const alertMsg = `🛡️ <b>¡SMART DCA: NUEVO LOTE INDEPENDIENTE CREADO!</b> 🎯\n\n` +
-        `• <b>Moneda:</b> <b>${pos.symbol}</b> (Lote #${lotIndex})\n` +
+      const alertMsg = `${title}\n\n` +
+        `• <b>Moneda:</b> <b>${cleanSym}</b> (Lote #${lotIndex} - ${isExtreme ? "Suelo Profundo" : "Soporte"})\n` +
         `• 💵 <b>Inversión de este lote:</b> ${spent.toFixed(2)} USDT (+${newQty.toFixed(4)} ${asset})\n` +
         `• 🎯 <b>Precio de compra de este lote:</b> <b>${fmtPrice(buyPriceThisLot)}</b>\n` +
-        `• 🏁 <b>Meta de salida (+0.8%):</b> ${newTarget}\n\n` +
-        `🔒 <i>LOTE AISLADO: Cuando este lote rebote a ${newTarget}, se venderá ÚNICAMENTE este lote con ganancia limpia. Tus lotes anteriores quedan intactos esperando su propia meta sin arrastrar pérdidas.</i>`;
+        `• 🏁 <b>Meta de salida (+${lotMinGainPct.toFixed(1)}%):</b> ${newTarget}\n\n` +
+        `🔒 <i>LOTE AISLADO CON RANGO EXPANDIDO: ${isExtreme ? "Como se compró en descuento extremo, tiene mayor rango de rebote para capturar toda la recuperación. " : ""}Cuando este lote alcance su meta, ¡venderá ÚNICAMENTE este lote con ganancia limpia! Tus lotes anteriores quedan intactos esperando su propia meta sin arrastrar pérdidas.</i>`;
 
       await this.notifier.send(alertMsg);
       console.log(alertMsg.replace(/<[^>]*>/g, ""));
-
 
       return true;
     } catch(e: any) {
@@ -1265,76 +1300,138 @@ export class TrailingMasterBot {
     if (this.pendingOpportunity) return false;
     if (usdt < this.minUsdtToTrade) return false;
 
-    for (const [sym, pos] of this.activeTrailingPositions.entries()) {
+    interface DcaCandidate {
+      pos: ActivePosition;
+      cleanSym: string;
+      targetLotIndex: number; // 2 o 3
+      dropPct: number;
+      curPrice: number;
+      rsi: number;
+      score: number;
+      isExtreme: boolean;
+      minGainPct: number;
+      amount: number;
+      potentialTarget: string;
+      reason: string;
+    }
+
+    const candidates: DcaCandidate[] = [];
+
+    // Agrupar posiciones activas por moneda limpia
+    const lotsBySymbol = new Map<string, [string, ActivePosition][]>();
+    for (const [k, p] of this.activeTrailingPositions.entries()) {
+      const clean = (p.symbol || k).split("_")[0];
+      if (!lotsBySymbol.has(clean)) lotsBySymbol.set(clean, []);
+      lotsBySymbol.get(clean)!.push([k, p]);
+    }
+
+    for (const [cleanSym, lots] of lotsBySymbol.entries()) {
       try {
-        // 🛑 REGLA DE SEGURIDAD 1: Solo el Lote 1 principal puede iniciar un Smart DCA
-        if (sym.includes('_lot_') || (pos.lotIndex && pos.lotIndex > 1)) continue;
+        const lotCount = lots.length;
+        // 🛑 LÍMITE ESTRICTO: Máximo 3 lotes por moneda (Lote 1, Lote 2 y Lote 3 de Rescate Extremo). ¡PROHIBIDO Lote 4!
+        if (lotCount >= 3) continue;
 
-        const cleanSym = (pos.symbol || sym).split('_')[0];
+        // Encontrar Lote 1 y lote más reciente
+        const lot1 = lots.find(([k, p]) => !k.includes("_lot_") && (!p.lotIndex || p.lotIndex === 1))?.[1] || lots[0][1];
+        const latestLot = [...lots].sort((a, b) => (b[1].buyTime || 0) - (a[1].buyTime || 0))[0][1];
 
-        // 🛑 REGLA DE SEGURIDAD 2: Límite estricto de MÁXIMO 2 lotes en total por moneda
-        const existingLotsForAsset = Array.from(this.activeTrailingPositions.entries()).filter(([k, p]) => {
-          const pSym = (p.symbol || k).split('_')[0];
-          return pSym === cleanSym;
-        });
-        if (existingLotsForAsset.length >= 2) {
-          continue; // Ya tiene Lote 1 y Lote 2. ¡PROHIBIDO crear Lote 3 o acumular más!
-        }
-
-        // 🛑 REGLA DE SEGURIDAD 3: Cooldown estricto de 6 horas entre compras de la misma moneda
-        if (pos.dcaCount && pos.dcaCount >= 2) continue;
-        if (pos.lastDcaTime && (Date.now() - pos.lastDcaTime) < 6 * 3600 * 1000) continue;
-        if (pos.buyTime && (Date.now() - pos.buyTime) < 6 * 3600 * 1000) continue;
+        // Cooldown estricto entre compras de la misma moneda (3h para Lote 3, 4h para Lote 2)
+        const requiredCooldownHours = lotCount === 2 ? 3 : 4;
+        if (latestLot.buyTime && (Date.now() - latestLot.buyTime) < requiredCooldownHours * 3600 * 1000) continue;
 
         const curPrice = parseFloat((await this.client.tickerPrice(cleanSym)).data.price);
-        const dropPct = ((curPrice - pos.buyPrice) / pos.buyPrice) * 100;
+        const dropFromLot1 = ((curPrice - lot1.buyPrice) / lot1.buyPrice) * 100;
+        const dropFromLatest = ((curPrice - latestLot.buyPrice) / latestLot.buyPrice) * 100;
 
-        const lastIgnored = this.ignoredDca.get(sym);
+        const lastIgnored = this.ignoredDca.get(cleanSym);
         if (lastIgnored) {
           const hoursSince = (Date.now() - lastIgnored.timestamp) / (3600 * 1000);
           const extraDropPct = ((curPrice - lastIgnored.price) / lastIgnored.price) * 100;
-          if (hoursSince < 6 && extraDropPct > -4.0) {
-            continue; // En enfriamiento de 6 horas tras /ignorar
-          }
+          if (hoursSince < 4 && extraDropPct > -3.0) continue;
         }
 
-        if (dropPct <= -2.5) {
-          const dcaTf = this.controls.strategySettings?.smart_dca?.timeframe || "4h";
-          const klines = await this.client.klines(sym, dcaTf, { limit: 25 });
-          const closes = klines.data.map((k: any) => parseFloat(k[4]));
-          const rsi = this.calculateRSI(closes, 14);
+        const dcaTf = this.controls.strategySettings?.smart_dca?.timeframe || "4h";
+        const klines = await this.client.klines(cleanSym, dcaTf, { limit: 25 });
+        const closes = klines.data.map((k: any) => parseFloat(k[4]));
+        const rsi = this.calculateRSI(closes, 14);
 
-          if (rsi <= 45) {
-            const amount = Math.min(15, Math.max(10, Math.floor(usdt * 0.5 * 100) / 100));
-            const estQty = amount / curPrice;
-            const estAvg = (pos.investedUsdt + amount) / (pos.qty + estQty);
-            const savedPct = ((pos.buyPrice - estAvg) / pos.buyPrice) * 100;
-            const target08 = (estAvg * 1.008).toFixed(4);
-
-            const opp: PendingOpportunity = {
-              id: `dca_${sym}_${Date.now()}`,
-              symbol: sym,
-              strategy: "smart_dca",
-              strategyName: "Smart DCA (Promediado de Seguridad)",
-              reason: `Cayó ${dropPct.toFixed(2)}% desde la entrada (RSI ${rsi.toFixed(1)}). Invertir ${amount.toFixed(2)} USDT baja la entrada promedio a ${fmtPrice(estAvg)} (-${savedPct.toFixed(2)}%). Nueva meta: ${target08}`,
-              amount,
+        if (lotCount === 1) {
+          // --- EVALUACIÓN LOTE #2 (Promediado de Soporte) ---
+          if (dropFromLot1 <= -2.5 && rsi <= 45) {
+            const amount = Math.min(15, Math.max(10, Math.floor(usdt * 0.45 * 100) / 100));
+            const target08 = (curPrice * 1.008).toFixed(4);
+            const score = Math.abs(dropFromLot1) * 1.5 + (50 - rsi);
+            candidates.push({
+              pos: lot1,
+              cleanSym,
+              targetLotIndex: 2,
+              dropPct: dropFromLot1,
               curPrice,
+              rsi,
+              score,
+              isExtreme: false,
+              minGainPct: 0.80,
+              amount,
               potentialTarget: target08,
-              createdAt: Date.now(),
-              expiresAt: Date.now() + this.controls.approvalTimeoutSec * 1000
-            };
+              reason: `Cayó ${dropFromLot1.toFixed(2)}% desde Lote 1 (RSI ${rsi.toFixed(1)}). Invertir ${amount.toFixed(2)} USDT crea Lote 2 en soporte con meta inicial ${target08}.`
+            });
+          }
+        } else if (lotCount === 2) {
+          // --- EVALUACIÓN LOTE #3 (Rescate Extremo / Suelo Profundo con Mayor Rango de Rebote) ---
+          if (dropFromLot1 <= -5.5 && dropFromLatest <= -2.0 && rsi <= 38) {
+            const amount = Math.min(15, Math.max(10, Math.floor(usdt * 0.40 * 100) / 100));
+            const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
+            const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
+            let expandedMinGain = 1.20;
+            if (isMeme) expandedMinGain = 2.20;
+            else if (btcRange >= 2.5) expandedMinGain = 1.80;
 
-            this.pendingOpportunity = opp;
-            this.savePendingOpportunity();
-            await this.notifyOpportunity(opp);
-            return true;
+            const targetExpanded = (curPrice * (1 + expandedMinGain / 100)).toFixed(4);
+            const score = Math.abs(dropFromLot1) * 2.0 + (50 - rsi) * 1.5 + 30; // Bonificación de prioridad
+            candidates.push({
+              pos: lot1,
+              cleanSym,
+              targetLotIndex: 3,
+              dropPct: dropFromLot1,
+              curPrice,
+              rsi,
+              score,
+              isExtreme: true,
+              minGainPct: expandedMinGain,
+              amount,
+              potentialTarget: targetExpanded,
+              reason: `🚨 DESCUENTO EXTREMO: Cayó ${dropFromLot1.toFixed(2)}% acumulado (RSI ${rsi.toFixed(1)} en piso). Lote 3 con Rango de Rebote Ampliado (+${expandedMinGain.toFixed(1)}%). Meta: ${targetExpanded}.`
+            });
           }
         }
       } catch (e: any) {
-        console.error(`Error evaluando Smart DCA para ${sym}:`, e.message);
+        console.error(`Error evaluando Smart DCA para ${cleanSym}:`, e.message);
       }
     }
-    return false;
+
+    if (candidates.length === 0) return false;
+
+    // 🏆 RANKING POR PRIORIDAD: Ordenar por mayor puntaje (la que esté más abajo con mejor rebote)
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+
+    const opp: PendingOpportunity = {
+      id: `dca_${best.cleanSym}_${Date.now()}`,
+      symbol: best.cleanSym,
+      strategy: "smart_dca",
+      strategyName: best.isExtreme ? `Smart DCA (Lote #3 Rescate Extremo)` : `Smart DCA (Lote #${best.targetLotIndex} Soporte)`,
+      reason: best.reason,
+      amount: best.amount,
+      curPrice: best.curPrice,
+      potentialTarget: best.potentialTarget,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + this.controls.approvalTimeoutSec * 1000
+    };
+
+    this.pendingOpportunity = opp;
+    this.savePendingOpportunity();
+    await this.notifyOpportunity(opp);
+    return true;
   }
 
   private loadBuyWatches() {
@@ -1460,8 +1557,17 @@ export class TrailingMasterBot {
         // NUNCA vender en rojo; esperar el rebote al alza (+0.80% mínimo) o promediar con Smart DCA.
         // (Stop-Loss eliminado al 100% de la lógica Spot para evitar whipsaws)
 
-        // 1. Activar Trailing si superó el +0.8%
-        const activationTarget = pos.customMinGainPct || TRAILING_ACTIVATION_PCT;
+        // 1. Activar Trailing si superó el umbral (adaptativo para Lote 3 con rango expandido)
+        const isLot3 = (pos.lotIndex && pos.lotIndex >= 3) || symbol.includes("_lot_3");
+        let activationTarget = pos.customMinGainPct || TRAILING_ACTIVATION_PCT;
+        if (isLot3 && (!pos.customMinGainPct || pos.customMinGainPct <= 0.8)) {
+          const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
+          const isMeme = this.memeWatchlist.includes(actualSymbol) || actualSymbol.includes("PEPE") || actualSymbol.includes("BONK") || actualSymbol.includes("DOGE");
+          if (isMeme) activationTarget = 2.20;
+          else if (btcRange >= 2.5) activationTarget = 1.80;
+          else activationTarget = 1.20;
+        }
+
         if (gainPct >= activationTarget && !pos.activated) {
           pos.activated = true;
           pos.highestPrice = curPrice;
