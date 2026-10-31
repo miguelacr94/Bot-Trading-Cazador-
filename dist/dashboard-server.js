@@ -95,6 +95,64 @@ export class DashboardServer {
         catch { }
         return null;
     }
+    async loadControls() {
+        if (supabaseDb.isAvailable()) {
+            try {
+                const dbCtrl = await supabaseDb.loadStrategyControls();
+                if (dbCtrl && dbCtrl.strategies) {
+                    try {
+                        fs.writeFileSync(path.resolve(process.cwd(), ".strategy-controls.json"), JSON.stringify(dbCtrl, null, 2), "utf-8");
+                    }
+                    catch { }
+                    return dbCtrl;
+                }
+            }
+            catch (err) {
+                console.error("Error cargando strategy_controls desde Supabase en dashboard:", err.message);
+            }
+        }
+        const ctrl = this.readControlsJson();
+        if (ctrl)
+            return ctrl;
+        return {
+            strategies: {
+                trailing_rebound: true,
+                smart_dca: true,
+                micro_grid: true,
+                cazador_weekend: true,
+            },
+            allocations: {
+                trailing_rebound: 40,
+                smart_dca: 30,
+                micro_grid: 15,
+                cazador_weekend: 15,
+            },
+            baseAllocations: {
+                trailing_rebound: 40,
+                smart_dca: 30,
+                micro_grid: 15,
+                cazador_weekend: 15,
+            },
+            autoPilot: true,
+            approvalTimeoutSec: 180,
+        };
+    }
+    async saveControls(controls) {
+        controls.updatedAt = Date.now();
+        try {
+            const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+        }
+        catch { }
+        if (supabaseDb.isAvailable()) {
+            try {
+                await supabaseDb.saveStrategyControls(controls);
+            }
+            catch (err) {
+                console.error("Error sincronizando strategy_controls en Supabase desde dashboard:", err.message);
+            }
+        }
+    }
     trackedSymbols() {
         const pos = this.readJson(".trailing-positions.json").map(([s]) => (s || "").split("_")[0]);
         const buys = this.readJson(".trailing-buys.json").map(([s]) => (s || "").split("_")[0]);
@@ -835,7 +893,7 @@ export class DashboardServer {
     }
     start() {
         this.startRefreshLoops();
-        this.server = http.createServer((req, res) => {
+        this.server = http.createServer(async (req, res) => {
             const parsedUrl = new URL(req.url || "/", `http://${req.headers.host}`);
             if (parsedUrl.pathname === "/api/status") {
                 try {
@@ -853,20 +911,8 @@ export class DashboardServer {
             }
             if (parsedUrl.pathname === "/api/strategies" && req.method === "GET") {
                 try {
-                    const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
                     const oppFile = path.resolve(process.cwd(), ".pending-opportunity.json");
-                    const controls = fs.existsSync(ctrlFile)
-                        ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-                        : {
-                            strategies: {
-                                trailing_rebound: true,
-                                smart_dca: true,
-                                micro_grid: false,
-                                cazador_weekend: true,
-                            },
-                            autoPilot: true,
-                            approvalTimeoutSec: 180,
-                        };
+                    const controls = await this.loadControls();
                     const pending = fs.existsSync(oppFile)
                         ? JSON.parse(fs.readFileSync(oppFile, "utf-8"))
                         : null;
@@ -890,7 +936,7 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
                         let t = Math.max(0, parseInt(data.trailing || "0", 10));
@@ -911,19 +957,7 @@ export class DashboardServer {
                             g = Math.round((g / sum) * 100);
                             w = 100 - t - d - g;
                         }
-                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-                        const controls = fs.existsSync(ctrlFile)
-                            ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-                            : {
-                                strategies: {
-                                    trailing_rebound: true,
-                                    smart_dca: true,
-                                    micro_grid: false,
-                                    cazador_weekend: true,
-                                },
-                                autoPilot: true,
-                                approvalTimeoutSec: 180,
-                            };
+                        const controls = await this.loadControls();
                         controls.baseAllocations = {
                             trailing_rebound: t,
                             smart_dca: d,
@@ -952,8 +986,7 @@ export class DashboardServer {
                             };
                             controls.strategies.cazador_weekend = true;
                         }
-                        controls.updatedAt = Date.now();
-                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        await this.saveControls(controls);
                         res.writeHead(200, {
                             "Content-Type": "application/json; charset=utf-8",
                         });
@@ -971,13 +1004,10 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
-                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-                        const controls = fs.existsSync(ctrlFile)
-                            ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-                            : {};
+                        const controls = await this.loadControls();
                         if (!controls.strategySettings)
                             controls.strategySettings = {};
                         const strat = data.strategy;
@@ -1003,8 +1033,7 @@ export class DashboardServer {
                             if (data.stopLossPct !== undefined)
                                 controls.strategySettings[strat].stopLossPct = Math.max(1, Math.min(20, parseFloat(data.stopLossPct)));
                         }
-                        controls.updatedAt = Date.now();
-                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        await this.saveControls(controls);
                         res.writeHead(200, {
                             "Content-Type": "application/json; charset=utf-8",
                         });
@@ -1022,14 +1051,11 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
                         const strat = data.strategy;
-                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-                        const controls = fs.existsSync(ctrlFile)
-                            ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-                            : {};
+                        const controls = await this.loadControls();
                         if (strat && controls.suggestions && controls.suggestions[strat]) {
                             if (!controls.strategySettings)
                                 controls.strategySettings = {};
@@ -1056,8 +1082,7 @@ export class DashboardServer {
                                 controls.suggestions[strat].status = "applied";
                                 controls.suggestions[strat].isCurrent = true;
                             }
-                            controls.updatedAt = Date.now();
-                            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                            await this.saveControls(controls);
                             res.writeHead(200, {
                                 "Content-Type": "application/json; charset=utf-8",
                             });
@@ -1082,14 +1107,11 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
                         const strat = data.strategy;
-                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-                        const controls = fs.existsSync(ctrlFile)
-                            ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-                            : {};
+                        const controls = await this.loadControls();
                         if (!controls.rejectedSuggestions)
                             controls.rejectedSuggestions = {};
                         if (strat) {
@@ -1100,7 +1122,7 @@ export class DashboardServer {
                                 controls.suggestions[strat].status = "rejected";
                             }
                             controls.updatedAt = Date.now();
-                            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                            await this.saveControls(controls);
                             res.writeHead(200, {
                                 "Content-Type": "application/json; charset=utf-8",
                             });
@@ -1123,14 +1145,11 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
                         const strat = data.strategy;
-                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-                        const controls = fs.existsSync(ctrlFile)
-                            ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-                            : {};
+                        const controls = await this.loadControls();
                         if (controls.rejectedSuggestions && strat) {
                             delete controls.rejectedSuggestions[strat];
                             if (controls.suggestions && controls.suggestions[strat]) {
@@ -1141,7 +1160,7 @@ export class DashboardServer {
                                     : "pending";
                             }
                             controls.updatedAt = Date.now();
-                            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                            await this.saveControls(controls);
                             res.writeHead(200, {
                                 "Content-Type": "application/json; charset=utf-8",
                             });
@@ -1165,7 +1184,7 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
                         const sym = data.symbol
@@ -1191,8 +1210,7 @@ export class DashboardServer {
                         if (!controls.symbolTimeframes)
                             controls.symbolTimeframes = {};
                         controls.symbolTimeframes[sym] = tf;
-                        controls.updatedAt = Date.now();
-                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        await this.saveControls(controls);
                         const posFile = path.resolve(process.cwd(), ".trailing-positions.json");
                         if (fs.existsSync(posFile)) {
                             try {
@@ -1223,7 +1241,7 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
                         const sym = data.symbol
@@ -1248,8 +1266,7 @@ export class DashboardServer {
                         if (!controls.trailingCallbacks)
                             controls.trailingCallbacks = {};
                         controls.trailingCallbacks[sym] = cbPct;
-                        controls.updatedAt = Date.now();
-                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        await this.saveControls(controls);
                         // Si la posición está abierta en .trailing-positions.json, actualizarla también
                         const posFile = path.resolve(process.cwd(), ".trailing-positions.json");
                         if (fs.existsSync(posFile)) {
@@ -1285,22 +1302,10 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
-                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-                        const controls = fs.existsSync(ctrlFile)
-                            ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-                            : {
-                                strategies: {
-                                    trailing_rebound: true,
-                                    smart_dca: true,
-                                    micro_grid: false,
-                                    cazador_weekend: true,
-                                },
-                                autoPilot: true,
-                                approvalTimeoutSec: 180,
-                            };
+                        const controls = await this.loadControls();
                         if (data.stopLossEnabled !== undefined)
                             controls.stopLossEnabled = !!data.stopLossEnabled;
                         if (data.stopLossPct !== undefined)
@@ -1314,8 +1319,7 @@ export class DashboardServer {
                             controls.maxPerCoinPct = Math.max(10, Math.min(60, parseInt(data.maxPerCoinPct, 10)));
                         if (data.autoPilot !== undefined)
                             controls.autoPilot = !!data.autoPilot;
-                        controls.updatedAt = Date.now();
-                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        await this.saveControls(controls);
                         res.writeHead(200, {
                             "Content-Type": "application/json; charset=utf-8",
                         });
@@ -1420,22 +1424,10 @@ export class DashboardServer {
                 req.method === "POST") {
                 let body = "";
                 req.on("data", (chunk) => (body += chunk));
-                req.on("end", () => {
+                req.on("end", async () => {
                     try {
                         const data = JSON.parse(body || "{}");
-                        const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-                        const controls = fs.existsSync(ctrlFile)
-                            ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-                            : {
-                                strategies: {
-                                    trailing_rebound: true,
-                                    smart_dca: true,
-                                    micro_grid: false,
-                                    cazador_weekend: true,
-                                },
-                                autoPilot: true,
-                                approvalTimeoutSec: 180,
-                            };
+                        const controls = await this.loadControls();
                         if (data.strategy &&
                             controls.strategies[data.strategy] !== undefined) {
                             controls.strategies[data.strategy] =
@@ -1455,8 +1447,7 @@ export class DashboardServer {
                         else if (data.autoPilot !== undefined) {
                             controls.autoPilot = !!data.autoPilot;
                         }
-                        controls.updatedAt = Date.now();
-                        fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+                        await this.saveControls(controls);
                         res.writeHead(200, {
                             "Content-Type": "application/json; charset=utf-8",
                         });
