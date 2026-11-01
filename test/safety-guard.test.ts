@@ -19,6 +19,8 @@ supabaseDb.deleteActivePosition = async () => true;
 supabaseDb.recordClosedTrade = async () => true;
 supabaseDb.saveClosedTrade = async () => true;
 supabaseDb.saveActivePosition = async () => true;
+supabaseDb.saveStrategyControls = async () => true;
+supabaseDb.loadActivePositions = async () => new Map();
 
 interface TestStats {
   total: number;

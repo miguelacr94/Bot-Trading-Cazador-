@@ -1273,7 +1273,7 @@ export class TrailingMasterBot {
       this.saveTrailingPositions();
 
       const targetGain = (buyPrice * 1.008).toFixed(4);
-      const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
+      const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
 
       const msg = `🤖 <b>[CENTINELA ALPHA: ENTRADA DE RECUPERACIÓN]</b> 🎯\n\n` +
         `• <b>Moneda seleccionada:</b> <b>${bestAsset.symbol}</b>\n` +
@@ -2021,7 +2021,7 @@ export class TrailingMasterBot {
       const profitUsdt = grossUsdt - sellFee - costBasis;
       if (profitUsdt > 0) {
         if (!this.controls.recoveryTracker) {
-          this.controls.recoveryTracker = { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
+          this.controls.recoveryTracker = { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
         }
         if (this.controls.recoveryTracker.recoveredUsdt < this.controls.recoveryTracker.targetUsdt) {
           this.controls.recoveryTracker.recoveredUsdt = Math.min(
@@ -2610,7 +2610,7 @@ export class TrailingMasterBot {
       }
 
       if (cmd === "/alpha" || cmd === "alpha") {
-        const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
+        const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
         const pct = Math.min(100, (rec.recoveredUsdt / rec.targetUsdt) * 100);
         let alphaPos: ActivePosition | null = null;
         for (const p of this.activeTrailingPositions.values()) {
@@ -4941,7 +4941,7 @@ export class TrailingMasterBot {
     const futPositions = this.futuresEngine.getPositions();
 
     // 4. Tracker de recuperación Centinela Alpha
-    const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
+    const rec = this.controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
     const recPct = Math.min(100, (rec.recoveredUsdt / rec.targetUsdt) * 100);
 
     // 5. Total acumulado del día
@@ -5022,6 +5022,17 @@ export class TrailingMasterBot {
         console.log(`☁️ [SUPABASE DB] Controles cargados exitosamente desde la nube.`);
         console.log(`🎯 [SUPABASE DB] Meta de Deuda: ${(this.controls.recoveryTracker?.targetUsdt || 100).toFixed(2)} USDT | Recuperado: +${(this.controls.recoveryTracker?.recoveredUsdt || 0).toFixed(2)} USDT`);
         console.log(`🛡️ [SUPABASE DB] Stop-Loss Spot: ${this.controls.stopLossEnabled ? "Activo" : "DESACTIVADO (Blindaje Seguro)"}`);
+      }
+
+      // Sincronizar y calibrar Plan de Recuperación con trades reales de Supabase
+      const dbTrades = await supabaseDb.loadClosedTrades();
+      if (dbTrades && dbTrades.length > 0) {
+        const realProfitSum = dbTrades.reduce((acc: number, t: any) => acc + (t.pnlUsdt || 0), 0);
+        if (!this.controls.recoveryTracker) {
+          this.controls.recoveryTracker = { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
+        }
+        this.controls.recoveryTracker.recoveredUsdt = Math.max(0, parseFloat(realProfitSum.toFixed(4)));
+        this.controls.recoveryTracker.tradesCount = dbTrades.length;
       }
 
       // 2. Consumir Posiciones Activas desde la DB

@@ -505,10 +505,10 @@ export class DashboardServer {
     if (fs.existsSync(ctrlFile)) {
       try {
         const controls = JSON.parse(fs.readFileSync(ctrlFile, "utf-8"));
-        return controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
+        return controls.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
       } catch (e) {}
     }
-    return { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
+    return { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
   }
 
   private getCallbackPct(symbol: string, pos?: any): number {
@@ -931,7 +931,17 @@ export class DashboardServer {
           : null,
       recentCycles: allMergedCycles.slice(-35).reverse(),
       futuresTelemetry,
-      recoveryTracker: this.cachedRecoveryTracker || this.getRecoveryTracker(),
+      recoveryTracker: (() => {
+        const baseTracker = this.cachedRecoveryTracker || this.getRecoveryTracker() || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
+        const debtTarget = baseTracker.targetUsdt || 100.00;
+        const realRecovered = Math.max(0, parseFloat(totalMergedPnl.toFixed(4)));
+        return {
+          targetUsdt: debtTarget,
+          recoveredUsdt: realRecovered,
+          remainingUsdt: Math.max(0, parseFloat((debtTarget - realRecovered).toFixed(4))),
+          tradesCount: allMergedCycles.length
+        };
+      })(),
     };
   }
 
