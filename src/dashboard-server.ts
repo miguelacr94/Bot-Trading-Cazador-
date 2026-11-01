@@ -934,11 +934,20 @@ export class DashboardServer {
       recoveryTracker: (() => {
         const baseTracker = this.cachedRecoveryTracker || this.getRecoveryTracker() || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
         const debtTarget = baseTracker.targetUsdt || 100.00;
-        const realRecovered = Math.max(0, parseFloat(totalMergedPnl.toFixed(4)));
+        const grossRecovered = Math.max(0, parseFloat(totalMergedPnl.toFixed(4)));
+        const historicalLosses = 15.99;
+        const debtRemaining = Math.max(0, parseFloat((historicalLosses - grossRecovered).toFixed(4)));
+        const amortizedPct = Math.min(100, Math.round((grossRecovered / historicalLosses) * 100));
+        const netRecovered = parseFloat((grossRecovered - historicalLosses).toFixed(4));
         return {
           targetUsdt: debtTarget,
-          recoveredUsdt: realRecovered,
-          remainingUsdt: Math.max(0, parseFloat((debtTarget - realRecovered).toFixed(4))),
+          historicalLossesUsdt: historicalLosses,
+          grossRecoveredUsdt: grossRecovered,
+          netRecoveredUsdt: netRecovered,
+          debtRemainingUsdt: debtRemaining,
+          debtAmortizedPct: amortizedPct,
+          recoveredUsdt: grossRecovered,
+          remainingUsdt: debtRemaining,
           tradesCount: allMergedCycles.length
         };
       })(),

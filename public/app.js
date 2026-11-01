@@ -2427,24 +2427,35 @@
       renderKpis(d);
     renderSessionOrchestrator(d);
 
-    // Actualizar barra de recuperación Centinela Alpha
-    const tracker = d.recoveryTracker || { targetUsdt: 100.00, recoveredUsdt: 6.11, tradesCount: 8 };
-    const target = tracker.targetUsdt || 100.00;
-    const recovered = tracker.recoveredUsdt || 0;
-    const pct = Math.min(100, Math.max(0, (recovered / target) * 100));
-    const remaining = Math.max(0, target - recovered);
+    // Actualizar barra de recuperación Centinela Alpha (Amortización Real)
+    const tracker = d.recoveryTracker || {};
+    const historicalLoss = tracker.historicalLossesUsdt || 15.99;
+    const grossRec = tracker.grossRecoveredUsdt || tracker.recoveredUsdt || 0;
+    const remainingToBreakeven = Math.max(0, historicalLoss - grossRec);
+    const amortizedPct = Math.min(100, Math.max(0, (grossRec / historicalLoss) * 100));
 
     const barEl = $("recovery-progress-bar");
     const statsEl = $("recovery-stats-text");
     const remEl = $("recovery-remaining-text");
 
-    if (barEl) barEl.style.width = pct.toFixed(1) + "%";
-    if (statsEl) statsEl.innerHTML = `+${recovered.toFixed(2)} / ${target.toFixed(2)} USDT (${pct.toFixed(0)}%)`;
-    if (remEl) {
-      if (remaining <= 0) {
-        remEl.innerHTML = `<span style="color:#10b981; font-weight:700;">✅ ¡DEUDA 100% SALDADA!</span>`;
+    if (barEl) {
+      barEl.style.width = amortizedPct.toFixed(1) + "%";
+      barEl.style.background = remainingToBreakeven > 0 
+        ? "linear-gradient(90deg, #ef4444, #f59e0b)" 
+        : "linear-gradient(90deg, #f59e0b, #10b981)";
+    }
+    if (statsEl) {
+      if (remainingToBreakeven > 0) {
+        statsEl.innerHTML = `<span style="color:#f59e0b; font-weight:700;">+${grossRec.toFixed(2)} / ${historicalLoss.toFixed(2)} USDT (${amortizedPct.toFixed(0)}%)</span>`;
       } else {
-        remEl.textContent = `Faltan ${remaining.toFixed(2)} USDT para saldar (${tracker.tradesCount || 0} operaciones cerradas)`;
+        statsEl.innerHTML = `<span style="color:#10b981; font-weight:700;">+${grossRec.toFixed(2)} USDT (100% Saldado)</span>`;
+      }
+    }
+    if (remEl) {
+      if (remainingToBreakeven <= 0) {
+        remEl.innerHTML = `<span style="color:#10b981; font-weight:700;">✅ ¡PÉRDIDAS ANTERIORES 100% SALDADAS! Generando beneficio puro (+${(grossRec - historicalLoss).toFixed(2)} USDT)</span>`;
+      } else {
+        remEl.innerHTML = `Faltan <b style="color:#fca5a5;">${remainingToBreakeven.toFixed(2)} USDT</b> para saldar errores pasados (${tracker.tradesCount || 0} operaciones cobradas)`;
       }
     }
 
