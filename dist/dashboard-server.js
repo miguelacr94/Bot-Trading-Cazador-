@@ -24,7 +24,7 @@ export class DashboardServer {
         return this.prices["USDTCOP"] && this.prices["USDTCOP"] > 1000 ? this.prices["USDTCOP"] : 3103;
     }
     getWalletSplit(totalFreeUsdt = 0) {
-        let manualUsdt = 25.0; // presupuesto inicial manual por defecto si hay saldo
+        let manualUsdt = 0.0; // por defecto 100% disponible para el bot salvo reserva manual explícita
         try {
             const f = path.resolve(process.cwd(), ".wallet-split.json");
             if (fs.existsSync(f)) {

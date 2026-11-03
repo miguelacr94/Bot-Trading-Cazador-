@@ -10,17 +10,33 @@
 
 process.env.BOT_NO_AUTOSTART = "1";
 
+import * as fs from "fs";
+import * as path from "path";
 import { TrailingMasterBot } from "../src/multi-engine-bot.js";
 import { supabaseDb } from "../src/supabase-db.js";
 
+// Snapshot de archivos locales para que los tests jamás alteren el disco de producción
+const PROTECTED_FILES = [".trailing-positions.json", ".strategy-controls.json", ".closed-trades.json"];
+const fileSnapshots = new Map<string, string | null>();
+for (const f of PROTECTED_FILES) {
+  const full = path.resolve(process.cwd(), f);
+  fileSnapshots.set(full, fs.existsSync(full) ? fs.readFileSync(full, "utf-8") : null);
+}
+function restoreProtectedFiles() {
+  for (const [full, content] of fileSnapshots.entries()) {
+    if (content !== null) fs.writeFileSync(full, content, "utf-8");
+  }
+}
+
 // Mock Supabase methods during unit tests so test runs don't mutate production DB
-supabaseDb.saveActivePositions = async () => true;
+(supabaseDb as any).saveActivePositions = async () => true;
 supabaseDb.deleteActivePosition = async () => true;
 supabaseDb.recordClosedTrade = async () => true;
-supabaseDb.saveClosedTrade = async () => true;
+(supabaseDb as any).saveClosedTrade = async () => true;
 supabaseDb.saveActivePosition = async () => true;
 supabaseDb.saveStrategyControls = async () => true;
 supabaseDb.loadActivePositions = async () => new Map();
+supabaseDb.loadStrategyControls = async () => null;
 
 interface TestStats {
   total: number;
@@ -509,18 +525,21 @@ async function runTestSuite() {
   console.log("============================================================\n");
 
   if (stats.failed > 0) {
+    restoreProtectedFiles();
     console.error("❌ FALLOS ENCONTRADOS:");
     for (const f of stats.failures) {
       console.error(`  - ${f}`);
     }
     process.exit(1);
   } else {
+    restoreProtectedFiles();
     console.log("✅ TODOS LOS PROCESOS DELICADOS ESTÁN 100% BLINDADOS Y COMPROBADOS.");
     process.exit(0);
   }
 }
 
 runTestSuite().catch((err) => {
+  restoreProtectedFiles();
   console.error("Error fatal ejecutando la suite de auditoría:", err);
   process.exit(1);
 });

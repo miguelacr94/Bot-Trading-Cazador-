@@ -32,7 +32,7 @@ export class DashboardServer {
   }
 
   public getWalletSplit(totalFreeUsdt = 0): { manualUsdt: number; botUsdt: number; totalFreeUsdt: number; copRate: number; manualCop: number; botCop: number } {
-    let manualUsdt = 25.0; // presupuesto inicial manual por defecto si hay saldo
+    let manualUsdt = 0.0; // por defecto 100% disponible para el bot salvo reserva manual explícita
     try {
       const f = path.resolve(process.cwd(), ".wallet-split.json");
       if (fs.existsSync(f)) {

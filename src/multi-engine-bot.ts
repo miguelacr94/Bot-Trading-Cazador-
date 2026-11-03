@@ -201,6 +201,24 @@ export class TrailingMasterBot {
   }
 
   /**
+   * Devuelve el conjunto de símbolos limpios (monedas únicas) que tienen al menos 1 lote activo.
+   * Permite que varios sub-lotes DCA de una misma moneda no bloqueen los cupos de maxPositions.
+   */
+  public getUniqueActiveSymbols(): Set<string> {
+    const set = new Set<string>();
+    for (const [k, p] of this.activeTrailingPositions.entries()) {
+      const clean = ((p && p.symbol) ? p.symbol : k).split("_")[0];
+      if (clean) set.add(clean);
+    }
+    return set;
+  }
+
+  public hasActivePositionForSymbol(symbol: string): boolean {
+    const cleanTarget = (symbol || "").split("_")[0];
+    return this.getUniqueActiveSymbols().has(cleanTarget);
+  }
+
+  /**
    * Agrega una moneda a la base de datos de monedas aceptadas (Supabase / Controles)
    */
   public async addCoinToWatchlist(rawSymbol: string, category: "core" | "meme" = "core"): Promise<{ success: boolean; message: string }> {
@@ -564,7 +582,7 @@ export class TrailingMasterBot {
     }
   }
   private activeTrailingPositions: Map<string, ActivePosition> = new Map();
-  private walletSplit: { manualUsdt: number; lastUpdated: number } = { manualUsdt: 25.0, lastUpdated: 0 };
+  private walletSplit: { manualUsdt: number; lastUpdated: number } = { manualUsdt: 0.0, lastUpdated: 0 };
 
   private loadWalletSplit() {
     if (this.controls?.strategySettings?.walletSplit?.manualUsdt !== undefined) {
@@ -1355,10 +1373,34 @@ export class TrailingMasterBot {
         const closes = klines.data.map((k: any) => parseFloat(k[4]));
         const rsi = this.calculateRSI(closes, 14);
 
+        // 🛡️ FILTRO ANTI-CUCHILLO CAYENDO EN SMART DCA (15m):
+        // Si la vela actual de 15m está cayendo con fuerza (<= -0.45%) sin mecha de absorción (< 25%),
+        // esperar a que el precio deje de caer para comprar el lote DCA en el verdadero fondo y no anticipado.
+        let isFallingKnife15m = false;
+        try {
+          const k15 = await this.client.klines(cleanSym, "15m", { limit: 2 });
+          if (k15?.data?.length > 0) {
+            const last15 = k15.data[k15.data.length - 1];
+            const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
+            const bodyDrop15 = ((c15 - o15) / o15) * 100;
+            const range15 = h15 - l15;
+            const lowerWick15 = range15 > 0 ? (Math.min(o15, c15) - l15) / range15 : 0;
+            if (bodyDrop15 <= -0.45 && lowerWick15 < 0.25) {
+              isFallingKnife15m = true;
+            }
+          }
+        } catch {}
+        if (isFallingKnife15m) {
+          console.log(`⏳ [SMART DCA: ESPERANDO PISO] ${cleanSym} ya cayó ${dropFromLot1.toFixed(2)}%, pero la vela 15m sigue cayendo sin absorción. Esperando giro real para entrar más barato.`);
+          continue;
+        }
+
+        const dcaAllocWeight = Math.max(0.30, Math.min(0.60, ((this.controls.allocations?.smart_dca || 40) / 100)));
+
         if (lotCount === 1) {
           // --- EVALUACIÓN LOTE #2 (Promediado de Soporte) ---
           if (dropFromLot1 <= -2.5 && rsi <= 45) {
-            const amount = Math.min(15, Math.max(10, Math.floor(usdt * 0.45 * 100) / 100));
+            const amount = Math.min(16, Math.max(10, Math.floor(usdt * dcaAllocWeight * 100) / 100));
             const target08 = (curPrice * 1.008).toFixed(4);
             const score = Math.abs(dropFromLot1) * 1.5 + (50 - rsi);
             candidates.push({
@@ -1469,14 +1511,58 @@ export class TrailingMasterBot {
     }
   }
 
+  private mergePositionsPreservingState(incoming: Map<string, ActivePosition>): Map<string, ActivePosition> {
+    // Leer respaldo local para no perder candados manuales (lockedFloorGainPct, customMinGainPct)
+    const localMap = new Map<string, ActivePosition>();
+    try {
+      const file = path.resolve(process.cwd(), ".trailing-positions.json");
+      if (fs.existsSync(file)) {
+        const raw = JSON.parse(fs.readFileSync(file, "utf-8"));
+        if (Array.isArray(raw)) {
+          for (const entry of raw) {
+            if (Array.isArray(entry) && entry.length === 2) localMap.set(entry[0], entry[1]);
+          }
+        }
+      }
+    } catch {}
+
+    const merged = new Map<string, ActivePosition>();
+    for (const [key, dbItem] of incoming.entries()) {
+      const memItem = this.activeTrailingPositions.get(key) || localMap.get(key);
+      if (memItem) {
+        merged.set(key, {
+          ...dbItem,
+          // Jamás bajar el precio de compra ni el pico máximo alcanzado
+          buyPrice: Math.max(dbItem.buyPrice || 0, memItem.buyPrice || 0),
+          highestPrice: Math.max(dbItem.highestPrice || 0, memItem.highestPrice || 0),
+          activated: dbItem.activated || memItem.activated || false,
+          lockedFloorGainPct: dbItem.lockedFloorGainPct ?? memItem.lockedFloorGainPct,
+          customMinGainPct: dbItem.customMinGainPct ?? memItem.customMinGainPct,
+          customCallbackPct: dbItem.customCallbackPct ?? memItem.customCallbackPct,
+          customTimeframe: dbItem.customTimeframe ?? memItem.customTimeframe,
+          partialProfitTaken: dbItem.partialProfitTaken || memItem.partialProfitTaken || false,
+          partialProfitUsdt: dbItem.partialProfitUsdt ?? memItem.partialProfitUsdt,
+          lastPeakNotifiedGain: memItem.lastPeakNotifiedGain,
+          lastPeakNotifiedTime: memItem.lastPeakNotifiedTime,
+          lastDcaTime: memItem.lastDcaTime,
+          dcaCount: memItem.dcaCount,
+          isManual: memItem.isManual
+        });
+      } else {
+        merged.set(key, dbItem);
+      }
+    }
+    return merged;
+  }
+
   private async loadTrailingPositions() {
     try {
-      // 1. FUENTE PRIMARIA: SUPABASE CLOUD DB
+      // 1. FUENTE PRIMARIA: SUPABASE CLOUD DB (preservando candados y picos en memoria)
       if (supabaseDb.isAvailable()) {
         const dbPos = await supabaseDb.loadActivePositions();
         if (dbPos && dbPos.size > 0) {
-          this.activeTrailingPositions = dbPos;
-          console.log(`☁️ [SUPABASE CLOUD] ${this.activeTrailingPositions.size} posiciones vivas leídas directamente de Supabase DB.`);
+          this.activeTrailingPositions = this.mergePositionsPreservingState(dbPos);
+          console.log(`☁️ [SUPABASE CLOUD] ${this.activeTrailingPositions.size} posiciones vivas sincronizadas desde Supabase DB.`);
           return;
         }
       }
@@ -1631,9 +1717,17 @@ export class TrailingMasterBot {
         }
 
         // 💎 PASO A: VENTA PARCIAL 50/50 AL TOCAR PICO ALTO (>= +2.20%)
+        // Si el lote es pequeño (< $20 USDT) y no se puede partir en 2 por el minNotional ($10) de Binance,
+        // aseguramos automáticamente un piso blindado en +1.50% neto para no devolver la subida.
         if (!pos.customMinGainPct && pos.activated && gainPct >= 2.20 && !pos.partialProfitTaken) {
           try {
-            await this.executePartialSell(pos, curPrice, 0.50);
+            const partialOk = await this.executePartialSell(pos, curPrice, 0.50);
+            if (!partialOk && (!pos.lockedFloorGainPct || pos.lockedFloorGainPct < 1.50)) {
+              pos.lockedFloorGainPct = 1.50;
+              pos.partialProfitTaken = true;
+              await this.saveTrailingPositions();
+              console.log(`🔒 [AUTO-CANDADO EN LOTE COMPACTO] ${symbol} superó +2.20%. Piso asegurado automáticamente en +1.50% neto.`);
+            }
           } catch(e) {}
         }
 
@@ -1642,7 +1736,7 @@ export class TrailingMasterBot {
           const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
           const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
           let callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol, pos);
-          let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.35 : 0.80); // Blindado a +0.80% mínimo para no cerrar con migajas
+          let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.60 : 0.80); // Blindado a +0.60% (grid) / +0.80% (trailing) mínimo para cubrir comisiones con holgura
 
           // 🌆 COSECHA PRE-NOCTURNA (16:00 - 19:30 COT):
           if (this.isPreNightHarvestWindow() && gainPct >= 0.65) {
@@ -1843,7 +1937,7 @@ export class TrailingMasterBot {
       }
 
       console.log(`🎯 [Venta Parcial 50%] Vendiendo ${sellQtyStr} ${asset} en ${pos.symbol} a ~${exitPrice} para asegurar ganancia en la cima...`);
-      const tradeSym = pos.symbol.includes("_lot_") ? pos.symbol.split("_")[0] : pos.symbol;
+      const tradeSym = actualSymbol;
       const realCheckP = await this.verifyRealCostWithBinance(tradeSym, sellQty, exitPrice);
       if (!realCheckP.ok) {
         console.error(`🛑 [CORE SHIELD: COSTO REAL] Venta parcial de ${pos.symbol} BLOQUEADA: ${realCheckP.reason || "Binance la registraría como pérdida (" + realCheckP.estPnl.toFixed(3) + " USDT)"}`);
@@ -1927,7 +2021,7 @@ export class TrailingMasterBot {
 
   async executeTrailingSell(pos: ActivePosition, exitPrice: number, hitHardCap: boolean, isStopLoss: boolean = false, reasonOverride?: string, isManualExit: boolean = false, allowLoss: boolean = false): Promise<boolean> {
     try {
-      const actualSymbol = pos.symbol.includes('_lot_') ? pos.symbol.split('_')[0] : pos.symbol;
+      const actualSymbol = (pos.symbol || "").split("_")[0];
       const asset = actualSymbol.replace("USDT", "");
       let freeBal = await this.getFreeBalance(asset);
 
@@ -2051,7 +2145,8 @@ export class TrailingMasterBot {
           source: reasonOverride || (isStopLoss ? "stop_loss" : "bot_execution")
         };
         supabaseDb.recordClosedTrade(fullTradeItem).catch(() => {});
-        supabaseDb.deleteActivePosition(pos.symbol).catch(() => {});
+        const dbLotKey = pos.lotId || pos.id || pos.symbol;
+        supabaseDb.deleteActivePosition(dbLotKey).catch(() => {});
 
         const ledgerF = path.resolve(process.cwd(), ".closed-trades.json");
         const list: any[] = fs.existsSync(ledgerF) ? JSON.parse(fs.readFileSync(ledgerF, "utf-8")) : [];
@@ -2162,7 +2257,9 @@ export class TrailingMasterBot {
         if (f.commissionAsset === asset) feeInBase += parseFloat(f.commission);
       }
       const qty = grossQty - feeInBase;
-      const buyPrice = spent / grossQty;
+      // Incluir la comisión cobrada en la moneda base dentro del precio unitario de compra
+      // para que jamás subestime el costo real de adquisición
+      const buyPrice = qty > 0 ? (spent / qty) : (spent / grossQty);
 
       // Registrar posición para Trailing Take Profit
       this.activeTrailingPositions.set(symbol, {
@@ -2198,19 +2295,52 @@ export class TrailingMasterBot {
   }
 
   /**
+   * Calcula Bandas de Bollinger (media simple y desviación estándar poblacional)
+   */
+  private calculateBollingerBands(closes: number[], period: number = 20, stdDevMult: number = 2.0): { middle: number; upper: number; lower: number; percentB: number } {
+    const slice = closes.slice(-period);
+    if (slice.length === 0) return { middle: 0, upper: 0, lower: 0, percentB: 0.5 };
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance = slice.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / slice.length;
+    const stdDev = Math.sqrt(variance);
+    const upper = mean + stdDevMult * stdDev;
+    const lower = mean - stdDevMult * stdDev;
+    const cur = slice[slice.length - 1];
+    const bandWidth = upper - lower;
+    const percentB = bandWidth > 0 ? (cur - lower) / bandWidth : 0.5;
+    return { middle: mean, upper, lower, percentB };
+  }
+
+  /**
    * TRAILING BUY - Paso 1: detectar caídas y "armar" la vigilancia del piso.
    * Ya no compra en la primera vela verde: registra el precio y rastrea el piso más bajo.
    */
   async scanForDips(activeSymbols: Set<string>): Promise<void> {
     const tf = this.controls.strategySettings?.trailing_rebound?.timeframe || this.controls.timeframe || "1h";
 
-    // Contar cuántas memecoins tenemos activas (posiciones o vigilancias armadas)
+    // 🛡️ FILTRO MACRO INSTITUCIONAL BTC: Si Bitcoin está en caída libre activa en la vela actual de 15m
+    // (caída <= -0.65% sin mecha de absorción inferior), pausar el armado de compras en altcoins para no atrapar cuchillos cayendo.
+    try {
+      const btcK = await this.client.klines("BTCUSDT", "15m", { limit: 3 });
+      const lastBtc = btcK.data[btcK.data.length - 1];
+      const bOpen = parseFloat(lastBtc[1]), bHigh = parseFloat(lastBtc[2]), bLow = parseFloat(lastBtc[3]), bClose = parseFloat(lastBtc[4]);
+      const btcCandleDropPct = ((bClose - bOpen) / bOpen) * 100;
+      const btcRange = bHigh - bLow;
+      const btcLowerWickRatio = btcRange > 0 ? (Math.min(bOpen, bClose) - bLow) / btcRange : 0;
+      if (btcCandleDropPct <= -0.65 && btcLowerWickRatio < 0.30) {
+        console.log(`🛡️ [FILTRO MACRO BTC] BTC cayendo ${btcCandleDropPct.toFixed(2)}% en 15m sin mecha de absorción. Esperando suelo de BTC antes de armar compras.`);
+        return;
+      }
+    } catch (e) {}
+
+    // Contar cuántas memecoins únicas tenemos activas (posiciones o vigilancias armadas)
+    const uniqueActiveSyms = this.getUniqueActiveSymbols();
     let activeMemeCount = 0;
-    for (const [sym] of this.activeTrailingPositions.entries()) {
+    for (const sym of uniqueActiveSyms) {
       if (this.memeWatchlist.includes(sym)) activeMemeCount++;
     }
     for (const [sym] of this.buyWatches.entries()) {
-      if (this.memeWatchlist.includes(sym)) activeMemeCount++;
+      if (!uniqueActiveSyms.has(sym) && this.memeWatchlist.includes(sym)) activeMemeCount++;
     }
 
     for (const sym of this.watchlist) {
@@ -2220,7 +2350,7 @@ export class TrailingMasterBot {
         continue;
       }
       try {
-        if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
+        if (activeSymbols.has(sym) || uniqueActiveSyms.has(sym) || this.buyWatches.has(sym)) {
           continue; // No acumular en la misma moneda ni duplicar vigilancias
         }
 
@@ -2231,6 +2361,7 @@ export class TrailingMasterBot {
         const highs = data.map((k: any) => parseFloat(k[2]));
         const lows = data.map((k: any) => parseFloat(k[3]));
         const closes = data.map((k: any) => parseFloat(k[4]));
+        const volumes = data.map((k: any) => parseFloat(k[5]));
 
         const curPrice = closes[closes.length - 1];
 
@@ -2251,10 +2382,16 @@ export class TrailingMasterBot {
         }
 
         const rsi = this.calculateRSI(closes, 14);
+        const bb = this.calculateBollingerBands(closes, 20, 2.0);
+
+        // Volumen relativo (RVOL) respecto a las últimas 20 velas cerradas
+        const recentVols = volumes.slice(-21, -1);
+        const avgVol = recentVols.length > 0 ? recentVols.reduce((a: number, b: number) => a + b, 0) / recentVols.length : 1;
+        const curVol = volumes[volumes.length - 1] || volumes[volumes.length - 2] || 0;
+        const rvol = avgVol > 0 ? curVol / avgVol : 1;
 
         // Centinela Nocturno: En ventana nocturna (20:00 - 02:30 COT) exigir sobreventa extrema (RSI <= 26)
         const isNight = this.isNightWindow();
-        const rsiThreshold = isNight ? 26 : 35;
         if (isNight && rsi > 26) {
           // Filtrar compras en la noche para no comprar caídas tempranas en libros delgados
           continue;
@@ -2262,32 +2399,30 @@ export class TrailingMasterBot {
         const maxRecent = Math.max(...highs.slice(-20));
         const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
 
-        // 🧠 ANÁLISIS DE ACCIÓN DEL PRECIO Y COMPORTAMIENTO DE VELAS (PRICE ACTION)
+        // 🧠 ANÁLISIS DE ACCIÓN DEL PRECIO, BANDAS DE BOLLINGER Y VOLUMEN (PRICE ACTION CUANTITATIVO)
         const lastIdx = closes.length - 1;
         const candleRange = highs[lastIdx] - lows[lastIdx];
         const lowerWick = Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx];
         const lowerWickRatio = candleRange > 0 ? (lowerWick / candleRange) : 0;
         const hasPinbarRejection = lowerWickRatio >= 0.35; // Mecha inferior >= 35% (Rechazo y absorción en suelo)
+        const isNearLowerBollinger = bb.percentB <= 0.15; // En el 15% inferior o por debajo de la Banda Inferior de Bollinger
 
-        // Condiciones inteligentes de suelo:
-        // A) Caída estándar con sobreventa RSI
-        // B) Martillo / Mecha de rechazo en soporte (adelanta rebotes institucionales)
-        // C) Sobreventa profunda
-        const isStandardDip = (dropPct >= 1.5 && rsi <= 58) || (rsi <= 48 && dropPct >= 0.8) || (rsi <= 40);
-        const isWickRebound = hasPinbarRejection && dropPct >= 1.0 && rsi <= 55;
+        // Condiciones cuantitativas estrictas de suelo (Prohibido armar con RSI > 46 para evitar comprar techos):
+        // A) Suelo Bollinger + Sobreventa real (precio en banda inferior + RSI <= 45 + caída >= 1.5%)
+        // B) Caída profunda con RSI en sobreventa (drop >= 2.0% y RSI <= 42, o RSI <= 36)
+        // C) Absorción institucional (Mecha >= 35% + caída >= 1.2% + RSI <= 46 + volumen o soporte Bollinger)
+        const isBollingerOversold = isNearLowerBollinger && rsi <= 45 && dropPct >= 1.4;
+        const isStandardDip = (dropPct >= 2.0 && rsi <= 42) || isBollingerOversold || (rsi <= 36);
+        const isWickRebound = hasPinbarRejection && dropPct >= 1.2 && rsi <= 46 && (rvol >= 0.85 || isNearLowerBollinger);
         const isDip = isMeme
-          ? ((dropPct >= 2.0 && rsi <= 55) || isWickRebound || (rsi <= 40))
+          ? ((dropPct >= 2.4 && rsi <= 43) || (isBollingerOversold && dropPct >= 2.0) || (isWickRebound && dropPct >= 1.6) || (rsi <= 35))
           : (isStandardDip || isWickRebound);
 
         if (isDip) {
           this.buyWatches.set(sym, { symbol: sym, armedPrice: curPrice, lowestPrice: curPrice, armedTime: Date.now(), rsi, dropPct });
           this.saveBuyWatches();
           if (isMeme) activeMemeCount++;
-          const trigger = curPrice * (1 + TRAILING_BUY_BOUNCE_PCT / 100);
-          console.log(`🎯 Trailing Buy ARMADO en ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Caída ${dropPct.toFixed(2)}%)`);
-          // SILENCIADO POR SOLICITUD: No enviar spam en Telegram al armar vigilancia.
-          // Solo se notificará cuando la compra se ejecute de verdad en executeSmartBuy.
-          console.log(`🎯 [TRAILING BUY ARMADO] ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Caída -${dropPct.toFixed(2)}%)`);
+          console.log(`🎯 [TRAILING BUY ARMADO] ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | %B ${(bb.percentB * 100).toFixed(0)}% | RVOL ${rvol.toFixed(2)}x | Caída -${dropPct.toFixed(2)}%)`);
         }
       } catch (e: any) {}
     }
@@ -2300,7 +2435,7 @@ export class TrailingMasterBot {
   async checkBuyWatches(usdt: number): Promise<boolean> {
     for (const [sym, w] of this.buyWatches.entries()) {
       try {
-        if (this.activeTrailingPositions.has(sym)) { this.buyWatches.delete(sym); this.saveBuyWatches(); continue; }
+        if (this.hasActivePositionForSymbol(sym)) { this.buyWatches.delete(sym); this.saveBuyWatches(); continue; }
 
         if (Date.now() - w.armedTime > TRAILING_BUY_MAX_AGE_MS) {
           console.log(`⌛ Trailing Buy en ${sym} expiró sin rebote. Se desarma.`);
@@ -2325,16 +2460,49 @@ export class TrailingMasterBot {
         const reqBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
         // CANDADO ESTRICTO DE RESERVA: Solo comprar si el saldo GASTABLE supera el mínimo ($10 USDT)
         if (bounce >= reqBounce && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
-          let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt, sessionPlan.lotFractionPct);
+          // 🧠 CONFIRMACIÓN DE GIRO EN 5M SINCRONIZADA CON LA SESIÓN HORARIA (ANTI-ENTRADA ANTICIPADA):
+          // Evita comprar en el primer micro-rebote ("Dead Cat Bounce") si la vela de 5m sigue siendo roja y cayendo.
+          let turnaroundConfirmed = true;
+          try {
+            const k5 = await this.client.klines(sym, "5m", { limit: 16 });
+            if (k5?.data?.length >= 2) {
+              const last5 = k5.data[k5.data.length - 1];
+              const prev5 = k5.data[k5.data.length - 2];
+              const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]);
+              const prevLow5 = parseFloat(prev5[3]);
+              const range5 = h5 - l5;
+              const lowerWick5 = range5 > 0 ? (Math.min(o5, c5) - l5) / range5 : 0;
+              const isGreen5m = c5 >= o5;
+              const isHigherLow5m = l5 >= prevLow5 * 0.9995;
+              const closes5m = k5.data.map((row: any) => parseFloat(row[4]));
+              const rsi5m = this.calculateRSI(closes5m, 14);
+
+              const isDefensiveSession = sessionPlan.sessionKey === "COSECHA_PRENOCTURNA" || sessionPlan.sessionKey === "NOCTURNO_DRENAJE";
+              if (isDefensiveSession) {
+                // En tarde/noche (deslizamiento post-NY o drenaje nocturno): exigir vela 5m verde + absorción o suelo creciente
+                turnaroundConfirmed = (isGreen5m && (lowerWick5 >= 0.25 || isHigherLow5m)) && rsi5m <= 50;
+              } else {
+                // En Londres / Wall Street: entrada ágil si la vela 5m ya es verde, o tiene mecha de absorción >= 30%, o rebote fuerte
+                turnaroundConfirmed = isGreen5m || lowerWick5 >= 0.30 || bounce >= reqBounce * 1.6;
+              }
+
+              if (!turnaroundConfirmed) {
+                console.log(`⏳ [FILTRO GIRO 5M: ${sym}] Rebote +${bounce.toFixed(2)}% detectado, pero vela 5m sigue en presión vendedora (${isGreen5m ? "Verde" : "Roja"}, mecha ${(lowerWick5 * 100).toFixed(0)}%, Sesión ${sessionPlan.sessionKey}). Esperando confirmación de suelo.`);
+                continue;
+              }
+            }
+          } catch {}
+
+          const strat = w.strategy || "trailing_rebound";
+          let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt, sessionPlan.lotFractionPct, strat);
           if (amountToUse < this.minUsdtToTrade && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
             amountToUse = this.minUsdtToTrade;
           }
           const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
-          const strat = w.strategy || "trailing_rebound";
           const sourceDesc = strat === "cazador_weekend"
             ? `Cazador Weekend (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato)`
             : `Trailing Buy (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato que al armar)`;
-          console.log(`✅ Rebote confirmado en ${sym}: piso ${w.lowestPrice} → ${cur} (+${bounce.toFixed(2)}%). Comprando ${amountToUse} USDT...`);
+          console.log(`✅ Rebote y giro 5m confirmado en ${sym}: piso ${w.lowestPrice} → ${cur} (+${bounce.toFixed(2)}%). Comprando ${amountToUse} USDT...`);
           const ok = await this.executeSmartBuy(sym, amountToUse, sourceDesc, strat);
           if (ok) {
             this.buyWatches.delete(sym);
@@ -4230,13 +4398,14 @@ export class TrailingMasterBot {
 
     for (const sym of this.watchlist) {
       try {
-        if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
+        if (activeSymbols.has(sym) || this.hasActivePositionForSymbol(sym) || this.buyWatches.has(sym)) {
           continue;
         }
 
         const gridTf = this.controls.strategySettings?.micro_grid?.timeframe || "15m";
         const klinesRes = await this.client.klines(sym, gridTf, { limit: 24 });
         const data = klinesRes.data;
+        const opens = data.map((k: any) => parseFloat(k[1]));
         const closes = data.map((k: any) => parseFloat(k[4]));
         const highs = data.map((k: any) => parseFloat(k[2]));
         const lows = data.map((k: any) => parseFloat(k[3]));
@@ -4250,11 +4419,15 @@ export class TrailingMasterBot {
         if (channelRangePct >= 0.8 && channelRangePct <= 2.5) {
           const positionInChannel = (curPrice - min6h) / (max6h - min6h);
           const rsi = this.calculateRSI(closes, 14);
+          const lastIdx = closes.length - 1;
+          const isGreenOrWick = closes[lastIdx] >= opens[lastIdx] || ((Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / Math.max(1e-9, highs[lastIdx] - lows[lastIdx])) >= 0.30;
 
-          // Si el precio está en el 35% inferior del canal y RSI neutro-bajo (36-52): ¡Compra Micro-Grid!
-          if (positionInChannel <= 0.35 && rsi >= 36 && rsi <= 52) {
-            let amountToUse = Math.min(usdt, 50);
-            if (usdt >= 80) amountToUse = Math.min(usdt * 0.4, 40);
+          // Si el precio está en el 30% inferior del canal, RSI en soporte (34-46) y la vela muestra soporte (verde o mecha): ¡Compra Micro-Grid con lote fraccionado!
+          if (positionInChannel <= 0.30 && rsi >= 34 && rsi <= 46 && isGreenOrWick) {
+            const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
+            let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt || usdt, sessionPlan.lotFractionPct || 0.40, "micro_grid");
+            amountToUse = Math.min(amountToUse, 20); // Tope conservador por rejilla para no agotar liquidez en 1 sola moneda
+            if (amountToUse < this.minUsdtToTrade) continue;
 
             console.log(`🌐 [MICRO-GRID] Entrada en canal lateral en ${sym}: precio ${curPrice} cerca de base ${min6h} (Canal ${channelRangePct.toFixed(2)}% | RSI ${rsi.toFixed(1)})`);
             const ok = await this.executeSmartBuy(sym, amountToUse, `Micro-Grid Canal Lateral (${channelRangePct.toFixed(2)}%)`, "micro_grid");
@@ -4289,24 +4462,32 @@ export class TrailingMasterBot {
 
     for (const sym of this.watchlist) {
       try {
-        if (activeSymbols.has(sym) || this.activeTrailingPositions.has(sym) || this.buyWatches.has(sym)) {
+        if (activeSymbols.has(sym) || this.hasActivePositionForSymbol(sym) || this.buyWatches.has(sym)) {
           continue;
         }
 
         const weekendTf = this.controls.strategySettings?.cazador_weekend?.timeframe || "1h";
         const klinesRes = await this.client.klines(sym, weekendTf, { limit: 48 });
         const data = klinesRes.data;
+        const opens = data.map((k: any) => parseFloat(k[1]));
         const closes = data.map((k: any) => parseFloat(k[4]));
         const highs = data.map((k: any) => parseFloat(k[2]));
+        const lows = data.map((k: any) => parseFloat(k[3]));
 
         const rsi = this.calculateRSI(closes, 14);
+        const bb = this.calculateBollingerBands(closes, 20, 2.0);
         const curPrice = closes[closes.length - 1];
         const maxRecent = Math.max(...highs.slice(-36));
         const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
+        const lastIdx = closes.length - 1;
+        const candleRange = Math.max(1e-9, highs[lastIdx] - lows[lastIdx]);
+        const lowerWickRatio = (Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / candleRange;
 
         // Criterio de caída o sobreventa en fin de semana
-        if ((dropPct >= 1.5 && rsi <= 55) || (rsi <= 45 && dropPct >= 0.8) || (rsi <= 38)) {
-          const score = (dropPct * 1.5) + Math.max(0, (48 - rsi) * 2.0);
+        if ((dropPct >= 1.5 && rsi <= 55) || (rsi <= 45 && dropPct >= 0.8) || (rsi <= 38) || (bb.percentB <= 0.10 && rsi <= 48)) {
+          const bbBonus = bb.percentB <= 0.15 ? 4.0 : 0;
+          const wickBonus = lowerWickRatio >= 0.30 ? 3.0 : 0;
+          const score = (dropPct * 1.5) + Math.max(0, (48 - rsi) * 2.0) + bbBonus + wickBonus;
           candidates.push({ symbol: sym, curPrice, dropPct, rsi, score });
         }
       } catch (e: any) {}
@@ -4479,10 +4660,21 @@ export class TrailingMasterBot {
     };
   }
 
-  public calculateSessionLotSize(symbol: string, spendableUsdt: number, lotFractionPct: number): number {
+  public calculateSessionLotSize(
+    symbol: string,
+    spendableUsdt: number,
+    lotFractionPct: number,
+    strategy: "trailing_rebound" | "smart_dca" | "micro_grid" | "cazador_weekend" = "trailing_rebound"
+  ): number {
     if (spendableUsdt < this.minUsdtToTrade) return 0;
 
-    let lot = Math.floor(spendableUsdt * lotFractionPct * 100) / 100;
+    // Graduar el tamaño del lote combinando la fracción de la sesión horaria (COT)
+    // con el porcentaje asignado a la estrategia activa en controls.allocations
+    const stratAllocPct = (this.controls?.allocations?.[strategy] ?? 50) / 100;
+    // Escala suave entre 0.75x (cuando la estrategia tiene 20% de cuota) y 1.15x (cuando tiene >= 70% de cuota)
+    const allocMultiplier = Math.max(0.75, Math.min(1.15, 0.65 + stratAllocPct * 0.70));
+
+    let lot = Math.floor(spendableUsdt * lotFractionPct * allocMultiplier * 100) / 100;
     if (lot < this.minUsdtToTrade && spendableUsdt >= this.minUsdtToTrade) {
       lot = this.minUsdtToTrade;
     }
@@ -4578,7 +4770,7 @@ export class TrailingMasterBot {
 
     const primeCandidates = ["SOLUSDT", "BTCUSDT", "ETHUSDT", "BNBUSDT"];
     for (const sym of primeCandidates) {
-      if (this.activeTrailingPositions.has(sym)) continue;
+      if (this.hasActivePositionForSymbol(sym)) continue;
       try {
         const klines = await this.client.klines(sym, "1h", { limit: 25 });
         const closes = klines.data.map((k: any) => parseFloat(k[4]));
@@ -4813,14 +5005,16 @@ export class TrailingMasterBot {
       }
       this.lastSessionKey = sessionPlan.sessionKey;
 
-      console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva: ${sessionPlan.reservedUsdt.toFixed(2)}) | Trailing: ${this.activeTrailingPositions.size} | Cazando piso: ${this.buyWatches.size}`);
+      const uniqueActiveCount = this.getUniqueActiveSymbols().size;
+      const maxUniqueCoins = this.controls?.maxPositions || 7;
+      console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva: ${sessionPlan.reservedUsdt.toFixed(2)}) | Monedas: ${uniqueActiveCount}/${maxUniqueCoins} (${this.activeTrailingPositions.size} lotes) | Cazando piso: ${this.buyWatches.size}`);
 
       // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
       await this.checkLiquidityAndFuturesViability(usdt);
 
       // 2. Evaluar oportunidades si hay saldo libre gastable y no hay oportunidad pendiente
       if (sessionPlan.spendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
-        // A) Primero evaluar Smart DCA en posiciones activas que hayan caído
+        // A) Primero evaluar Smart DCA en posiciones activas que hayan caído y ya muestren frenado
         const dcaTriggered = await this.checkSmartDcaOpportunities(sessionPlan.spendableUsdt);
 
         // B) Centinela Alpha (Estrategia Autónoma de Recuperación con 20% del presupuesto)
@@ -4829,20 +5023,20 @@ export class TrailingMasterBot {
           alphaTriggered = await this.evaluateCentinelaAlpha(sessionPlan.spendableUsdt);
         }
 
-        // C) Si estamos en Fin de Semana y Cazador Weekend está activo:
+        // C) Si estamos en Fin de Semana y Cazador Weekend está activo (contando monedas únicas):
         let weekendTriggered = false;
-        if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && this.activeTrailingPositions.size < (this.controls?.maxPositions || 7)) {
+        if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && uniqueActiveCount < maxUniqueCoins) {
           weekendTriggered = await this.evaluateCazadorWeekend(sessionPlan.spendableUsdt, activeSymbols);
         }
 
-        // D) Si Micro-Grid está activo (en días quietos): operar canales laterales
+        // D) Si Micro-Grid está activo (en días quietos): operar canales laterales en monedas libres
         let gridTriggered = false;
-        if (!dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && this.activeTrailingPositions.size < (this.controls?.maxPositions || 7)) {
+        if (!dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && uniqueActiveCount < maxUniqueCoins) {
           gridTriggered = await this.evaluateMicroGrid(sessionPlan.spendableUsdt, activeSymbols);
         }
 
-        // E) Si no hay DCA, Weekend ni Grid y Trailing Rebound está activo: vigilar caídas y suelos
-        if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && this.activeTrailingPositions.size < (this.controls?.maxPositions || 7)) {
+        // E) Si Trailing Rebound está activo: vigilar caídas y suelos en monedas libres (incluso en paralelo si Micro-Grid no compró en este ciclo)
+        if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins) {
           await this.scanForDips(activeSymbols);
           if (this.buyWatches.size > 0) {
             await this.checkBuyWatches(sessionPlan.spendableUsdt);
@@ -5035,10 +5229,10 @@ export class TrailingMasterBot {
         this.controls.recoveryTracker.tradesCount = dbTrades.length;
       }
 
-      // 2. Consumir Posiciones Activas desde la DB
+      // 2. Consumir Posiciones Activas desde la DB (preservando candados y picos en memoria)
       const dbPos = await supabaseDb.loadActivePositions();
       if (dbPos && dbPos.size > 0) {
-        this.activeTrailingPositions = dbPos;
+        this.activeTrailingPositions = this.mergePositionsPreservingState(dbPos);
         console.log(`☁️ [SUPABASE DB] ${this.activeTrailingPositions.size} posiciones activas cargadas desde la nube.`);
         for (const [sym, p] of this.activeTrailingPositions.entries()) {
           console.log(`   • ${sym}: ${p.qty} unidades compradas a ${p.buyPrice} (Invertido: ${p.investedUsdt.toFixed(2)} USDT)`);
