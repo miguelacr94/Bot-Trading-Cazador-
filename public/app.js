@@ -865,7 +865,7 @@
       if (sliderSl && lblSl) {
         sliderSl.addEventListener("input", () => {
           lblSl.textContent = `-${parseFloat(sliderSl.value).toFixed(1)}%`;
-          if (badgeSl) badgeSl.textContent = `🛑 SL -${parseFloat(sliderSl.value).toFixed(1)}%`;
+          if (badgeSl) badgeSl.textContent = `🛡️ Rescate DCA -${parseFloat(sliderSl.value).toFixed(1)}%`;
         });
 
         sliderSl.addEventListener("change", async () => {
@@ -877,7 +877,7 @@
         toggleSl.addEventListener("change", async () => {
           if (badgeSl) {
             badgeSl.style.opacity = toggleSl.checked ? "1" : "0.4";
-            badgeSl.textContent = toggleSl.checked ? `🛑 SL -${parseFloat(sliderSl.value).toFixed(1)}%` : "🛑 SL OFF";
+            badgeSl.textContent = toggleSl.checked ? `🛡️ Rescate DCA -${parseFloat(sliderSl.value).toFixed(1)}%` : "🛡️ 0% Venta en Rojo";
           }
           await updateModuleSettings(strat, { stopLossEnabled: toggleSl.checked });
         });
@@ -1002,13 +1002,13 @@
       if (s.stopLossPct !== undefined && sliderSl && lblSl) {
         sliderSl.value = s.stopLossPct;
         lblSl.textContent = `-${parseFloat(s.stopLossPct).toFixed(1)}%`;
-        if (badgeSl) badgeSl.textContent = `🛑 SL -${parseFloat(s.stopLossPct).toFixed(1)}%`;
+        if (badgeSl) badgeSl.textContent = `🛡️ Rescate DCA -${parseFloat(s.stopLossPct).toFixed(1)}%`;
       }
       if (s.stopLossEnabled !== undefined && toggleSl) {
         toggleSl.checked = s.stopLossEnabled;
         if (badgeSl) {
           badgeSl.style.opacity = s.stopLossEnabled ? "1" : "0.4";
-          if (!s.stopLossEnabled) badgeSl.textContent = "🛑 SL OFF";
+          if (!s.stopLossEnabled) badgeSl.textContent = "🛡️ 0% Venta en Rojo";
         }
       }
 
@@ -1138,17 +1138,10 @@
   function updateRiskBadge(enabled, pct) {
     const badgeStatus = document.getElementById("risk-status-badge");
     if (!badgeStatus) return;
-    if (enabled) {
-      badgeStatus.className = "risk-badge-active";
-      badgeStatus.textContent = `🟢 Stop-Loss Activo (-${parseFloat(pct).toFixed(1)}%)`;
-      badgeStatus.style.background = "rgba(16, 185, 129, 0.15)";
-      badgeStatus.style.color = "#34D399";
-    } else {
-      badgeStatus.className = "risk-badge-active";
-      badgeStatus.textContent = "🔴 Stop-Loss Desactivado";
-      badgeStatus.style.background = "rgba(244, 63, 94, 0.15)";
-      badgeStatus.style.color = "#F87171";
-    }
+    badgeStatus.className = "risk-badge-active";
+    badgeStatus.textContent = `🛡️ Escudo Cero Pérdidas Activo (Umbral DCA -${parseFloat(pct).toFixed(1)}%)`;
+    badgeStatus.style.background = "rgba(16, 185, 129, 0.15)";
+    badgeStatus.style.color = "#34D399";
   }
 
   async function saveRiskSettings(slOn, slPct, tf) {

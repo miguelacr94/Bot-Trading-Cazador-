@@ -2955,34 +2955,31 @@ export class TrailingMasterBot {
       if (cmd === "/estrategias" || cmd === "estrategias") {
         const c = this.controls.strategies;
         const mins = Math.round(this.controls.approvalTimeoutSec / 60);
-        let msg = `⚙️ <b>ORQUESTADOR MULTI-ESTRATEGIA SPOT</b> 🕹️\n\n`;
-        msg += `• <b>1. Cazador Trailing:</b> ${c.trailing_rebound ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
-        msg += `  <i>Trailing Buy en piso + Trailing Take Profit en cima (+0.8% a +3.5%).</i>\n`;
+        const tfVal = (this.controls.timeframe || "1h").toUpperCase();
+        let msg = `⚙️ <b>ARQUITECTURA MULTI-ESTRATEGIA CUANTITATIVA (SPOT)</b> 🏛️\n`;
+        msg += `🛡️ <i>Regla Suprema: 0% Ventas en Negativo (Doble Llave Binance)</i>\n`;
+        msg += `📐 <i>Capital: Pirámide Invertida (1x Explorador : 1.5x Soporte : 2.2x Capitulación)</i>\n\n`;
+
+        msg += `• <b>1. 🏹 Cazador Trailing (Ondas & Rebote):</b> ${c.trailing_rebound ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
+        msg += `  <i>Detecta sobreventa (RSI + Bandas de Bollinger + RVOL), espera confirmación de giro en vela de 5m (verde o mecha ≥30%) y persigue el pico con Trailing Take Profit (+0.8% a +3.5%).</i>\n`;
         msg += `  👉 /toggle_trailing\n\n`;
 
-        msg += `• <b>2. Smart DCA (Seguridad):</b> ${c.smart_dca ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
-        msg += `  <i>Promedia caídas en soporte (≥ 2.5%) para salir antes con ganancia.</i>\n`;
+        msg += `• <b>2. 🛡️ Smart DCA (Pirámide Invertida de Rescate):</b> ${c.smart_dca ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
+        msg += `  <i>Si una moneda cae ≥ -2.5% (Lote 2, 1.35x fuerza) o ≥ -5.5% (Lote 3, 1.75x fuerza), espera a que la vela de 15m frene la caída y compra un lote independiente barato que cobra ganancia por su cuenta sin tocar el Lote 1.</i>\n`;
         msg += `  👉 /toggle_dca\n\n`;
 
-        msg += `• <b>3. Micro-Grid (Rango):</b> ${c.micro_grid ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
-        msg += `  <i>Malla de compras y ventas rápidas en mercados laterales planos.</i>\n`;
+        msg += `• <b>3. 🌐 Micro-Grid (Canales Laterales):</b> ${c.micro_grid ? "🟢 <b>ACTIVO</b>" : "🔴 <i>PAUSADO</i>"}\n`;
+        msg += `  <i>Se auto-activa en días planos (BTC rango &lt; 2.2%). Compra en el 30% inferior del canal lateral con vela de soporte y cobra micro-rebotes rápidos (+0.45% a +0.60%).</i>\n`;
         msg += `  👉 /toggle_grid\n\n`;
 
         const isW = this.isWeekendWindow();
         const weekendBadge = isW && c.cazador_weekend ? "🟢 <b>ACTIVO (En Ventana)</b>" : (!isW ? "⚪ <i>EN ESPERA (Se reactiva Viernes 17:00 COT)</i>" : "🔴 <i>PAUSADO</i>");
-        msg += `• <b>4. 🏖️ Cazador Weekend:</b> ${weekendBadge}\n`;
-        msg += `  <i>Aprovecha caídas de fin de semana (Vie-Dom) y exprime venta en el pico más alto (Dom noche/Lunes).</i>\n`;
+        msg += `• <b>4. 🏖️ Cazador Weekend (Efecto CME):</b> ${weekendBadge}\n`;
+        msg += `  <i>Opera de Viernes 17:00 a Domingo 18:00 COT cazando descuentos de fin de semana (Bollinger + Mecha) para vender en la apertura institucional de futuros CME.</i>\n`;
         msg += `  👉 /toggle_weekend | /weekend\n\n`;
 
-        const slOn = this.controls.stopLossEnabled !== false;
-        const slVal = (this.controls.stopLossPct ?? 4.0).toFixed(1);
-        const tfVal = (this.controls.timeframe || "1h").toUpperCase();
-        msg += `• <b>5. 🛡️ Stop-Loss de Protección:</b> ${slOn ? `🟢 <b>ACTIVO (-${slVal}%)</b>` : "🔴 <i>DESACTIVADO</i>"}\n`;
-        msg += `  <i>Corta caídas anormales para proteger liquidez y liberar USDT.</i>\n`;
-        msg += `  👉 /stoploss | /toggle_stoploss\n\n`;
-
-        msg += `• <b>6. ⏱️ Radar de Ondas (Timeframe):</b> <b>${tfVal}</b> ${tfVal === "1H" ? "(Base Predeterminada)" : ""}\n`;
-        msg += `  <i>Brújula de análisis multitemporal adaptativo.</i>\n`;
+        msg += `• <b>5. ⏱️ Brújula Multitemporal:</b> <b>${tfVal}</b> ${tfVal === "1H" ? "(Base Institucional)" : ""}\n`;
+        msg += `  <i>Sincronizada con el horario de bolsas (Londres 03:00, NY 08:30, Cosecha 17:00, Noche 20:00 COT).</i>\n`;
         msg += `  👉 /timeframe\n\n`;
 
         msg += `• 🤖 <b>Modo Centinela:</b> ${this.controls.autoPilot ? "🟢 Autónomo (Auto-ejecuta a los " + mins + " min)" : "🟡 Manual Estricto"}\n`;
@@ -4110,24 +4107,23 @@ export class TrailingMasterBot {
         trSl = 3.5;
         trReason = `Alta velocidad detectada (BTC ${btcRange.toFixed(1)}%, Memes ${memeAvgRange.toFixed(1)}%). Sesión ${session}.`;
         trCriterios = [
-          `Rango Bitcoin: ${btcRange.toFixed(2)}% (Fuerza direccional)`,
+          `Rango Bitcoin: ${btcRange.toFixed(2)}% | Escudo Macro BTC 15m activo`,
           `Rango Memecoins: ${memeAvgRange.toFixed(2)}% (Líder ${hottestMeme.symbol} con ${hottestMeme.range.toFixed(1)}%)`,
-          `Sesión: ${session}`,
-          "Flujo de órdenes dinámico con ciclos de rebote veloces"
+          `Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m`,
+          `Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)`
         ];
-        trWhy = `Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m permite capturar rebotes rápidos (+1.2% a +2.0%) varias veces al día sin dejar capital atrapado.`;
+        trWhy = `Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m junto con el filtro de giro de vela de 5m permite capturar el suelo exacto y cobrar rebotes rápidos (+1.2% a +2.5%) sin entrar anticipado ni vender jamás en pérdida.`;
       } else if (btcRange >= 2.0) {
         trTf = "1h";
         trSl = 4.0;
         trReason = `Volatilidad equilibrada (BTC ${btcRange.toFixed(1)}%, Clásicas ${coreAvgRange.toFixed(1)}%). Sesión ${session}.`;
         trCriterios = [
-          `Rango Bitcoin: ${btcRange.toFixed(2)}% (Oscilación limpia)`,
-          `Promedio Clásicas: ${coreAvgRange.toFixed(2)}%`,
+          `Rango Bitcoin: ${btcRange.toFixed(2)}% | Promedio Clásicas: ${coreAvgRange.toFixed(2)}%`,
           `Canasta Memes: ${memeAvgRange.toFixed(2)}% (Líder ${hottestMeme.symbol})`,
-          `Sesión: ${session}`,
-          "Estructura de ondas de 1H con soporte y resistencia claros"
+          `Confirmación en Piso: Rebote horario + Vela 5m verde o mecha ≥30%`,
+          `Pirámide Invertida Nivel 1: Lote Explorador prudente ($18-$25 USDT)`
         ];
-        trWhy = "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario y posiciona al bot para capturar movimientos enteros de +1.5% a +3.0%. El stop-loss se calibra en -4.0% para dar espacio al activo sin salidas falsas.";
+        trWhy = "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario. El bot espera que el precio toque la banda inferior de Bollinger, rebote y confirme absorción en 5m antes de comprar. En Spot rige la regla de Cero Ventas en Pérdida: si la moneda retrocede, Smart DCA inyecta el Nivel 2 en soporte.";
       } else {
         trTf = "1h";
         trSl = 4.0;
@@ -4135,10 +4131,10 @@ export class TrailingMasterBot {
         trCriterios = [
           `Rango Macro Bitcoin: ${btcRange.toFixed(2)}% (Calma y absorción institucional)`,
           `Rango Canasta Memecoins: ${memeAvgRange.toFixed(2)}% (Líder: ${hottestMeme.symbol} ${hottestMeme.range.toFixed(1)}%)`,
-          `Sesión: ${session}`,
-          "Estrategia Híbrida: 1H para filtrar ruido en clásicas y Trailing Buy ágil en Memecoins"
+          `Estrategia Híbrida: 1H + Bandas de Bollinger + Vela 5m de absorción`,
+          `Blindaje de Doble Llave: 0% ventas en negativo`
         ];
-        trWhy = `En días donde Bitcoin se mueve en canales planos (< 2.0%), la liquidez institucional descansa en las monedas grandes pero la especulación se concentra en memecoins (${hottestMeme.symbol}). Mantener 1H en clásicas protege el capital contra trampas, mientras el escáner de velas aprovecha los rebotes en la canasta meme.`;
+        trWhy = `En días donde Bitcoin se mueve en canales planos (< 2.0%), mantener 1H evita compras anticipadas en falsas rupturas, exigiendo confirmación de mecha o giro verde en 5m antes de disparar el Lote Explorador.`;
       }
 
       const isTrCurrent = currentSettings.trailing_rebound?.timeframe === trTf;
@@ -4158,20 +4154,21 @@ export class TrailingMasterBot {
         status: isTrRejected ? "rejected" : (isTrCurrent ? "applied" : "pending")
       };
 
-      // 2. Sugerencia Smart DCA (Seguridad y Rescate)
+      // 2. Sugerencia Smart DCA (Seguridad y Rescate - Pirámide Invertida)
       const isDcaCurrent = currentSettings.smart_dca?.timeframe === "4h";
       const isDcaRejected = !!(this.controls.rejectedSuggestions.smart_dca && this.controls.rejectedSuggestions.smart_dca > now);
 
       this.controls.suggestions!.smart_dca = {
         timeframe: "4h",
         stopLossPct: 6.0,
-        reason: "Soportes mayores de 4H. Tolerancia de promediado segura.",
+        reason: "Pirámide Invertida (Nivel 2: 1.35x | Nivel 3: 1.75x) + Freno en vela 15m.",
         criterios: [
-          "Soportes estructurales en temporalidad de 4 Horas",
-          "Umbral de caída acumulada ≥ -2.5% desde la compra",
-          "Cooldown de 2 horas entre compras consecutivas"
+          "Nivel 2 (Soporte ≥ -2.5%, RSI ≤ 45): Invierte 1.35x fuerza (~$22-$36 USDT)",
+          "Nivel 3 (Capitulación ≥ -5.5%, RSI ≤ 38): Invierte 1.75x fuerza (~$28-$48 USDT)",
+          "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
+          "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
         ],
-        porQue: "Smart DCA es tu cinturón de seguridad: su objetivo no es salir rápido, sino comprar caídas profundas en zonas donde las ballenas defienden el precio. Se sugiere 4H porque los rebotes en soportes de 4 horas tienen alta fiabilidad, y se fija Stop-Loss en -6.0% para permitir que el promediado baje tu precio de entrada.",
+        porQue: "Como el bot jamás vende en negativo, Smart DCA aplica la Pirámide Invertida Institucional: en lugar de gastar mucho arriba en el Lote 1, guarda la mayor potencia de fuego para los pisos profundos (Lote 2 y Lote 3) una vez que la vela de 15m confirma que la caída ya frenó.",
         session,
         btcRange24h: btcRange,
         updatedAt: now,
@@ -4188,13 +4185,13 @@ export class TrailingMasterBot {
         this.controls.suggestions!.micro_grid = {
           timeframe: "15m",
           stopLossPct: 2.0,
-          reason: `Día quieto confirmado en Bitcoin (${btcRange.toFixed(1)}%). Malla activa.`,
+          reason: `Día quieto confirmado en Bitcoin (${btcRange.toFixed(1)}%). Malla lateral activa.`,
           criterios: [
-            `Compresión de volatilidad extrema en Bitcoin: ${btcRange.toFixed(2)}% (< 2.2%)`,
-            "Mercado sin dirección de tendencia (lateral plano)",
-            "Micro-oscilaciones constantes en canales de ±0.5%"
+            `Compresión de volatilidad en Bitcoin: ${btcRange.toFixed(2)}% (< 2.2%)`,
+            "Compra en el 30% inferior del canal de 6H (rango 0.8% a 2.5%)",
+            "Exige vela de soporte (verde o mecha ≥30%) y RSI entre 34 y 46"
           ],
-          porQue: "En días planos donde no hay tendencias grandes, la única forma de generar dólares es con una rejilla de micro-rebotes (+0.45% a +0.60%) en 15m. El Stop-Loss estricto de -2.0% es obligatorio: si el precio rompe el canal hacia abajo, la estrategia debe cortar de inmediato para no quedar atrapada en una caída direccional.",
+          porQue: "En días planos donde no hay tendencias grandes, Micro-Grid compra en la base del canal lateral con lote prudente (máx $20 USDT) y cobra rebotes rápidos (+0.45% a +0.60%), respetando siempre el blindaje de cero ventas en pérdida.",
           session,
           btcRange24h: btcRange,
           updatedAt: now,
@@ -4206,12 +4203,12 @@ export class TrailingMasterBot {
         this.controls.suggestions!.micro_grid = {
           timeframe: "15m",
           stopLossPct: 2.0,
-          reason: `Mercado direccional activo (${btcRange.toFixed(1)}%). Conviene cautela.`,
+          reason: `Mercado direccional activo (${btcRange.toFixed(1)}%). Presupuesto en Cazador Trailing.`,
           criterios: [
-            `Rango Bitcoin: ${btcRange.toFixed(2)}% (Mercado con dirección)`,
-            "Poco favorable para mallas fijas sin tendencia"
+            `Rango Bitcoin: ${btcRange.toFixed(2)}% (Mercado con ondas direccionales)`,
+            "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
           ],
-          porQue: "Cuando el mercado tiene movimiento direccional, las estrategias de rejilla corren riesgo de quedar con compras atrapadas. Se sugiere mantener el presupuesto de Micro-Grid en 0% o con Stop-Loss estricto de -2.0% mientras el Trailing Hunter hace el trabajo pesado.",
+          porQue: "Cuando el mercado tiene volatilidad amplia (≥ 2.2%), Micro-Grid se pausa automáticamente y cede su cuota de capital a Cazador Trailing y Smart DCA para capturar recorridos más grandes (+0.8% a +3.5%).",
           session,
           btcRange24h: btcRange,
           updatedAt: now,
@@ -4231,11 +4228,11 @@ export class TrailingMasterBot {
           stopLossPct: 5.0,
           reason: "Ventana de fin de semana abierta (Vie 17:00 a Dom 18:00 COT).",
           criterios: [
-            "Bolsas mundiales y bancos cerrados (libros delgados)",
-            "Frecuentes barridas de liquidez y mechazos falsos",
-            "Apertura de futuros CME el domingo a las 17:00 COT"
+            "Bolsas mundiales cerradas: caza de barridas de liquidez de fin de semana",
+            "Puntaje cuantitativo: Caída + RSI + Banda Inferior Bollinger + Mecha",
+            "Confirmación de giro en 5m antes de comprar + Salida en apertura CME"
           ],
-          porQue: "Durante el fin de semana el dinero institucional descansa y los creadores de mercado suelen empujar el precio a la baja para cazar stop-losses. Se calibra en 1H con Stop-Loss tolerante de -5.0% para no ser expulsado por un mechazo, esperando la recuperación de compras cuando reabre CME el domingo por la noche.",
+          porQue: "Durante el fin de semana los creadores de mercado provocan caídas de bajo volumen. Cazador Weekend selecciona el Top 1 de mayor sobreventa y espera el giro real en 5m para comprar en el piso y vender en el impulso de apertura de futuros CME (domingo noche/lunes).",
           session,
           btcRange24h: btcRange,
           updatedAt: now,
@@ -4249,10 +4246,10 @@ export class TrailingMasterBot {
           stopLossPct: 5.0,
           reason: "En espera hasta el viernes a las 17:00 COT.",
           criterios: [
-            "Días hábiles de semana (mercados tradicionales abiertos)",
-            "Capital trabajando al 100% en Cazador Trailing"
+            "Días hábiles de semana (mercados institucionales de Londres y NY abiertos)",
+            "Presupuesto cedido automáticamente a Cazador Trailing y Smart DCA"
           ],
-          porQue: "Entre semana el dinero institucional opera en Wall Street y Europa, por lo que Cazador Weekend descansa y cede todo su presupuesto a Trailing Rebound (75%). Los parámetros quedan listos para reactivarse el viernes por la tarde.",
+          porQue: "Entre semana el flujo institucional opera en Londres y Wall Street, por lo que Cazador Weekend descansa y cede su cuota de capital a las estrategias principales hasta el viernes a las 17:00 COT.",
           session,
           btcRange24h: btcRange,
           updatedAt: now,

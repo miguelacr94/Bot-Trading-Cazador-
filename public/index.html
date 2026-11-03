@@ -2736,13 +2736,78 @@
 
     <!-- TAB 2: ESTRATEGIAS & PRESUPUESTO -->
     <div class="tab-content" id="tab-strategies">
+
+      <!-- GUÍA MAESTRA VISUAL DE LA ARQUITECTURA CUANTITATIVA -->
+      <div style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92)); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 16px; padding: 20px 24px; margin-bottom: 22px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 10px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">
+              🏛️
+            </div>
+            <div>
+              <div style="font-weight: 800; font-size: 1.02rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                ARQUITECTURA CUANTITATIVA DEL BOT: CÓMO CUIDA Y MULTIPLICA TU CAPITAL
+                <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.7rem; padding: 2px 8px; border-radius: 6px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.35);">
+                  🛡️ REGLA DE ORO: 0% VENTAS EN NEGATIVO
+                </span>
+              </div>
+              <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 2px;">
+                Resumen ejecutivo para que cualquier persona entienda en 30 segundos cómo entra, cuánto invierte y cómo cobra ganancias cada estrategia.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 Pilares Visuales -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px;">
+          
+          <!-- Pilar 1: Doble Llave Cero Pérdidas -->
+          <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 14px 16px;">
+            <div style="font-weight: 800; font-size: 0.86rem; color: #34d399; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+              <span>🛡️ 1. Blindaje de Doble Llave (Cero Pérdidas)</span>
+            </div>
+            <div style="font-size: 0.77rem; color: #cbd5e1; line-height: 1.5;">
+              • <b>Llave 1 (Memoria):</b> Prohibido vender si el precio actual es menor o igual al precio de compra más comisiones (mínimo <b>+0.45% neto</b>).<br>
+              • <b>Llave 2 (Historial Binance):</b> Antes de vender, verifica con la API de Binance el costo real exacto del lote. Si diera centavos en rojo, <b>bloquea la orden</b>.<br>
+              • <b>Lotes Independientes:</b> Cada compra (Lote 1, Lote 2, Lote 3) vende por separado su propia ganancia sin arrastrar compras caras.
+            </div>
+          </div>
+
+          <!-- Pilar 2: Pirámide Invertida Institucional -->
+          <div style="background: rgba(139, 92, 246, 0.07); border: 1px solid rgba(139, 92, 246, 0.28); border-radius: 12px; padding: 14px 16px;">
+            <div style="font-weight: 800; font-size: 0.86rem; color: #c4b5fd; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+              <span>📐 2. Pirámide Invertida de Capital (1 : 1.5 : 2.2)</span>
+            </div>
+            <div style="font-size: 0.77rem; color: #cbd5e1; line-height: 1.5;">
+              • <b>Nivel 1 — Explorador (1ra Compra):</b> Moderado (máx <b>8.5%</b> de cartera, <b>~$18–$25 USDT</b>, memes máx <b>$22</b>). Jamás congela medio banco arriba.<br>
+              • <b>Nivel 2 — Soporte DCA (Caída ≥ -2.5%):</b> Fuerza <b>1.35x</b> (hasta <b>12%</b> de cartera, <b>~$22–$36 USDT</b>) comprando más monedas abajo.<br>
+              • <b>Nivel 3 — Capitulación DCA (Caída ≥ -5.5%):</b> Fuerza <b>1.75x</b> (hasta <b>16%</b> de cartera, <b>~$28–$48 USDT</b>) en el piso estadístico con meta ampliada.
+            </div>
+          </div>
+
+          <!-- Pilar 3: Filtro Anti-Entrada Anticipada -->
+          <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 12px; padding: 14px 16px;">
+            <div style="font-weight: 800; font-size: 0.86rem; color: #38bdf8; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+              <span>🔬 3. Filtro Anti-Entrada Anticipada (Suelo Real)</span>
+            </div>
+            <div style="font-size: 0.77rem; color: #cbd5e1; line-height: 1.5;">
+              • <b>Bandas de Bollinger (20, 2σ) + RVOL:</b> Detecta cuando el precio perfora el suelo estadístico con volumen de absorción.<br>
+              • <b>Escudo Macro BTC (15m):</b> Si Bitcoin está desplomándose (≤ -0.65% sin mecha), pausa compras en altcoins.<br>
+              • <b>Confirmación de Giro 5m/15m:</b> Nunca compra dentro de una vela roja en caída libre; exige <b>vela verde</b> o <b>mecha inferior ≥ 30%</b>.<br>
+              • <b>Horario de Bolsas (COT):</b> Gradúa liquidez según Londres (03:00), NY (08:30), Cosecha (17:00) y Noche (20:00).
+            </div>
+          </div>
+
+        </div>
+      </div>
+
 <!-- Strategy Control Hub -->
     <div class="strategy-hub-card">
       <div class="hub-header">
         <div class="hub-header-left">
           <div class="hub-title">
             <span class="hub-icon">⚙️</span>
-            <span>Orquestador Multi-Estrategia</span>
+            <span>Orquestador Multi-Estrategia (5 Motores Sincronizados)</span>
           </div>
           <span id="budget-sum-badge">Total: 100%</span>
         </div>
@@ -2761,22 +2826,21 @@
 
       <!-- Quick Preset Buttons -->
       <div class="presets-mini-row">
-        <span class="presets-mini-label">⚡ Ajustes Rápidos:</span>
-        <button class="btn-preset" data-t="50" data-d="30" data-g="0" data-w="20">Balanceado (50 / 30 / 0 / 20)</button>
-        <button class="btn-preset" data-t="40" data-d="25" data-g="0" data-w="35">🏖️ Weekend (40 / 25 / 0 / 35)</button>
-        <button class="btn-preset" data-t="60" data-d="20" data-g="0" data-w="20">🚀 Caza Rápida (60 / 20 / 0 / 20)</button>
+        <span class="presets-mini-label">⚡ Ajustes Rápidos de Presupuesto:</span>
+        <button class="btn-preset" data-t="50" data-d="30" data-g="0" data-w="20">⚖️ Balanceado (50% Trailing / 30% DCA / 20% Weekend)</button>
+        <button class="btn-preset" data-t="40" data-d="25" data-g="0" data-w="35">🏖️ Modo Weekend (40% Trailing / 25% DCA / 35% Weekend)</button>
+        <button class="btn-preset" data-t="60" data-d="20" data-g="0" data-w="20">🚀 Caza Rápida (60% Trailing / 20% DCA / 20% Weekend)</button>
       </div>
 
-            <div class="strategies-grid">
+      <div class="strategies-grid">
         <!-- 1. Cazador Trailing -->
         <div class="strategy-item active-strat" id="card-strat-trailing">
           <div class="strategy-card-header">
             <div class="strategy-title-group">
-              <span class="strategy-type-tag trend">Ondas y Tendencia</span>
-              <div class="strategy-name">🏹 1. Cazador Trailing</div>
+              <span class="strategy-type-tag trend">Motor Principal • Ondas y Rebotes</span>
+              <div class="strategy-name">🏹 1. Cazador Trailing (Rebound Hunter)</div>
             </div>
-            <label class="switch">
-              <div class="strategy-card-header-actions">
+            <div class="strategy-card-header-actions">
               <button class="btn-card-toggle" data-target="details-trailing" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
               <label class="switch">
                 <input type="checkbox" id="toggle-trailing" checked>
@@ -2785,22 +2849,26 @@
             </div>
           </div>
 
-          <div class="strategy-details-section">
+          <div class="strategy-details-section" id="details-trailing">
             <div class="strategy-mechanics">
-              <strong>Mecánica:</strong> Rastrea caídas en velas de <b id="lbl-tf-trailing">1H</b> tick a tick. Espera que la ola toque fondo y rebote <b>+0.35%</b> para comprar en el suelo, y persigue la subida vendiendo en el pico más alto.
+              <strong>¿Cómo funciona?:</strong><br>
+              • <b>1. Cuándo se arma:</b> Escanea velas de <b id="lbl-tf-trailing">1H</b> buscando caídas con sobreventa (<b>RSI ≤ 45</b> o ruptura de <b>Banda Inferior de Bollinger</b> con volumen <b>RVOL</b>).<br>
+              • <b>2. Cuándo compra (Suelo Real):</b> Persigue el precio hacia abajo tick a tick. Solo compra cuando rebota (<b>+0.25% a +0.45%</b> según sesión COT) <u>y</u> la vela de <b>5m confirma giro a verde o mecha de absorción ≥ 30%</b>.<br>
+              • <b>3. Cuánto invierte:</b> <b>Nivel 1 de Pirámide Invertida</b> (máx 8.5% de cartera, ~$18–$25 USDT).<br>
+              • <b>4. Cómo vende:</b> Activa <b>Trailing Take Profit</b> desde <b>+0.80%</b> (+1.20% en memes) y persigue la subida hasta que retroceda el callback.
             </div>
             <div class="strategy-pills-row">
               <span class="strat-pill logic" id="badge-tf-trailing">⏱️ 1H</span>
-              <span class="strat-pill logic">📉 RSI ≤ 45</span>
-              <span class="strat-pill target">🎯 Ganancia +0.8% a +3.5%</span>
-              <span class="strat-pill risk" id="badge-sl-trailing">🛑 SL -4.0%</span>
+              <span class="strat-pill logic">📉 RSI + Bollinger + Giro 5m</span>
+              <span class="strat-pill target">🎯 Salida +0.8% a +3.5%</span>
+              <span class="strat-pill risk" id="badge-sl-trailing">🛡️ Rescate DCA -4.0%</span>
             </div>
           </div>
 
           <!-- Controles Autónomos Independientes -->
           <div class="strat-autonomous-controls">
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">⏱️ Temporalidad:</span>
+              <span class="strat-ctrl-label">⏱️ Temporalidad del Radar:</span>
               <div class="mini-tf-group" data-strat="trailing_rebound">
                 <button class="btn-mini-tf" data-tf="15m">15m</button>
                 <button class="btn-mini-tf active" data-tf="1h">1H</button>
@@ -2808,14 +2876,14 @@
               </div>
             </div>
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">🎯 Callback Base:</span>
+              <span class="strat-ctrl-label">🎯 Callback Trailing Venta:</span>
               <div class="mini-sl-group">
                 <input type="range" class="mini-cb-slider" id="slider-cb-trailing" min="0.15" max="1.0" step="0.05" value="0.35">
                 <b class="mini-cb-val" id="lbl-cb-trailing">0.35%</b>
               </div>
             </div>
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">🛑 Stop-Loss Propio:</span>
+              <span class="strat-ctrl-label">🛡️ Umbral Alerta / Rescate DCA:</span>
               <div class="mini-sl-group">
                 <label class="switch" style="width:34px;height:18px;">
                   <input type="checkbox" id="toggle-sl-trailing" checked>
@@ -2830,14 +2898,14 @@
           <!-- Presupuesto In-Card -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
-              <span class="alloc-badge" id="alloc-trailing-badge">75% Asignado</span>
+              <span class="alloc-badge" id="alloc-trailing-badge">70% Asignado</span>
               <span class="alloc-amount" id="alloc-trailing-amount">-- USDT libres</span>
               <div class="strategy-slider-ctrl">
-                <span>Base:</span> <b class="slider-ctrl-val green" id="slider-trailing-val">40%</b>
+                <span>Base:</span> <b class="slider-ctrl-val green" id="slider-trailing-val">50%</b>
               </div>
             </div>
-            <input type="range" class="strat-budget-slider" id="slider-trailing" min="0" max="100" step="5" value="40">
-            <div class="alloc-bar-bg"><div class="alloc-bar-fill green" id="alloc-trailing-bar" style="width:75%;"></div></div>
+            <input type="range" class="strat-budget-slider" id="slider-trailing" min="0" max="100" step="5" value="50">
+            <div class="alloc-bar-bg"><div class="alloc-bar-fill green" id="alloc-trailing-bar" style="width:70%;"></div></div>
           </div>
 
           <!-- Caja de Sugerencia Inteligente Centinela -->
@@ -2871,107 +2939,14 @@
           </div>
         </div>
 
-
-        <!-- 5. Futuros USD-M (Simulación Cuantitativa) -->
-        <div class="strategy-item active-strat" id="card-strat-futures">
-          <div class="strategy-card-header">
-            <div class="strategy-title-group">
-              <span class="strategy-type-tag" style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4);">Derivados & Hedging</span>
-              <div class="strategy-name">⚡ 5. Futuros Cuantitativo</div>
-            </div>
-            <div class="strategy-card-header-actions">
-              <button class="btn-card-toggle" data-target="details-futures" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
-              <label class="switch">
-                <input type="checkbox" id="toggle-futures" checked>
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="strategy-details-section" id="details-futures">
-            <div class="strategy-mechanics">
-              <strong>Mecánica:</strong> Estrategia bi-direccional <b>(LONG / SHORT)</b> en Binance Futures con apalancamiento <b>2x ISOLATED</b>. Filtra con EMA 50 (1H) y ejecuta en sobreventa/sobrecompra con mechas de rechazo en 15M.
-            </div>
-            <div class="strategy-pills-row">
-              <span class="strat-pill logic">⏱️ 15M / 1H</span>
-              <span class="strat-pill logic" style="border-color: #a78bfa; color: #a78bfa;" id="badge-fut-lev">⚡ 4x BTC / 3x Alts (Dinámico)</span>
-              <span class="strat-pill target" id="badge-fut-trailing">🎯 Trailing +1.2% (0.35% cb)</span>
-              <span class="strat-pill risk">🛑 SL -1.2% Fijo</span>
-              <span class="strat-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">🧪 Simulación en Vivo</span>
-            </div>
-          </div>
-
-          <!-- Presupuesto In-Card -->
-          <div class="strategy-bottom-budget">
-            <div class="strategy-alloc-row">
-              <span class="alloc-badge" id="alloc-futures-badge" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4);">10% Asignado</span>
-              <span class="alloc-amount" id="alloc-futures-amount">-- USDT (Margen)</span>
-              <div class="strategy-slider-ctrl">
-                <span>Base:</span> <b class="slider-ctrl-val" style="color: #a78bfa;" id="slider-futures-val">10%</b>
-              </div>
-            </div>
-            <input type="range" class="strat-budget-slider" id="slider-futures" min="0" max="100" step="5" value="15">
-            <div class="alloc-bar-bg"><div class="alloc-bar-fill" id="alloc-futures-bar" style="width:10%; background: linear-gradient(90deg, #8b5cf6, #a78bfa);"></div></div>
-          </div>
-
-          <!-- Caja de Estado Futuros -->
-          
-        <!-- Selector Simulado / Real y Margen Estándar -->
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-top:14px; background:rgba(255,255,255,0.02); padding:10px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:12px; font-weight:600; color:#e2e8f0;">Modo de Operación:</span>
-            <div style="display:inline-flex; border:1px solid rgba(255,255,255,0.15); border-radius:6px; overflow:hidden;">
-              <button id="btn-fut-mode-sim" type="button" style="background:#8b5cf6; color:#fff; border:none; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer;">🧪 Simulación (Paper)</button>
-              <button id="btn-fut-mode-real" type="button" style="background:transparent; color:#94a3b8; border:none; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer;">⚡ Dinero Real</button>
-            </div>
-          </div>
-          <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:12px; font-weight:600; color:#e2e8f0;">💼 Capital Base:</span>
-              <input type="number" id="input-fut-capital" min="10" max="10000" step="10" value="100" style="width:65px; background:#0f172a; border:1px solid #334155; color:#38bdf8; font-weight:700; font-size:13px; text-align:center; padding:4px 6px; border-radius:4px;">
-              <span style="font-size:11px; color:#94a3b8;">USDT</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:12px; font-weight:600; color:#e2e8f0;">⚡ Margen/Trade:</span>
-              <input type="number" id="input-fut-margin" min="5" max="500" step="5" value="15" style="width:55px; background:#0f172a; border:1px solid #334155; color:#34d399; font-weight:700; font-size:13px; text-align:center; padding:4px 6px; border-radius:4px;">
-              <span style="font-size:11px; color:#94a3b8;">USDT</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:12px; font-weight:600; color:#e2e8f0;">🎯 Apalancamiento:</span>
-              <select id="select-fut-lev" style="background:#0f172a; border:1px solid #334155; color:#a78bfa; font-weight:700; font-size:11px; padding:4px 8px; border-radius:4px;">
-                <option value="dynamic" selected>🤖 Dinámico (4x BTC/ETH / 3x Alts)</option>
-                <option value="fixed_2">Fijo 2x (Ultra Seguro)</option>
-                <option value="fixed_3">Fijo 3x (Balanceado)</option>
-                <option value="fixed_4">Fijo 4x (Rápido)</option>
-              </select>
-            </div>
-            <button id="btn-save-fut-config" type="button" style="background:rgba(16,185,129,0.25); border:1px solid rgba(16,185,129,0.5); color:#34d399; font-size:11px; font-weight:700; padding:5px 14px; border-radius:5px; cursor:pointer;">💾 Aplicar Cambios</button>
-            <button id="btn-reset-fut-100" type="button" style="background:rgba(56,189,248,0.2); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; font-size:11px; font-weight:700; padding:5px 12px; border-radius:5px; cursor:pointer;" title="Reiniciar simulación con $100 USDT limpios">🔄 Iniciar con $100 USDT</button>
-          </div>
-        </div>
-
-          <div class="strat-sugg-box" id="status-box-futures" style="border-left: 3px solid #8b5cf6;">
-            <div class="strat-sugg-header">
-              <div class="strat-sugg-header-left">
-                <span>🧪 Centinela Futuros:</span>
-                <span class="sugg-status-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">MODO PAPER TRADING</span>
-              </div>
-            </div>
-            <div class="strat-sugg-desc" id="futures-live-status">
-              💼 Balance Simulado: <b>30.00 USDT</b> | Posiciones abiertas: <b>0 / 2</b> | Riesgo: <b>-$0.12 USDT máx</b>
-            </div>
-          </div>
-        </div>
-
         <!-- 2. Smart DCA -->
         <div class="strategy-item active-strat" id="card-strat-dca">
           <div class="strategy-card-header">
             <div class="strategy-title-group">
-              <span class="strategy-type-tag defense">Defensa & Rescate</span>
-              <div class="strategy-name">🛡️ 2. Smart DCA (Seguridad)</div>
+              <span class="strategy-type-tag defense">Pirámide Invertida • Niveles 2 y 3</span>
+              <div class="strategy-name">🛡️ 2. Smart DCA (Rescate por Lotes)</div>
             </div>
-            <label class="switch">
-              <div class="strategy-card-header-actions">
+            <div class="strategy-card-header-actions">
               <button class="btn-card-toggle" data-target="details-dca" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
               <label class="switch">
                 <input type="checkbox" id="toggle-dca" checked>
@@ -2980,22 +2955,26 @@
             </div>
           </div>
 
-          <div class="strategy-details-section">
+          <div class="strategy-details-section" id="details-dca">
             <div class="strategy-mechanics">
-              <strong>Mecánica:</strong> Inyecta una orden de respaldo cuando una posición abierta cae a un soporte mayor (≥ <b>-2.5%</b>). Promedia el precio de compra a la baja para salir en verde con una subida mínima.
+              <strong>¿Cómo funciona?:</strong><br>
+              • <b>1. Cuándo entra:</b> Si un Lote 1 retrocede <b>≥ -2.5%</b> (RSI ≤ 45) activa el <b>Lote #2</b>; si cae <b>≥ -5.5%</b> (RSI ≤ 38) activa el <b>Lote #3 Extremo</b>.<br>
+              • <b>2. Filtro Anti-Cuchillo (15m):</b> No compra mientras la vela de 15m siga desplomándose; espera a que la vela gire a verde o deje mecha inferior ≥ 30%.<br>
+              • <b>3. Pirámide Invertida:</b> Invierte <b>1.35x más fuerza en el Lote #2</b> (~$22–$36 USDT) y <b>1.75x en el Lote #3</b> (~$28–$48 USDT).<br>
+              • <b>4. Cómo vende:</b> Cada sub-lote (<code>_lot_2</code>, <code>_lot_3</code>) es <b>100% independiente</b> y vende su propia ganancia abajo sin esperar al Lote 1.
             </div>
             <div class="strategy-pills-row">
               <span class="strat-pill logic" id="badge-tf-dca">⏱️ 4H</span>
-              <span class="strat-pill logic">📉 Caída ≥ -2.5%</span>
-              <span class="strat-pill target">🎯 Salida Rápida en Verde</span>
-              <span class="strat-pill risk" id="badge-sl-dca">🛑 SL -6.0%</span>
+              <span class="strat-pill logic">📐 Lote 2 (-2.5%) / Lote 3 (-5.5%)</span>
+              <span class="strat-pill target">🎯 Lotes Independientes</span>
+              <span class="strat-pill risk" id="badge-sl-dca">🛡️ Rescate DCA -6.0%</span>
             </div>
           </div>
 
           <!-- Controles Autónomos Independientes -->
           <div class="strat-autonomous-controls">
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">⏱️ Temporalidad:</span>
+              <span class="strat-ctrl-label">⏱️ Temporalidad de Soporte:</span>
               <div class="mini-tf-group" data-strat="smart_dca">
                 <button class="btn-mini-tf" data-tf="15m">15m</button>
                 <button class="btn-mini-tf" data-tf="1h">1H</button>
@@ -3003,7 +2982,7 @@
               </div>
             </div>
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">🛑 Stop-Loss Propio:</span>
+              <span class="strat-ctrl-label">🛡️ Umbral Caída Profunda:</span>
               <div class="mini-sl-group">
                 <label class="switch" style="width:34px;height:18px;">
                   <input type="checkbox" id="toggle-sl-dca" checked>
@@ -3018,14 +2997,14 @@
           <!-- Presupuesto In-Card -->
           <div class="strategy-bottom-budget">
             <div class="strategy-alloc-row">
-              <span class="alloc-badge" id="alloc-dca-badge" style="color:#C084FC; background:rgba(168,85,247,0.15);">25% Asignado</span>
+              <span class="alloc-badge" id="alloc-dca-badge" style="color:#C084FC; background:rgba(168,85,247,0.15);">30% Asignado</span>
               <span class="alloc-amount" id="alloc-dca-amount">-- USDT libres</span>
               <div class="strategy-slider-ctrl">
-                <span>Base:</span> <b class="slider-ctrl-val purple" id="slider-dca-val">25%</b>
+                <span>Base:</span> <b class="slider-ctrl-val purple" id="slider-dca-val">30%</b>
               </div>
             </div>
-            <input type="range" class="strat-budget-slider" id="slider-dca" min="0" max="100" step="5" value="25">
-            <div class="alloc-bar-bg"><div class="alloc-bar-fill purple" id="alloc-dca-bar" style="width:25%;"></div></div>
+            <input type="range" class="strat-budget-slider" id="slider-dca" min="0" max="100" step="5" value="30">
+            <div class="alloc-bar-bg"><div class="alloc-bar-fill purple" id="alloc-dca-bar" style="width:30%;"></div></div>
           </div>
 
           <!-- Caja de Sugerencia Inteligente Centinela -->
@@ -3063,31 +3042,38 @@
         <div class="strategy-item active-strat" id="card-strat-grid">
           <div class="strategy-card-header">
             <div class="strategy-title-group">
-              <span class="strategy-type-tag range">Rango Lateral Plano</span>
-              <div class="strategy-name">🌐 3. Micro-Grid (Rango)</div>
+              <span class="strategy-type-tag range">Auto-Adaptativa • Días Quietos</span>
+              <div class="strategy-name">🌐 3. Micro-Grid (Canales Laterales)</div>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="toggle-grid" checked>
-              <span class="slider"></span>
-            </label>
+            <div class="strategy-card-header-actions">
+              <button class="btn-card-toggle" data-target="details-grid" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <label class="switch">
+                <input type="checkbox" id="toggle-grid" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
 
-          <div class="strategy-details-section">
+          <div class="strategy-details-section" id="details-grid">
             <div class="strategy-mechanics">
-              <strong>Mecánica:</strong> Despliega una rejilla de micro-compras y ventas rápidas en días planos donde Bitcoin no se mueve (rango &lt; 2.2%). Cosecha micro-rebotes automáticos continuos sin esperar tendencias.
+              <strong>¿Cómo funciona?:</strong><br>
+              • <b>1. Cuándo se activa:</b> Automáticamente cuando Bitcoin entra en rango lateral estrecho (<b>&lt; 2.0% en 24h</b>). Si vuelve la volatilidad (≥ 2.5%), se pausa sola y devuelve el 100% del capital a Cazador Trailing.<br>
+              • <b>2. Cuándo compra:</b> Cuando una moneda está en el <b>30% inferior de su canal de 6H</b>, con RSI en soporte (34–46) y vela de rechazo.<br>
+              • <b>3. Cuánto invierte:</b> Micro-lote conservador (máximo <b>$20 USDT</b>).<br>
+              • <b>4. Cómo vende:</b> Cosecha rebotes cortos y frecuentes (<b>+0.45% a +0.60% neto</b>) con 0% ventas en pérdida.
             </div>
             <div class="strategy-pills-row">
               <span class="strat-pill logic" id="badge-tf-grid">⏱️ 15m</span>
               <span class="strat-pill logic">💤 BTC Rango &lt; 2.2%</span>
               <span class="strat-pill target">🎯 Rebotes +0.45% a +0.60%</span>
-              <span class="strat-pill risk" id="badge-sl-grid">🛑 SL -2.0%</span>
+              <span class="strat-pill risk" id="badge-sl-grid">🛡️ Rescate DCA -2.0%</span>
             </div>
           </div>
 
           <!-- Controles Autónomos Independientes -->
           <div class="strat-autonomous-controls">
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">⏱️ Temporalidad:</span>
+              <span class="strat-ctrl-label">⏱️ Temporalidad de Canal:</span>
               <div class="mini-tf-group" data-strat="micro_grid">
                 <button class="btn-mini-tf active" data-tf="15m">15m</button>
                 <button class="btn-mini-tf" data-tf="1h">1H</button>
@@ -3095,7 +3081,7 @@
               </div>
             </div>
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">🛑 Stop-Loss Propio:</span>
+              <span class="strat-ctrl-label">🛡️ Rango Canal Lateral:</span>
               <div class="mini-sl-group">
                 <label class="switch" style="width:34px;height:18px;">
                   <input type="checkbox" id="toggle-sl-grid" checked>
@@ -3155,31 +3141,37 @@
         <div class="strategy-item active-strat" id="card-strat-weekend">
           <div class="strategy-card-header">
             <div class="strategy-title-group">
-              <span class="strategy-type-tag weekend">Anomalía Fin de Semana</span>
-              <div class="strategy-name">🏖️ 4. Cazador Weekend</div>
+              <span class="strategy-type-tag weekend">Estacional • Viernes 17:00 a Domingo 18:00 COT</span>
+              <div class="strategy-name">🏖️ 4. Cazador Weekend (Efecto CME)</div>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="toggle-weekend" checked>
-              <span class="slider"></span>
-            </label>
+            <div class="strategy-card-header-actions">
+              <button class="btn-card-toggle" data-target="details-weekend" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <label class="switch">
+                <input type="checkbox" id="toggle-weekend" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
           </div>
 
-          <div class="strategy-details-section">
+          <div class="strategy-details-section" id="details-weekend">
             <div class="strategy-mechanics">
-              <strong>Mecánica:</strong> Se activa los viernes a las 17:00 COT al cerrar las bolsas mundiales. Caza la mejor sobreventa en la baja liquidez del fin de semana y vende en el rebote máximo de apertura de CME (domingo noche/lunes).
+              <strong>¿Cómo funciona?:</strong><br>
+              • <b>1. Ventana Horaria:</b> Opera automáticamente desde el <b>viernes a las 17:00 COT</b> (cierre de Wall Street) hasta el <b>domingo a las 18:00 COT</b>. Entre semana cede su presupuesto a Cazador Trailing.<br>
+              • <b>2. Selección Top 1:</b> Califica todas las monedas sumando caída + sobreventa RSI + Banda Inferior Bollinger + Mecha de rechazo, y arma Trailing Buy en la #1.<br>
+              • <b>3. Cómo vende:</b> Persigue la recuperación institucional cuando reabren los futuros de <b>CME el domingo por la noche / lunes</b>.
             </div>
             <div class="strategy-pills-row">
               <span class="strat-pill logic" id="badge-tf-weekend">⏱️ 1H</span>
               <span class="strat-pill logic">🏦 Apertura Futuros CME</span>
               <span class="strat-pill target">🎯 Venta Pico Dom Noche/Lun</span>
-              <span class="strat-pill risk" id="badge-sl-weekend">🛑 SL -5.0%</span>
+              <span class="strat-pill risk" id="badge-sl-weekend">🛡️ Rescate DCA -5.0%</span>
             </div>
           </div>
 
           <!-- Controles Autónomos Independientes -->
           <div class="strat-autonomous-controls">
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">⏱️ Temporalidad:</span>
+              <span class="strat-ctrl-label">⏱️ Temporalidad Fin de Semana:</span>
               <div class="mini-tf-group" data-strat="cazador_weekend">
                 <button class="btn-mini-tf" data-tf="15m">15m</button>
                 <button class="btn-mini-tf active" data-tf="1h">1H</button>
@@ -3187,7 +3179,7 @@
               </div>
             </div>
             <div class="strat-ctrl-row">
-              <span class="strat-ctrl-label">🛑 Stop-Loss Propio:</span>
+              <span class="strat-ctrl-label">🛡️ Umbral Rescate Weekend:</span>
               <div class="mini-sl-group">
                 <label class="switch" style="width:34px;height:18px;">
                   <input type="checkbox" id="toggle-sl-weekend" checked>
@@ -3205,10 +3197,10 @@
               <span class="alloc-badge" id="alloc-weekend-badge" style="color:#F472B6; background:rgba(236,72,153,0.15);">0% (Entre semana)</span>
               <span class="alloc-amount" id="alloc-weekend-amount">-- USDT libres</span>
               <div class="strategy-slider-ctrl">
-                <span>Base:</span> <b class="slider-ctrl-val pink" id="slider-weekend-val">35%</b>
+                <span>Base:</span> <b class="slider-ctrl-val pink" id="slider-weekend-val">20%</b>
               </div>
             </div>
-            <input type="range" class="strat-budget-slider" id="slider-weekend" min="0" max="100" step="5" value="35">
+            <input type="range" class="strat-budget-slider" id="slider-weekend" min="0" max="100" step="5" value="20">
             <div class="alloc-bar-bg"><div class="alloc-bar-fill pink" id="alloc-weekend-bar" style="width:0%;"></div></div>
           </div>
 
@@ -3242,27 +3234,119 @@
             </div>
           </div>
         </div>
+
+        <!-- 5. Futuros USD-M (Simulación Cuantitativa) -->
+        <div class="strategy-item active-strat" id="card-strat-futures">
+          <div class="strategy-card-header">
+            <div class="strategy-title-group">
+              <span class="strategy-type-tag" style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4);">Derivados Bi-Direccional (LONG / SHORT)</span>
+              <div class="strategy-name">⚡ 5. Futuros Cuantitativo USDⓈ-M</div>
+            </div>
+            <div class="strategy-card-header-actions">
+              <button class="btn-card-toggle" data-target="details-futures" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <label class="switch">
+                <input type="checkbox" id="toggle-futures" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="strategy-details-section" id="details-futures">
+            <div class="strategy-mechanics">
+              <strong>¿Cómo funciona?:</strong><br>
+              • <b>1. Bi-Direccional:</b> Opera tanto subidas (<b>LONG</b>) como caídas (<b>SHORT</b>) en Binance Futures con margen <b>ISOLATED</b>.<br>
+              • <b>2. Filtros de Entrada:</b> Tendencia macro EMA 50 (1H) + Sobreventa/Sobrecompra RSI (15m) + Mechas de rechazo ≥ 30%.<br>
+              • <b>3. Gestión de Riesgo Propia:</b> A diferencia de Spot, en Futuros sí usa un <b>Stop-Loss estricto de -1.2%</b> y <b>Trailing Take Profit desde +1.2%</b>.
+            </div>
+            <div class="strategy-pills-row">
+              <span class="strat-pill logic">⏱️ 15M / 1H</span>
+              <span class="strat-pill logic" style="border-color: #a78bfa; color: #a78bfa;" id="badge-fut-lev">⚡ 4x BTC / 3x Alts (Dinámico)</span>
+              <span class="strat-pill target" id="badge-fut-trailing">🎯 Trailing +1.2% (0.35% cb)</span>
+              <span class="strat-pill risk">🛑 SL Futuros -1.2% Fijo</span>
+              <span class="strat-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">🧪 Simulación / Real</span>
+            </div>
+          </div>
+
+          <!-- Presupuesto In-Card -->
+          <div class="strategy-bottom-budget">
+            <div class="strategy-alloc-row">
+              <span class="alloc-badge" id="alloc-futures-badge" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4);">10% Asignado</span>
+              <span class="alloc-amount" id="alloc-futures-amount">-- USDT (Margen)</span>
+              <div class="strategy-slider-ctrl">
+                <span>Base:</span> <b class="slider-ctrl-val" style="color: #a78bfa;" id="slider-futures-val">10%</b>
+              </div>
+            </div>
+            <input type="range" class="strat-budget-slider" id="slider-futures" min="0" max="100" step="5" value="15">
+            <div class="alloc-bar-bg"><div class="alloc-bar-fill" id="alloc-futures-bar" style="width:10%; background: linear-gradient(90deg, #8b5cf6, #a78bfa);"></div></div>
+          </div>
+
+          <!-- Selector Simulado / Real y Margen Estándar -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-top:14px; background:rgba(255,255,255,0.02); padding:10px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:12px; font-weight:600; color:#e2e8f0;">Modo de Operación:</span>
+              <div style="display:inline-flex; border:1px solid rgba(255,255,255,0.15); border-radius:6px; overflow:hidden;">
+                <button id="btn-fut-mode-sim" type="button" style="background:#8b5cf6; color:#fff; border:none; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer;">🧪 Simulación (Paper)</button>
+                <button id="btn-fut-mode-real" type="button" style="background:transparent; color:#94a3b8; border:none; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer;">⚡ Dinero Real</button>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:12px; font-weight:600; color:#e2e8f0;">💼 Capital Base:</span>
+                <input type="number" id="input-fut-capital" min="10" max="10000" step="10" value="100" style="width:65px; background:#0f172a; border:1px solid #334155; color:#38bdf8; font-weight:700; font-size:13px; text-align:center; padding:4px 6px; border-radius:4px;">
+                <span style="font-size:11px; color:#94a3b8;">USDT</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:12px; font-weight:600; color:#e2e8f0;">⚡ Margen/Trade:</span>
+                <input type="number" id="input-fut-margin" min="5" max="500" step="5" value="15" style="width:55px; background:#0f172a; border:1px solid #334155; color:#34d399; font-weight:700; font-size:13px; text-align:center; padding:4px 6px; border-radius:4px;">
+                <span style="font-size:11px; color:#94a3b8;">USDT</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:12px; font-weight:600; color:#e2e8f0;">🎯 Apalancamiento:</span>
+                <select id="select-fut-lev" style="background:#0f172a; border:1px solid #334155; color:#a78bfa; font-weight:700; font-size:11px; padding:4px 8px; border-radius:4px;">
+                  <option value="dynamic" selected>🤖 Dinámico (4x BTC/ETH / 3x Alts)</option>
+                  <option value="fixed_2">Fijo 2x (Ultra Seguro)</option>
+                  <option value="fixed_3">Fijo 3x (Balanceado)</option>
+                  <option value="fixed_4">Fijo 4x (Rápido)</option>
+                </select>
+              </div>
+              <button id="btn-save-fut-config" type="button" style="background:rgba(16,185,129,0.25); border:1px solid rgba(16,185,129,0.5); color:#34d399; font-size:11px; font-weight:700; padding:5px 14px; border-radius:5px; cursor:pointer;">💾 Aplicar Cambios</button>
+              <button id="btn-reset-fut-100" type="button" style="background:rgba(56,189,248,0.2); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; font-size:11px; font-weight:700; padding:5px 12px; border-radius:5px; cursor:pointer;" title="Reiniciar simulación con $100 USDT limpios">🔄 Iniciar con $100 USDT</button>
+            </div>
+          </div>
+
+          <div class="strat-sugg-box" id="status-box-futures" style="border-left: 3px solid #8b5cf6;">
+            <div class="strat-sugg-header">
+              <div class="strat-sugg-header-left">
+                <span>🧪 Centinela Futuros:</span>
+                <span class="sugg-status-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">MODO PAPER TRADING</span>
+              </div>
+            </div>
+            <div class="strat-sugg-desc" id="futures-live-status">
+              💼 Balance Simulado: <b>30.00 USDT</b> | Posiciones abiertas: <b>0 / 2</b> | Riesgo: <b>-$0.12 USDT máx</b>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-      <!-- Risk Management (Stop-Loss) & Wave Timeframe Radar Hub -->
+      <!-- Risk Management & Wave Timeframe Radar Hub -->
       <div class="risk-timeframe-hub">
         <div class="risk-hub-header">
           <div class="risk-hub-title">
             <span class="hub-icon">🛡️</span>
-            <span>Gestión de Riesgo & Radar de Ondas</span>
-            <span class="risk-badge-active" id="risk-status-badge">🟢 Stop-Loss Activo (-4.0%)</span>
+            <span>Blindaje de Capital, Brújula de Ondas & Reserva de Pólvora</span>
+            <span class="risk-badge-active" id="risk-status-badge">🛡️ Escudo Cero Pérdidas Activo (Umbral DCA -4.0%)</span>
           </div>
-          <button id="btn-save-risk" class="btn-save-alloc">💾 Guardar Ajustes de Riesgo</button>
+          <button id="btn-save-risk" class="btn-save-alloc">💾 Guardar Ajustes Globales</button>
         </div>
 
         <div class="risk-grid">
-          <!-- Stop-Loss Card -->
+          <!-- Umbral de Rescate / Vigilancia Card -->
           <div class="risk-card">
             <div class="risk-card-top">
               <div class="risk-card-label">
-                <span class="risk-title">🛑 Stop-Loss de Protección</span>
-                <span class="risk-desc">Corta caídas anormales para proteger liquidez</span>
+                <span class="risk-title">🛡️ Umbral de Vigilancia & Rescate DCA</span>
+                <span class="risk-desc">Spot jamás vende en negativo; al cruzar este umbral activa evaluación de rescate</span>
               </div>
               <label class="switch">
                 <input type="checkbox" id="toggle-stoploss" checked>
@@ -3271,7 +3355,7 @@
             </div>
             <div class="risk-slider-box">
               <div class="risk-slider-label">
-                <span>Límite de Caída Máxima:</span>
+                <span>Umbral de Alerta / Soporte:</span>
                 <b id="stoploss-val-label" class="risk-val-red">-4.0%</b>
               </div>
               <input type="range" id="slider-stoploss" min="1.5" max="10.0" step="0.5" value="4.0">
@@ -3282,7 +3366,7 @@
           <div class="risk-card">
             <div class="risk-card-top">
               <div class="risk-card-label">
-                <span class="risk-title">⏱️ Radar de Ondas (Timeframe)</span>
+                <span class="risk-title">⏱️ Radar de Ondas (Timeframe Global)</span>
                 <span class="risk-desc">Brújula de análisis multitemporal</span>
               </div>
               <span class="timeframe-current-badge" id="current-tf-badge">1H (Base)</span>
@@ -3298,18 +3382,18 @@
           <div class="risk-card">
             <div class="risk-card-top">
               <div class="risk-card-label">
-                <span class="risk-title">💼 Reserva de Pólvora & Topes</span>
-                <span class="risk-desc">Garantiza nunca quedarse en $0.00 USDT</span>
+                <span class="risk-title">💼 Reserva de Pólvora & Pirámide</span>
+                <span class="risk-desc">Garantiza liquidez para Londres/NY y pisos DCA</span>
               </div>
             </div>
             <div class="risk-caps-row">
               <div class="cap-pill green">
-                <span class="cap-label">Reserva USDT</span>
+                <span class="cap-label">Reserva Base</span>
                 <b class="cap-val" id="cash-reserve-val">25% Libre</b>
               </div>
               <div class="cap-pill blue">
-                <span class="cap-label">Máx por Moneda</span>
-                <b class="cap-val" id="max-coin-val">30% Tope</b>
+                <span class="cap-label">Cupos Monedas</span>
+                <b class="cap-val" id="max-coin-val">7 Monedas (x3 Lotes)</b>
               </div>
             </div>
           </div>
@@ -3326,24 +3410,24 @@
           <span class="compound-tag" id="compound-rate-tag">Calculando proyección…</span>
         </div>
         <div class="vault-mini-badge" id="vault-mini-badge" title="Saldo blindado en Bóveda Simple Earn">
-          <span>🏦 Bóveda Earn:</span> <b id="vault-amount">zsh.00 USDT</b>
+          <span>🏦 Bóveda Earn:</span> <b id="vault-amount">$0.00 USDT</b>
         </div>
       </div>
       <div class="compound-grid">
         <div class="compound-item">
           <div class="compound-period">📅 En 30 Días</div>
           <div class="compound-val-usdt" id="proj-30d-usdt">+0.00 USDT</div>
-          <div class="compound-val-cop" id="proj-30d-cop">≈ zsh COP</div>
+          <div class="compound-val-cop" id="proj-30d-cop">≈ $0 COP</div>
         </div>
         <div class="compound-item">
           <div class="compound-period">📅 En 60 Días</div>
           <div class="compound-val-usdt" id="proj-60d-usdt">+0.00 USDT</div>
-          <div class="compound-val-cop" id="proj-60d-cop">≈ zsh COP</div>
+          <div class="compound-val-cop" id="proj-60d-cop">≈ $0 COP</div>
         </div>
         <div class="compound-item highlight">
           <div class="compound-period">🎯 En 90 Días</div>
           <div class="compound-val-usdt" id="proj-90d-usdt">+0.00 USDT</div>
-          <div class="compound-val-cop" id="proj-90d-cop">≈ zsh COP</div>
+          <div class="compound-val-cop" id="proj-90d-cop">≈ $0 COP</div>
         </div>
       </div>
     </div>
@@ -3629,7 +3713,7 @@
 
   </div>
 
-  <script src="/app.js?v=20261030_1225"></script>
+  <script src="/app.js?v=20261103_quant"></script>
 <!-- MODAL DE TRANSFERENCIA DE SALDO (BOT <-> MANUAL) -->
   <div id="wallet-transfer-modal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(6px); z-index: 99999; align-items: center; justify-content: center; padding: 20px;">
     <div style="background: linear-gradient(135deg, #0f172a, #1e293b); border: 1px solid rgba(139, 92, 246, 0.4); border-radius: 14px; width: 100%; max-width: 440px; padding: 22px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
