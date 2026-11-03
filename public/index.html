@@ -2221,6 +2221,41 @@
       box-shadow: 0 4px 12px rgba(16, 185, 129, 0.45);
     }
 
+    /* Botón de Ojo para Ver / Comprimir Secciones */
+    .btn-eye-toggle {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: #cbd5e1;
+      border-radius: 8px;
+      padding: 5px 11px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .btn-eye-toggle:hover {
+      background: rgba(56, 189, 248, 0.16);
+      border-color: #38bdf8;
+      color: #38bdf8;
+      transform: translateY(-1px);
+    }
+    .btn-eye-toggle.is-compressed {
+      background: rgba(245, 158, 11, 0.16);
+      border-color: rgba(245, 158, 11, 0.45);
+      color: #fbbf24;
+    }
+    .sec-collapsible-body {
+      transition: opacity 0.22s ease;
+    }
+    .sec-collapsible-body.is-compressed {
+      display: none !important;
+    }
+
 </style>
 </head>
 <body>
@@ -2238,7 +2273,9 @@
         </div>
       </div>
       <div class="header-actions">
-        
+        <button type="button" id="btn-master-eye-clean" class="btn-eye-toggle" onclick="window.toggleMasterCleanView()" title="Comprimir o expandir paneles secundarios para eliminar ruido visual">
+          <span>👁️</span> <span id="lbl-master-eye">Modo Sin Ruido</span>
+        </button>
         <div class="fng-pill" id="fng-pill" title="Crypto Fear & Greed Index">
           <span>🌡️</span> <span id="fng-text">50 Neutral</span>
         </div>
@@ -2267,18 +2304,21 @@
               <div style="font-size:0.82rem; color:#94a3b8; margin-top:2px;" id="session-banner-reason">Sincronizando régimen con Binance...</div>
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-            <div style="text-align:right;">
-              <div style="font-size:0.72rem; color:#64748b; text-transform:uppercase; font-weight:600;">Reserva Protegida</div>
-              <div style="font-size:1rem; font-weight:700; color:#fbbf24;" id="session-reserved-val">$0.00 USDT</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:0.72rem; color:#64748b; text-transform:uppercase; font-weight:600;">Disponible para Operar</div>
-              <div style="font-size:1rem; font-weight:700; color:#34d399;" id="session-spendable-val">$0.00 USDT</div>
-            </div>
-            <div style="background:rgba(96, 165, 250, 0.12); border:1px solid rgba(96, 165, 250, 0.25); border-radius:8px; padding:6px 12px; font-size:0.8rem; color:#cbd5e1; max-width:340px;">
-              💡 <b>Estrategia de Sesión:</b> <span id="session-banner-rec">Sincronizando...</span>
-            </div>
+          <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-session" title="Ver o comprimir detalle de sesión">
+            <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+          </button>
+        </div>
+        <div id="sec-body-session" class="sec-collapsible-body" style="display:flex; justify-content:flex-end; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06);">
+          <div style="text-align:right;">
+            <div style="font-size:0.72rem; color:#64748b; text-transform:uppercase; font-weight:600;">Reserva Protegida</div>
+            <div style="font-size:1rem; font-weight:700; color:#fbbf24;" id="session-reserved-val">$0.00 USDT</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:0.72rem; color:#64748b; text-transform:uppercase; font-weight:600;">Disponible para Operar</div>
+            <div style="font-size:1rem; font-weight:700; color:#34d399;" id="session-spendable-val">$0.00 USDT</div>
+          </div>
+          <div style="background:rgba(96, 165, 250, 0.12); border:1px solid rgba(96, 165, 250, 0.25); border-radius:8px; padding:6px 12px; font-size:0.8rem; color:#cbd5e1; max-width:340px;">
+            💡 <b>Estrategia de Sesión:</b> <span id="session-banner-rec">Sincronizando...</span>
           </div>
         </div>
       </div>
@@ -2293,18 +2333,23 @@
               ⚖️
             </div>
             <div>
-              <div style="font-weight: 800; font-size: 0.95rem; color: #c084fc; display: flex; align-items: center; gap: 8px;">
+              <div style="font-weight: 800; font-size: 0.95rem; color: #c084fc; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 DIVISIÓN DE SALDO: BOT VS OPERACIONES MANUALES
                 <span style="background: rgba(139, 92, 246, 0.2); color: #d8b4fe; font-size: 0.7rem; padding: 2px 7px; border-radius: 4px; font-weight: 700;">CAPITAL BLINDADO</span>
               </div>
               <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 2px;">
-                El bot solo opera su cuota asignada. Tu saldo manual está 100% blindado para que crees tus propias operaciones en cualquier moneda del radar.
+                El bot solo opera su cuota asignada. Tu saldo manual está 100% blindado para tus propias operaciones.
               </div>
             </div>
           </div>
 
-          <!-- Lado Central: Tarjetas de Saldo -->
-          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+          <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-wallet" title="Ver o comprimir controles de saldo">
+            <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+          </button>
+        </div>
+
+        <!-- Cuerpo Colapsable: Tarjetas de Saldo y Botones -->
+        <div id="sec-body-wallet" class="sec-collapsible-body" style="display: flex; justify-content: flex-end; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
             
             <!-- Saldo Bot -->
             <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 8px 14px; text-align: right;">
@@ -2336,66 +2381,78 @@
               </button>
             </div>
 
-          </div>
-
         </div>
       </div>
 
       <!-- CENTINELA ALPHA: RECOVERY PROGRESS BAR -->
       <div id="recovery-container" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(16, 185, 129, 0.08)); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 14px 18px; margin: 15px 0 20px 0; box-shadow: 0 4px 14px rgba(0,0,0,0.25);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 1.3rem;">🎯</span>
             <div>
-              <div style="font-weight: 700; font-size: 0.95rem; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+              <div style="font-weight: 700; font-size: 0.95rem; color: #f59e0b; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 PLAN DE RECUPERACIÓN (AMORTIZACIÓN REAL)
                 <span id="recovery-badge-target" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; font-size: 0.72rem; padding: 2px 7px; border-radius: 4px; font-weight: 600;">PÉRDIDAS PASADAS: -$15.99 USDT</span>
               </div>
-              <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 2px;">
-                Cero ventas en pérdida en Spot. Cada ganancia amortiza directamente las ventas en rojo pasadas hasta quedar en verde neto.
-              </div>
             </div>
           </div>
-          <div style="text-align: right;">
-            <div id="recovery-stats-text" style="font-weight: 700; font-size: 1.05rem; color: #f59e0b;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div id="recovery-stats-text" style="font-weight: 700; font-size: 0.98rem; color: #f59e0b;">
               +8.70 / 15.99 USDT (54%)
             </div>
-            <div id="recovery-remaining-text" style="font-size: 0.75rem; color: #cbd5e1; margin-top: 2px;">
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-recovery" title="Ver o comprimir barra de recuperación">
+              <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+            </button>
+          </div>
+        </div>
+        <div id="sec-body-recovery" class="sec-collapsible-body" style="margin-top: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+            <div style="font-size: 0.78rem; color: #94a3b8;">
+              Cero ventas en pérdida en Spot. Cada ganancia amortiza directamente las ventas en rojo pasadas hasta quedar en verde neto.
+            </div>
+            <div id="recovery-remaining-text" style="font-size: 0.75rem; color: #cbd5e1;">
               Faltan 7.29 USDT para saldar errores pasados
             </div>
           </div>
-        </div>
-        <div style="width: 100%; height: 9px; background: rgba(255,255,255,0.08); border-radius: 6px; overflow: hidden; position: relative;">
-          <div id="recovery-progress-bar" style="width: 54%; height: 100%; background: linear-gradient(90deg, #ef4444, #f59e0b); border-radius: 6px; transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+          <div style="width: 100%; height: 9px; background: rgba(255,255,255,0.08); border-radius: 6px; overflow: hidden; position: relative;">
+            <div id="recovery-progress-bar" style="width: 54%; height: 100%; background: linear-gradient(90deg, #ef4444, #f59e0b); border-radius: 6px; transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+          </div>
         </div>
       </div>
 
 
-          <!-- Comparativa: Depósitos vs Ganancias del Bot (Meta de Superación) -->
       <!-- COMPARATIVA EN TIEMPO REAL: DEPÓSITOS TOTALES VS GANANCIAS DEL BOT (MISIÓN DE SUPERACIÓN) -->
-      <div id="crossover-comparison-card" style="margin-bottom: 25px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 14px; padding: 20px 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);">
+      <div id="crossover-comparison-card" style="margin-bottom: 25px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95)); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 14px; padding: 16px 22px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);">
         
-        <!-- Header con Título, Selector de Moneda y Administrador -->
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px;">
+        <!-- Header con Título, Selector de Moneda, Administrador y Ojo -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
           <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 10px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+            <div style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 10px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">
               📊
             </div>
             <div>
-              <div style="font-weight: 800; font-size: 1.05rem; color: #60a5fa; display: flex; align-items: center; gap: 8px; letter-spacing: 0.3px;">
+              <div style="font-weight: 800; font-size: 1rem; color: #60a5fa; display: flex; align-items: center; gap: 8px; letter-spacing: 0.3px; flex-wrap: wrap;">
                 MISIÓN DE SUPERACIÓN: GANANCIAS DEL BOT VS DEPÓSITOS
                 <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.72rem; padding: 3px 8px; border-radius: 4px; font-weight: 700; border: 1px solid rgba(16, 185, 129, 0.3);">
                   META: 100% RETORNO
                 </span>
               </div>
-              <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 3px;">
-                Comparativa gráfica interactiva: Suma de TODOS tus depósitos desde el inicio de Binance ($550,000 COP) vs saldo real y ganancias generadas por el bot.
+              <div style="font-size: 0.78rem; color: #94a3b8; margin-top: 2px;">
+                Comparativa gráfica interactiva: Suma de TODOS tus depósitos vs ganancias generadas por el bot.
               </div>
             </div>
           </div>
 
-          <!-- Selector COP / USDT y Botón de Ajustar Depósitos -->
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-crossover" title="Ver o comprimir gráfica de depósitos vs ganancias">
+              <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="sec-body-crossover" class="sec-collapsible-body" style="margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+          <!-- Selector COP / USDT y Botón de Ajustar Depósitos -->
+          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px;">
             <div style="display: inline-flex; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 3px;">
               <button id="crossover-btn-cop" type="button" style="background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.2s;">
                 🇨🇴 COP ($ Pesos)
@@ -2409,7 +2466,6 @@
               <span id="crossover-deposits-chevron">▼</span>
             </button>
           </div>
-        </div>
 
         <!-- Panel Colapsable de Gestión de Depósitos (Oculto por defecto) -->
         <div id="crossover-deposits-panel" style="display: none; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 14px 18px; margin-bottom: 18px;">
@@ -2558,7 +2614,7 @@
             <span id="crossover-progress-sub-right" style="color: #fbbf24; font-weight: 600;">Faltan $176,400 COP ($42.00 USDT) para que las ganancias superen los depósitos al 100%</span>
           </div>
         </div>
-
+        </div>
       </div>
 
 <div id="auth-banner">
@@ -2587,7 +2643,15 @@
       <div class="opp-footnote">🤖 Modo Autónomo: Si no respondes antes del tiempo límite, el bot ejecutará automáticamente la oportunidad recomendada.</div>
     </div>
 
-    <div class="kpi-grid">
+    <!-- Cabecera de Resumen de Cartera con Ojo -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <span style="font-size:12px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">💼 Resumen General de Cartera &amp; KPIs</span>
+      <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-kpis" title="Ver o comprimir tarjetas de KPIs">
+        <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+      </button>
+    </div>
+
+    <div class="kpi-grid sec-collapsible-body" id="sec-body-kpis">
       <div class="kpi-card green">
         <div class="kpi-header">
           <span class="kpi-title">Capital Total Estimado</span>
@@ -2654,10 +2718,15 @@
 <!-- Active Positions Section -->
     <div class="section-title">
       <h2>🏹 Compras Activas (Trailing Take Profit)</h2>
-      <span class="section-tag" id="active-positions-count">Cargando posiciones...</span>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="section-tag" id="active-positions-count">Cargando posiciones...</span>
+        <button type="button" class="btn-eye-toggle" data-eye-target="positions-container" title="Ver o comprimir compras activas">
+          <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+        </button>
+      </div>
     </div>
 
-    <div class="positions-grid" id="positions-container">
+    <div class="positions-grid sec-collapsible-body" id="positions-container">
       <div id="positions-empty">🎯 <b>Sin posiciones abiertas.</b><br><span style="font-size:13px">El bot está escaneando el radar para comprar en la próxima caída confirmada.</span></div>
       <!-- Se inyectan y actualizan fluidamente in-place -->
     </div>
@@ -2669,27 +2738,34 @@
       <div class="split-card">
         <div class="section-title" style="margin-bottom:14px;">
           <h2>📡 Radar de Oportunidades (Trailing Buy)</h2>
-          <span class="section-tag">Watchlist</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="section-tag">Watchlist</span>
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-spot-radar" title="Ver o comprimir radar">
+              <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+            </button>
+          </div>
         </div>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
-          Monitorea caídas ≥ 1.5% o RSI sobrevendido para seguir el piso y comprar en el rebote exacto (+0.25%).
-        </p>
-        <div class="table-responsive">
-          <table class="radar-table">
-            <thead>
-              <tr>
-                <th>Moneda</th>
-                <th>Precio</th>
-                <th>Caída 24h</th>
-                <th>RSI (15m)</th>
-                <th>Estado</th>
-                <th style="text-align: right;">Acción</th>
-              </tr>
-            </thead>
-            <tbody id="radar-tbody">
-              <!-- Se inyecta fluidamente -->
-            </tbody>
-          </table>
+        <div id="sec-body-spot-radar" class="sec-collapsible-body">
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
+            Monitorea caídas ≥ 1.5% o RSI sobrevendido para seguir el piso y comprar en el rebote exacto (+0.25%).
+          </p>
+          <div class="table-responsive">
+            <table class="radar-table">
+              <thead>
+                <tr>
+                  <th>Moneda</th>
+                  <th>Precio</th>
+                  <th>Caída 24h</th>
+                  <th>RSI (15m)</th>
+                  <th>Estado</th>
+                  <th style="text-align: right;">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="radar-tbody">
+                <!-- Se inyecta fluidamente -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -2697,9 +2773,14 @@
       <div class="split-card">
         <div class="section-title" style="margin-bottom:14px;">
           <h2>📈 Curva de Ganancias Acumuladas</h2>
-          <span class="section-tag">USDT Netos</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="section-tag">USDT Netos</span>
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-spot-chart" title="Ver o comprimir curva de ganancias">
+              <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+            </button>
+          </div>
         </div>
-        <div style="height: 250px; width: 100%;">
+        <div id="sec-body-spot-chart" class="sec-collapsible-body" style="height: 250px; width: 100%;">
           <canvas id="pnlChart"></canvas>
         </div>
       </div>
@@ -2710,9 +2791,14 @@
     <div class="history-card">
       <div class="section-title">
         <h2>🏆 Historial de Ciclos Completados con Ganancia</h2>
-        <span class="section-tag">Registro de Binance Spot</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="section-tag">Registro de Binance Spot</span>
+          <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-spot-history" title="Ver o comprimir historial de ventas">
+            <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+          </button>
+        </div>
       </div>
-      <div class="table-responsive">
+      <div id="sec-body-spot-history" class="table-responsive sec-collapsible-body">
         <table class="history-table">
           <thead>
             <tr>
@@ -2739,7 +2825,7 @@
 
       <!-- GUÍA MAESTRA VISUAL DE LA ARQUITECTURA CUANTITATIVA -->
       <div style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92)); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 16px; padding: 20px 24px; margin-bottom: 22px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div style="display: flex; align-items: center; gap: 12px;">
             <div style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 10px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">
               🏛️
@@ -2756,10 +2842,13 @@
               </div>
             </div>
           </div>
+          <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-strat-guide" title="Ver o comprimir guía de los 3 pilares">
+            <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+          </button>
         </div>
 
         <!-- 3 Pilares Visuales -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px;">
+        <div id="sec-body-strat-guide" class="sec-collapsible-body" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
           
           <!-- Pilar 1: Doble Llave Cero Pérdidas -->
           <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 14px 16px;">
@@ -2812,6 +2901,9 @@
           <span id="budget-sum-badge">Total: 100%</span>
         </div>
         <div class="hub-header-right">
+          <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-strat-hub" title="Ver o comprimir las 5 tarjetas de estrategia">
+            <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+          </button>
           <button id="btn-toggle-compact-view" class="btn-compact-mode">📦 Vista Compacta</button>
           <button id="btn-save-alloc" class="btn-save-alloc">💾 Guardar Presupuesto</button>
           <div class="hub-mode-toggle">
@@ -2824,6 +2916,7 @@
         </div>
       </div>
 
+      <div id="sec-body-strat-hub" class="sec-collapsible-body">
       <!-- Quick Preset Buttons -->
       <div class="presets-mini-row">
         <span class="presets-mini-label">⚡ Ajustes Rápidos de Presupuesto:</span>
@@ -2841,7 +2934,7 @@
               <div class="strategy-name">🏹 1. Cazador Trailing (Rebound Hunter)</div>
             </div>
             <div class="strategy-card-header-actions">
-              <button class="btn-card-toggle" data-target="details-trailing" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <button class="btn-card-toggle" data-target="details-trailing" title="Mostrar/ocultar descripción y mecánicas">👁️ Info ▾</button>
               <label class="switch">
                 <input type="checkbox" id="toggle-trailing" checked>
                 <span class="slider"></span>
@@ -2947,7 +3040,7 @@
               <div class="strategy-name">🛡️ 2. Smart DCA (Rescate por Lotes)</div>
             </div>
             <div class="strategy-card-header-actions">
-              <button class="btn-card-toggle" data-target="details-dca" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <button class="btn-card-toggle" data-target="details-dca" title="Mostrar/ocultar descripción y mecánicas">👁️ Info ▾</button>
               <label class="switch">
                 <input type="checkbox" id="toggle-dca" checked>
                 <span class="slider"></span>
@@ -3046,7 +3139,7 @@
               <div class="strategy-name">🌐 3. Micro-Grid (Canales Laterales)</div>
             </div>
             <div class="strategy-card-header-actions">
-              <button class="btn-card-toggle" data-target="details-grid" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <button class="btn-card-toggle" data-target="details-grid" title="Mostrar/ocultar descripción y mecánicas">👁️ Info ▾</button>
               <label class="switch">
                 <input type="checkbox" id="toggle-grid" checked>
                 <span class="slider"></span>
@@ -3145,7 +3238,7 @@
               <div class="strategy-name">🏖️ 4. Cazador Weekend (Efecto CME)</div>
             </div>
             <div class="strategy-card-header-actions">
-              <button class="btn-card-toggle" data-target="details-weekend" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <button class="btn-card-toggle" data-target="details-weekend" title="Mostrar/ocultar descripción y mecánicas">👁️ Info ▾</button>
               <label class="switch">
                 <input type="checkbox" id="toggle-weekend" checked>
                 <span class="slider"></span>
@@ -3243,7 +3336,7 @@
               <div class="strategy-name">⚡ 5. Futuros Cuantitativo USDⓈ-M</div>
             </div>
             <div class="strategy-card-header-actions">
-              <button class="btn-card-toggle" data-target="details-futures" title="Mostrar/ocultar descripción y mecánicas">ℹ️ Info ▾</button>
+              <button class="btn-card-toggle" data-target="details-futures" title="Mostrar/ocultar descripción y mecánicas">👁️ Info ▾</button>
               <label class="switch">
                 <input type="checkbox" id="toggle-futures" checked>
                 <span class="slider"></span>
@@ -3327,6 +3420,7 @@
           </div>
         </div>
       </div>
+      </div>
     </div>
 
       <!-- Risk Management & Wave Timeframe Radar Hub -->
@@ -3337,10 +3431,13 @@
             <span>Blindaje de Capital, Brújula de Ondas & Reserva de Pólvora</span>
             <span class="risk-badge-active" id="risk-status-badge">🛡️ Escudo Cero Pérdidas Activo (Umbral DCA -4.0%)</span>
           </div>
-          <button id="btn-save-risk" class="btn-save-alloc">💾 Guardar Ajustes Globales</button>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button id="btn-save-risk" class="btn-save-alloc">💾 Guardar Ajustes Globales</button>
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-strat-risk" title="Ver o comprimir sección">👁️ Comprimir</button>
+          </div>
         </div>
 
-        <div class="risk-grid">
+        <div id="sec-body-strat-risk" class="risk-grid sec-collapsible-body">
           <!-- Umbral de Rescate / Vigilancia Card -->
           <div class="risk-card">
             <div class="risk-card-top">
@@ -3409,11 +3506,14 @@
           <span>🚀 Proyector de Interés Compuesto</span>
           <span class="compound-tag" id="compound-rate-tag">Calculando proyección…</span>
         </div>
-        <div class="vault-mini-badge" id="vault-mini-badge" title="Saldo blindado en Bóveda Simple Earn">
-          <span>🏦 Bóveda Earn:</span> <b id="vault-amount">$0.00 USDT</b>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="vault-mini-badge" id="vault-mini-badge" title="Saldo blindado en Bóveda Simple Earn">
+            <span>🏦 Bóveda Earn:</span> <b id="vault-amount">$0.00 USDT</b>
+          </div>
+          <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-strat-compound" title="Ver o comprimir sección">👁️ Comprimir</button>
         </div>
       </div>
-      <div class="compound-grid">
+      <div id="sec-body-strat-compound" class="compound-grid sec-collapsible-body">
         <div class="compound-item">
           <div class="compound-period">📅 En 30 Días</div>
           <div class="compound-val-usdt" id="proj-30d-usdt">+0.00 USDT</div>
@@ -3531,9 +3631,12 @@
       <div style="margin-top:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <h3 style="font-size:14px; font-weight:700; color:#e2e8f0; margin:0;">⚡ Posiciones Vivas (2x ISOLATED - Margen $5 USDT)</h3>
-          <span id="fut-dev-pos-badge" style="font-size:11px; color:#a78bfa; background:rgba(139,92,246,0.15); padding:2px 8px; border-radius:4px;">0 activas</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span id="fut-dev-pos-badge" style="font-size:11px; color:#a78bfa; background:rgba(139,92,246,0.15); padding:2px 8px; border-radius:4px;">0 activas</span>
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-fut-pos" title="Ver o comprimir sección">👁️ Comprimir</button>
+          </div>
         </div>
-        <div class="table-responsive">
+        <div id="sec-body-fut-pos" class="table-responsive sec-collapsible-body">
           <table class="history-table" style="font-size:12px; width:100%;">
             <thead>
               <tr>
@@ -3558,9 +3661,12 @@
       <div style="margin-top:24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <h3 style="font-size:14px; font-weight:700; color:#e2e8f0; margin:0;">📡 Radar Cuantitativo en Vivo (7 Pares Institucionales)</h3>
-          <span style="font-size:11px; color:var(--text-muted);">Actualizado cada 4 segundos</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:11px; color:var(--text-muted);">Actualizado cada 4 segundos</span>
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-fut-radar" title="Ver o comprimir sección">👁️ Comprimir</button>
+          </div>
         </div>
-        <div class="table-responsive">
+        <div id="sec-body-fut-radar" class="table-responsive sec-collapsible-body">
           <table class="radar-table" style="font-size:12px; width:100%;">
             <thead>
               <tr>
@@ -3585,9 +3691,12 @@
       <div style="margin-top:24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <h3 style="font-size:14px; font-weight:700; color:#e2e8f0; margin:0;">🏆 Operaciones de Futuros Cerradas con Ganancia</h3>
-          <span id="fut-dev-trades-count" style="font-size:11px; color:#34d399; background:rgba(16,185,129,0.15); padding:2px 8px; border-radius:4px;">0 operaciones</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span id="fut-dev-trades-count" style="font-size:11px; color:#34d399; background:rgba(16,185,129,0.15); padding:2px 8px; border-radius:4px;">0 operaciones</span>
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-fut-history" title="Ver o comprimir sección">👁️ Comprimir</button>
+          </div>
         </div>
-        <div class="table-responsive">
+        <div id="sec-body-fut-history" class="table-responsive sec-collapsible-body">
           <table class="history-table" style="font-size:12px; width:100%;">
             <thead>
               <tr>
@@ -3625,11 +3734,15 @@
               Parámetros deducidos y calibrados a partir de 1.000 horas de datos reales de Binance Spot y Futuros.
             </p>
           </div>
-          <span style="font-size:11px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); padding:4px 10px; border-radius:6px; font-weight:600;">
-            Hora Colombia Activa
-          </span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:11px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); padding:4px 10px; border-radius:6px; font-weight:600;">
+              Hora Colombia Activa
+            </span>
+            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-analysis-cot" title="Ver o comprimir sección">👁️ Comprimir</button>
+          </div>
         </div>
 
+        <div id="sec-body-analysis-cot" class="sec-collapsible-body">
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:20px;">
           <!-- 1. Drenaje Nocturno -->
           <div style="background:rgba(15, 23, 42, 0.6); border:1px solid rgba(239, 68, 68, 0.25); border-radius:10px; padding:14px;">
@@ -3702,6 +3815,7 @@
             </div>
           </div>
         </div>
+        </div>
       </div>
     </div>
   
@@ -3713,7 +3827,7 @@
 
   </div>
 
-  <script src="/app.js?v=20261103_quant"></script>
+  <script src="/app.js?v=20261103_eye"></script>
 <!-- MODAL DE TRANSFERENCIA DE SALDO (BOT <-> MANUAL) -->
   <div id="wallet-transfer-modal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(6px); z-index: 99999; align-items: center; justify-content: center; padding: 20px;">
     <div style="background: linear-gradient(135deg, #0f172a, #1e293b); border: 1px solid rgba(139, 92, 246, 0.4); border-radius: 14px; width: 100%; max-width: 440px; padding: 22px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">

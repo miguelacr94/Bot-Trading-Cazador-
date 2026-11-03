@@ -1491,7 +1491,7 @@
         document.querySelectorAll(".strategy-details-section.open").forEach(el => el.classList.remove("open"));
         document.querySelectorAll(".btn-card-toggle.open").forEach(btn => {
           btn.classList.remove("open");
-          btn.innerHTML = "ℹ️ Info ▾";
+          btn.innerHTML = "👁️ Info ▾";
         });
         document.querySelectorAll(".sugg-expandable.open").forEach(el => el.classList.remove("open"));
         document.querySelectorAll(".btn-toggle-sugg.open").forEach(btn => {
@@ -1504,7 +1504,7 @@
         document.querySelectorAll(".strategy-details-section").forEach(el => el.classList.add("open"));
         document.querySelectorAll(".btn-card-toggle").forEach(btn => {
           btn.classList.add("open");
-          btn.innerHTML = "ℹ️ Ocultar ▴";
+          btn.innerHTML = "👁️ Ocultar ▴";
         });
       }
     });
@@ -1517,7 +1517,7 @@
         if (details) {
           const isOpen = details.classList.toggle("open");
           cardBtn.classList.toggle("open", isOpen);
-          cardBtn.innerHTML = isOpen ? "ℹ️ Ocultar ▴" : "ℹ️ Info ▾";
+          cardBtn.innerHTML = isOpen ? "👁️ Ocultar ▴" : "👁️ Info ▾";
         }
         return;
       }
@@ -2488,6 +2488,135 @@
       setTimeout(tick, 2000);
     }
   }
+  // ---------- SISTEMA DE OJOS (VER / COMPRIMIR CADA SECCIÓN SIN RUIDO VISUAL) ----------
+  const EYE_STORAGE_KEY = "cazador_eye_collapsed_v1";
+
+  function loadCompressedSet() {
+    try {
+      const raw = localStorage.getItem(EYE_STORAGE_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw);
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveCompressedSet(set) {
+    try {
+      localStorage.setItem(EYE_STORAGE_KEY, JSON.stringify(Array.from(set)));
+    } catch {}
+  }
+
+  function applySectionEyeState(targetId, isCompressed) {
+    const bodyEl = document.getElementById(targetId);
+    const btnEl = document.querySelector(`.btn-eye-toggle[data-eye-target="${targetId}"]`);
+    if (bodyEl) {
+      if (isCompressed) {
+        bodyEl.classList.add("is-compressed");
+      } else {
+        bodyEl.classList.remove("is-compressed");
+      }
+    }
+    if (btnEl) {
+      if (isCompressed) {
+        btnEl.classList.add("is-compressed");
+        btnEl.innerHTML = "👁️ Ver";
+      } else {
+        btnEl.classList.remove("is-compressed");
+        btnEl.innerHTML = "👁️ Comprimir";
+      }
+    }
+    if (!isCompressed && targetId === "sec-body-spot-chart" && pnlChart) {
+      setTimeout(() => { try { pnlChart.resize(); } catch {} }, 60);
+    }
+    if (!isCompressed && targetId === "sec-body-crossover" && crossoverChart) {
+      setTimeout(() => { try { crossoverChart.resize(); } catch {} }, 60);
+    }
+  }
+
+  function syncMasterEyeButton(compressedSet) {
+    const masterBtn = document.getElementById("btn-master-eye-clean");
+    if (!masterBtn) return;
+    const noiseTargets = [
+      "sec-body-session",
+      "sec-body-wallet",
+      "sec-body-recovery",
+      "sec-body-crossover",
+      "sec-body-spot-chart",
+      "sec-body-strat-guide"
+    ];
+    const allCompressed = noiseTargets.every(id => compressedSet.has(id));
+    if (allCompressed) {
+      masterBtn.classList.add("is-compressed");
+      masterBtn.innerHTML = "👁️ Expandir Todo";
+    } else {
+      masterBtn.classList.remove("is-compressed");
+      masterBtn.innerHTML = "👁️ Modo Sin Ruido";
+    }
+  }
+
+  function initEyeCollapsibleSections() {
+    const compressedSet = loadCompressedSet();
+    const eyeBtns = document.querySelectorAll(".btn-eye-toggle[data-eye-target]");
+
+    eyeBtns.forEach(btn => {
+      const targetId = btn.getAttribute("data-eye-target");
+      if (!targetId) return;
+      applySectionEyeState(targetId, compressedSet.has(targetId));
+
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const currentSet = loadCompressedSet();
+        const willCompress = !currentSet.has(targetId);
+        if (willCompress) {
+          currentSet.add(targetId);
+        } else {
+          currentSet.delete(targetId);
+        }
+        saveCompressedSet(currentSet);
+        applySectionEyeState(targetId, willCompress);
+        syncMasterEyeButton(currentSet);
+      });
+    });
+
+    syncMasterEyeButton(compressedSet);
+  }
+
+  window.toggleMasterCleanView = function () {
+    const currentSet = loadCompressedSet();
+    const noiseTargets = [
+      "sec-body-session",
+      "sec-body-wallet",
+      "sec-body-recovery",
+      "sec-body-crossover",
+      "sec-body-spot-chart",
+      "sec-body-strat-guide"
+    ];
+    const allCompressed = noiseTargets.every(id => currentSet.has(id));
+
+    if (allCompressed) {
+      // Expandir todo
+      const allButtons = document.querySelectorAll(".btn-eye-toggle[data-eye-target]");
+      allButtons.forEach(btn => {
+        const id = btn.getAttribute("data-eye-target");
+        if (id) {
+          currentSet.delete(id);
+          applySectionEyeState(id, false);
+        }
+      });
+    } else {
+      // Comprimir paneles secundarios para dejar vista limpia
+      noiseTargets.forEach(id => {
+        currentSet.add(id);
+        applySectionEyeState(id, true);
+      });
+    }
+    saveCompressedSet(currentSet);
+    syncMasterEyeButton(currentSet);
+  };
+
+  initEyeCollapsibleSections();
   initTabNavigation();
   initCrossoverModule();
   tick();
