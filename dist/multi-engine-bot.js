@@ -1192,11 +1192,15 @@ export class TrailingMasterBot {
                     console.log(`⏳ [SMART DCA: ESPERANDO PISO] ${cleanSym} ya cayó ${dropFromLot1.toFixed(2)}%, pero la vela 15m sigue cayendo sin absorción. Esperando giro real para entrar más barato.`);
                     continue;
                 }
-                const dcaAllocWeight = Math.max(0.30, Math.min(0.60, ((this.controls.allocations?.smart_dca || 40) / 100)));
+                const dcaAllocWeight = Math.max(0.35, Math.min(0.65, ((this.controls.allocations?.smart_dca || 40) / 100)));
+                const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
+                const spendableForDca = sessionPlan.spendableUsdt >= this.minUsdtToTrade ? sessionPlan.spendableUsdt : usdt;
                 if (lotCount === 1) {
-                    // --- EVALUACIÓN LOTE #2 (Promediado de Soporte) ---
+                    // --- EVALUACIÓN LOTE #2 (Pirámide Invertida Nivel 2: 1.5x fuerza en soporte) ---
                     if (dropFromLot1 <= -2.5 && rsi <= 45) {
-                        const amount = Math.min(16, Math.max(10, Math.floor(usdt * dcaAllocWeight * 100) / 100));
+                        const amount = this.calculateSessionLotSize(cleanSym, spendableForDca, dcaAllocWeight, "smart_dca", 2, rsi);
+                        if (amount < this.minUsdtToTrade)
+                            continue;
                         const target08 = (curPrice * 1.008).toFixed(4);
                         const score = Math.abs(dropFromLot1) * 1.5 + (50 - rsi);
                         candidates.push({
@@ -1211,14 +1215,16 @@ export class TrailingMasterBot {
                             minGainPct: 0.80,
                             amount,
                             potentialTarget: target08,
-                            reason: `Cayó ${dropFromLot1.toFixed(2)}% desde Lote 1 (RSI ${rsi.toFixed(1)}). Invertir ${amount.toFixed(2)} USDT crea Lote 2 en soporte con meta inicial ${target08}.`
+                            reason: `Cayó ${dropFromLot1.toFixed(2)}% desde Lote 1 (RSI ${rsi.toFixed(1)}). Pirámide Invertida Nivel 2 (${amount.toFixed(2)} USDT) en soporte con meta inicial ${target08}.`
                         });
                     }
                 }
                 else if (lotCount === 2) {
-                    // --- EVALUACIÓN LOTE #3 (Rescate Extremo / Suelo Profundo con Mayor Rango de Rebote) ---
+                    // --- EVALUACIÓN LOTE #3 (Pirámide Invertida Nivel 3: 2.2x Golpe Maestro en capitulación) ---
                     if (dropFromLot1 <= -5.5 && dropFromLatest <= -2.0 && rsi <= 38) {
-                        const amount = Math.min(15, Math.max(10, Math.floor(usdt * 0.40 * 100) / 100));
+                        const amount = this.calculateSessionLotSize(cleanSym, spendableForDca, dcaAllocWeight, "smart_dca", 3, rsi);
+                        if (amount < this.minUsdtToTrade)
+                            continue;
                         const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
                         const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
                         let expandedMinGain = 1.20;
@@ -2246,7 +2252,7 @@ export class TrailingMasterBot {
                     }
                     catch { }
                     const strat = w.strategy || "trailing_rebound";
-                    let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt, sessionPlan.lotFractionPct, strat);
+                    let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt, sessionPlan.lotFractionPct, strat, 1, w.rsi || 40);
                     if (amountToUse < this.minUsdtToTrade && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
                         amountToUse = this.minUsdtToTrade;
                     }
@@ -4249,21 +4255,47 @@ export class TrailingMasterBot {
             updatedAt: Date.now()
         };
     }
-    calculateSessionLotSize(symbol, spendableUsdt, lotFractionPct, strategy = "trailing_rebound") {
+    calculateSessionLotSize(symbol, spendableUsdt, lotFractionPct, strategy = "trailing_rebound", tier = 1, rsi = 40) {
         if (spendableUsdt < this.minUsdtToTrade)
             return 0;
+        // Capital total estimado (invertido + disponible) para escalar techos dinámicamente a medida que crece la cuenta
+        let activeInvested = 0;
+        for (const p of this.activeTrailingPositions.values()) {
+            activeInvested += Number(p.investedUsdt || 0);
+        }
+        const totalPortfolioEst = Math.max(250, activeInvested + spendableUsdt);
+        const isMeme = this.memeWatchlist.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE");
         // Graduar el tamaño del lote combinando la fracción de la sesión horaria (COT)
         // con el porcentaje asignado a la estrategia activa en controls.allocations
         const stratAllocPct = (this.controls?.allocations?.[strategy] ?? 50) / 100;
-        // Escala suave entre 0.75x (cuando la estrategia tiene 20% de cuota) y 1.15x (cuando tiene >= 70% de cuota)
         const allocMultiplier = Math.max(0.75, Math.min(1.15, 0.65 + stratAllocPct * 0.70));
-        let lot = Math.floor(spendableUsdt * lotFractionPct * allocMultiplier * 100) / 100;
+        // Pirámide Invertida Institucional (1 : 1.5 : 2.2):
+        // - Nivel 1 (Explorador): prudente arriba para jamás congelar medio banco en el techo de una caída.
+        // - Nivel 2 (Soporte DCA -2.5%+): 1.35x más potente comprando monedas más baratas.
+        // - Nivel 3 (Capitulación DCA -5.5%+): 1.75x golpe maestro en el suelo estadístico.
+        let tierMultiplier = 0.85;
+        let tierMaxCap = isMeme
+            ? Math.max(15, Math.min(22, totalPortfolioEst * 0.075))
+            : (rsi <= 28 ? Math.max(20, Math.min(35, totalPortfolioEst * 0.115)) : Math.max(18, Math.min(25, totalPortfolioEst * 0.085)));
+        if (tier === 2) {
+            tierMultiplier = 1.35;
+            tierMaxCap = isMeme
+                ? Math.max(18, Math.min(30, totalPortfolioEst * 0.10))
+                : Math.max(22, Math.min(36, totalPortfolioEst * 0.12));
+        }
+        else if (tier === 3) {
+            tierMultiplier = 1.75;
+            tierMaxCap = isMeme
+                ? Math.max(22, Math.min(38, totalPortfolioEst * 0.13))
+                : Math.max(28, Math.min(48, totalPortfolioEst * 0.16));
+        }
+        else if (rsi <= 28) {
+            tierMultiplier = 1.15;
+        }
+        let lot = Math.floor(spendableUsdt * lotFractionPct * allocMultiplier * tierMultiplier * 100) / 100;
+        lot = Math.min(lot, Math.floor(tierMaxCap * 100) / 100);
         if (lot < this.minUsdtToTrade && spendableUsdt >= this.minUsdtToTrade) {
             lot = this.minUsdtToTrade;
-        }
-        // Tope de riesgo para memecoins: máximo $50 USDT
-        if (this.memeWatchlist.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE")) {
-            lot = Math.min(lot, 50);
         }
         return Math.min(lot, spendableUsdt);
     }
