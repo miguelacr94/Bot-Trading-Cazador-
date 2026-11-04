@@ -143,7 +143,8 @@ export class TrailingMasterBot {
         }
     }
     controls = {
-        maxPositions: 7,
+        maxPositions: 8,
+        wideGapLotSize: 50,
         strategies: {
             trailing_rebound: true,
             smart_dca: true,
@@ -518,7 +519,9 @@ export class TrailingMasterBot {
                 if (dbCtrl && dbCtrl.strategies) {
                     this.controls = dbCtrl;
                     if (this.controls.maxPositions === undefined)
-                        this.controls.maxPositions = 7;
+                        this.controls.maxPositions = 8;
+                    if (this.controls.wideGapLotSize === undefined)
+                        this.controls.wideGapLotSize = 50;
                     if (!this.controls.coreWatchlist)
                         this.controls.coreWatchlist = dbCtrl.coreWatchlist || CORE_WATCHLIST;
                     if (!this.controls.memeWatchlist)
@@ -544,7 +547,9 @@ export class TrailingMasterBot {
                 if (!this.controls.rejectedSuggestions)
                     this.controls.rejectedSuggestions = {};
                 if (this.controls.maxPositions === undefined)
-                    this.controls.maxPositions = 7;
+                    this.controls.maxPositions = 8;
+                if (this.controls.wideGapLotSize === undefined)
+                    this.controls.wideGapLotSize = 50;
                 if (this.controls.cashReservePct === undefined)
                     this.controls.cashReservePct = 25;
                 if (this.controls.maxPerCoinPct === undefined)
@@ -2424,9 +2429,9 @@ export class TrailingMasterBot {
                         : ((coinVol >= 3.8 && (upsideGapPct >= 2.2 || totalDropFromPeak >= 2.0 || (w.rsi || 40) <= 39)) || coinVol >= 4.6
                             ? "ALTA_VOLATILIDAD"
                             : (coinVol >= 2.5 && upsideGapPct >= 1.5 ? "IMPULSO" : "ESTANDAR"));
-                    // Verificar cupo de monedas activas: permitimos hasta 7 monedas para dar cabida plena a las brechas de NEAR/SUI/AVAX/SOL
+                    // Verificar cupo de monedas activas: permitimos hasta 8 monedas para dar cabida plena a las brechas de NEAR/SUI/AVAX/SOL
                     const uniqueActiveNow = this.getUniqueActiveSymbols().size;
-                    const configuredMax = Math.max(7, this.controls?.maxPositions || 7);
+                    const configuredMax = Math.max(8, this.controls?.maxPositions || 8);
                     const stdCap = configuredMax - 1;
                     if (uniqueActiveNow >= configuredMax) {
                         console.log(`🎯 [CUPO LLENO] ${uniqueActiveNow}/${configuredMax} monedas activas en cartera. Esperando salida.`);
@@ -4929,8 +4934,8 @@ export class TrailingMasterBot {
             }
             this.lastSessionKey = sessionPlan.sessionKey;
             const uniqueActiveCount = this.getUniqueActiveSymbols().size;
-            // Capacidad ampliada: permite hasta el configured max (default 7) para dar espacio a la nueva estrategia de Brechas (NEAR/SUI/AVAX/SOL)
-            const configuredMax = Math.max(7, this.controls?.maxPositions || 7);
+            // Capacidad ampliada: permite hasta 8 monedas activas simultáneas para dar espacio a la nueva estrategia de Brechas (NEAR/SUI/AVAX/SOL)
+            const configuredMax = Math.max(8, this.controls?.maxPositions || 8);
             const maxUniqueCoins = configuredMax;
             console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva: ${sessionPlan.reservedUsdt.toFixed(2)}) | Monedas: ${uniqueActiveCount}/${maxUniqueCoins} (${this.activeTrailingPositions.size} lotes) | Cazando piso: ${this.buyWatches.size}`);
             // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
