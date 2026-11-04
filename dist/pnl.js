@@ -17,7 +17,7 @@ export const PNL_SYMBOLS = [
     "BONKUSDT",
     "SHIBUSDT",
     "WIFUSDT",
-    "SUIUSDT"
+    "SUIUSDT",
 ];
 // Fecha fija de inicio del ciclo del Bot (15 Oct 2026) para que NUNCA se borren ganancias pasadas al avanzar el calendario
 export const PNL_SINCE = new Date("2026-10-15T00:00:00Z").getTime();
@@ -32,9 +32,13 @@ export async function computeRealizedPnl(client, since = PNL_SINCE) {
         const base = symbol.replace("USDT", "");
         let trades = [];
         try {
-            const res = await client.myTrades(symbol, { limit: 1000, recvWindow: 60000 });
+            const res = await client.myTrades(symbol, {
+                limit: 1000,
+                recvWindow: 60000,
+            });
             const allTrades = res ? res.data : [];
-            trades = since > 0 ? allTrades.filter((t) => t.time >= since) : allTrades;
+            trades =
+                since > 0 ? allTrades.filter((t) => t.time >= since) : allTrades;
         }
         catch {
             continue;
@@ -49,7 +53,12 @@ export async function computeRealizedPnl(client, since = PNL_SINCE) {
             if (last && last.orderId === t.orderId)
                 last.fills.push(t);
             else
-                orders.push({ orderId: t.orderId, isBuyer: t.isBuyer, time: t.time, fills: [t] });
+                orders.push({
+                    orderId: t.orderId,
+                    isBuyer: t.isBuyer,
+                    time: t.time,
+                    fills: [t],
+                });
         }
         const lots = [];
         for (const o of orders) {
@@ -104,7 +113,7 @@ export async function computeRealizedPnl(client, since = PNL_SINCE) {
                 proceedsUsdt: proceeds,
                 feesUsdt: feeUsdt * ratio,
                 pnlUsdt: pnl,
-                pnlPct: (pnl / cost) * 100
+                pnlPct: (pnl / cost) * 100,
             });
         }
     }

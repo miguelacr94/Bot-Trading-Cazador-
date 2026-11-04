@@ -14,7 +14,7 @@ dotenv.config();
 // Tasa de referencia COP por USDT (P2P Colombia aprox.)
 const COP_PER_USDT = 4200;
 // WATCHLISTS SEPARADAS: CLÁSICAS Y CANASTA MEMECOINS TIER-1
-export const CORE_WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT"];
+export const CORE_WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "NEARUSDT", "SUIUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT"];
 export const MEME_WATCHLIST = ["PEPEUSDT", "DOGEUSDT", "BONKUSDT"];
 export const WATCHLIST = [...CORE_WATCHLIST, ...MEME_WATCHLIST];
 // Formateador dinámico de precios para soportar micro-ticks y monedas estándar (ETH/SOL/BTC)
@@ -1539,13 +1539,15 @@ export class TrailingMasterBot {
                 }
                 else if (!pos.customMinGainPct && isMaxGap) {
                     // 🚀 ESCALÓN 4 (MÁXIMA BRECHA >= 5.0% rango o >= 3.4% brecha al techo):
-                    // Activa en +1.20% para aprovechar toda la brecha libre hasta la cresta de la ola
-                    activationTarget = 1.20;
+                    // En monedas de alta oscilación (NEAR, SUI, AVAX) expandimos dinámicamente según la brecha libre
+                    // garantizando un despegue potente entre +1.60% y +2.40% para maximizar el cobro del rebote
+                    const dynamicGapTarget = Math.max(1.60, Math.min(2.40, gapPct * 0.35));
+                    activationTarget = Number(dynamicGapTarget.toFixed(2));
                 }
                 else if (!pos.customMinGainPct && isHighVolCoin) {
                     // 🚀 ESCALÓN 3 (ALTA VOLATILIDAD >= 3.8% rango):
-                    // Despierta en +1.05% para no cortar el impulso abajo y buscar la máxima altura del rebote
-                    activationTarget = 1.05;
+                    // Despierta en +1.25% para no cortar el impulso abajo y buscar la máxima altura del rebote
+                    activationTarget = 1.25;
                 }
                 else if (!pos.customMinGainPct && isPreWeekendHarvest) {
                     activationTarget = 0.60; // Viernes 06:00-17:00 COT: cosecha ágil para liberar USDT antes de Cazador Weekend
@@ -2125,7 +2127,8 @@ export class TrailingMasterBot {
             const gapPct = meta?.upsideGapPct || 0;
             const isMaxGap = coinVol >= 5.0 || gapPct >= 3.4 || meta?.convictionTier === "MAXIMA_BRECHA";
             const isHighVol = isMaxGap || coinVol >= 3.8 || meta?.convictionTier === "ALTA_VOLATILIDAD";
-            const activationPct = meta?.customMinGainPct || (strategy === "micro_grid" ? 0.58 : (isMaxGap ? 1.20 : (isHighVol ? 1.05 : 0.80)));
+            const dynamicGapAct = isMaxGap ? Math.max(1.60, Math.min(2.40, gapPct * 0.35)) : 1.25;
+            const activationPct = meta?.customMinGainPct || (strategy === "micro_grid" ? 0.58 : (isMaxGap ? Number(dynamicGapAct.toFixed(2)) : (isHighVol ? 1.25 : 0.80)));
             // Registrar posición para Trailing Take Profit
             this.activeTrailingPositions.set(symbol, {
                 symbol,
