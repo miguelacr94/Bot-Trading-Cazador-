@@ -167,13 +167,18 @@
     if (d.accountAvailable) {
       setText($("kpi-free-usdt-num"), `$${fmt((pf.usdtFree || 0) + (pf.usdtEarn || 0))}`);
     }
-    setText($("kpi-slots"), `Slots en uso: ${pf.openPositionsCount} / ${pf.maxSlots}`);
+    const totalLots = pf.totalLotsCount || pf.openPositionsCount || 0;
+    setText($("kpi-slots"), `Monedas: ${pf.openPositionsCount} / ${pf.maxSlots || 7} (${totalLots} lotes)`);
 
     const perf = d.performance;
     if (perf) {
       const s = perf.totalPnlUsdt >= 0 ? "+" : "";
       setText($("kpi-realized-pnl-num"), `${s}${fmt(perf.totalPnlUsdt, 3)}`);
-      setText($("kpi-realized-cop"), `≈ ${s}$${cop(perf.totalPnlCop)} COP acumulados`);
+      if (typeof perf.grossWinsUsdt === "number") {
+        setText($("kpi-realized-cop"), `Bruto: +$${fmt(perf.grossWinsUsdt, 2)} | Ant: -$${fmt(Math.abs(perf.grossLossesUsdt || 0), 2)} (≈ ${s}$${cop(perf.totalPnlCop)} COP)`);
+      } else {
+        setText($("kpi-realized-cop"), `≈ ${s}$${cop(perf.totalPnlCop)} COP acumulados`);
+      }
       setText($("kpi-winrate"), `${perf.winRate}% Win Rate`);
       setText($("kpi-cycles-num"), `${perf.wins}`);
 
@@ -1942,33 +1947,29 @@
     const totalDepositedCop = customDeposits.reduce((acc, x) => acc + (Number(x.cop) || 0), 0);
     const totalDepositedUsdt = customDeposits.reduce((acc, x) => acc + (Number(x.usdt) || (Number(x.cop) / COP_PER_USDT)), 0);
 
-    // 2. Sumar todas las ganancias (+) y todas las pérdidas (-) de las operaciones cerradas
+    // 2. Sumar todas las ganancias (+) y todas las pérdidas (-) del historial completo auditado
     let grossGainsUsdt = 0;
     let grossLossesUsdt = 0;
     let winCount = 0;
     let lossCount = 0;
 
-    const cycles = (d.recentCycles && d.recentCycles.length > 0) ? d.recentCycles : [];
-    if (cycles.length > 0) {
+    if (d.performance && typeof d.performance.grossWinsUsdt === "number") {
+      grossGainsUsdt = d.performance.grossWinsUsdt;
+      grossLossesUsdt = d.performance.grossLossesUsdt || 0;
+      winCount = d.performance.wins || 0;
+      lossCount = d.performance.losses || 0;
+    } else {
+      const cycles = (d.recentCycles && d.recentCycles.length > 0) ? d.recentCycles : [];
       cycles.forEach(c => {
         const p = Number(c.pnlUsdt) || 0;
         if (p > 0.0001) {
           grossGainsUsdt += p;
           winCount++;
         } else if (p < -0.0001) {
-          grossLossesUsdt += p; // número negativo
+          grossLossesUsdt += p;
           lossCount++;
         }
       });
-    }
-    // Salvaguarda con el registro auditado mínimo verificado en Binance
-    if (grossGainsUsdt < 17.21) {
-      grossGainsUsdt = 17.21;
-      winCount = Math.max(winCount, 14);
-    }
-    if (grossLossesUsdt === 0) {
-      grossLossesUsdt = -5.64;
-      lossCount = Math.max(lossCount, 1);
     }
 
     // 3. Ganancia neta = Ganancias brutas cobradas + pérdidas

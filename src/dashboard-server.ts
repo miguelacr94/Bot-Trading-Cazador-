@@ -822,19 +822,40 @@ export class DashboardServer {
       });
     }
 
-    // 2. Fusionar trades locales con deduplicación inteligente contra Binance
+    // 2. Fusionar trades locales (Supabase) con deduplicación e igualación de costo por sub-lote
     for (const l of localLedger) {
-      const alreadyInBinance = binanceCycles.some((c: any) => {
-        if (c.orderId && l.orderId && String(c.orderId) === String(l.orderId)) return true;
+      let matchedKey: string | null = null;
+      let cOrderIdMatched = false;
+      for (const [k, c] of syncMap.entries()) {
+        if (c.orderId && l.orderId && String(c.orderId) === String(l.orderId)) {
+          matchedKey = k;
+          cOrderIdMatched = true;
+          break;
+        }
         if (c.symbol === l.symbol) {
           const priceDiff = Math.abs((c.avgSell || 0) - (l.sellPrice || 0)) / (c.avgSell || 1);
           const timeDiff = Math.abs((c.time || 0) - (l.time || 0));
-          if (priceDiff < 0.01 && timeDiff < 6 * 3600 * 1000) return true;
+          if (priceDiff < 0.01 && timeDiff < 6 * 3600 * 1000) {
+            matchedKey = k;
+            break;
+          }
         }
-        return false;
-      });
+      }
 
-      if (!alreadyInBinance) {
+      if (matchedKey) {
+        const existing = syncMap.get(matchedKey);
+        if (
+          existing &&
+          cOrderIdMatched &&
+          existing.pnlUsdt >= 0 &&
+          typeof l.pnlUsdt === "number" &&
+          l.pnlUsdt > existing.pnlUsdt
+        ) {
+          existing.avgBuy = l.buyPrice || existing.avgBuy;
+          existing.pnlUsdt = l.pnlUsdt;
+          existing.pnlPct = l.pnlPct || existing.pnlPct;
+        }
+      } else {
         const key = String(l.orderId || (l.symbol + "_" + Math.round(l.time / 1000)));
         if (!syncMap.has(key)) {
           syncMap.set(key, {
@@ -855,11 +876,14 @@ export class DashboardServer {
     }
 
     const allMergedCycles = Array.from(syncMap.values()).sort((a: any, b: any) => a.time - b.time);
-    const totalMergedPnl = allMergedCycles.reduce((acc: number, c: any) => acc + (c.pnlUsdt || 0), 0);
-    const totalWins = allMergedCycles.filter((c: any) => c.pnlUsdt >= 0).length;
-    const totalLosses = allMergedCycles.filter((c: any) => c.pnlUsdt < 0).length;
+    const grossWinsUsdt = allMergedCycles.filter((c: any) => (c.pnlUsdt || 0) >= 0).reduce((acc: number, c: any) => acc + (c.pnlUsdt || 0), 0);
+    const grossLossesUsdt = allMergedCycles.filter((c: any) => (c.pnlUsdt || 0) < 0).reduce((acc: number, c: any) => acc + (c.pnlUsdt || 0), 0);
+    const totalMergedPnl = grossWinsUsdt + grossLossesUsdt;
+    const totalWins = allMergedCycles.filter((c: any) => (c.pnlUsdt || 0) >= 0).length;
+    const totalLosses = allMergedCycles.filter((c: any) => (c.pnlUsdt || 0) < 0).length;
     const totalCycles = allMergedCycles.length;
     const calculatedWinRate = totalCycles > 0 ? Math.round((totalWins / totalCycles) * 100) : 100;
+    const uniqueOpenCoins = new Set(positions.map((pos: any) => pos.symbol)).size;
 
     return {
       updatedAt: new Date().toISOString(),
@@ -876,14 +900,17 @@ export class DashboardServer {
         usdtFree: this.usdtFree,
         usdtEarn: this.usdtEarn,
         totalInvested,
-        openPositionsCount: positions.length,
-        maxSlots: 5,
+        openPositionsCount: uniqueOpenCoins,
+        totalLotsCount: positions.length,
+        maxSlots: 7,
       },
       positions,
       radar,
       performance: {
         totalPnlUsdt: totalMergedPnl,
         totalPnlCop: totalMergedPnl * copRate,
+        grossWinsUsdt: grossWinsUsdt,
+        grossLossesUsdt: grossLossesUsdt,
         wins: totalWins,
         losses: totalLosses,
         cyclesCount: totalCycles,
@@ -907,15 +934,15 @@ export class DashboardServer {
         return this.computeSessionPlan(cash);
       })(),
       projections:
-        p && p.cycles.length > 0
+        allMergedCycles.length > 0
           ? (() => {
               const firstTime =
-                p.cycles[0].time || Date.now() - 7 * 86400 * 1000;
+                allMergedCycles[0].time || Date.now() - 7 * 86400 * 1000;
               const days = Math.max(
                 1,
                 (Date.now() - firstTime) / (86400 * 1000),
               );
-              const dailyRunRate = Math.max(0.1, p.totalPnl / days);
+              const dailyRunRate = Math.max(0.1, grossWinsUsdt / days);
               return {
                 daysTracked: Math.round(days),
                 dailyAvgUsdt: dailyRunRate,
@@ -929,13 +956,13 @@ export class DashboardServer {
               };
             })()
           : null,
-      recentCycles: allMergedCycles.slice(-35).reverse(),
+      recentCycles: allMergedCycles.slice(-70).reverse(),
       futuresTelemetry,
       recoveryTracker: (() => {
         const baseTracker = this.cachedRecoveryTracker || this.getRecoveryTracker() || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
         const debtTarget = baseTracker.targetUsdt || 100.00;
-        const grossRecovered = Math.max(0, parseFloat(totalMergedPnl.toFixed(4)));
-        const historicalLosses = 15.99;
+        const grossRecovered = Math.max(0, parseFloat(grossWinsUsdt.toFixed(4)));
+        const historicalLosses = Math.max(15.38, parseFloat(Math.abs(grossLossesUsdt).toFixed(4)));
         const debtRemaining = Math.max(0, parseFloat((historicalLosses - grossRecovered).toFixed(4)));
         const amortizedPct = Math.min(100, Math.round((grossRecovered / historicalLosses) * 100));
         const netRecovered = parseFloat((grossRecovered - historicalLosses).toFixed(4));
@@ -948,7 +975,7 @@ export class DashboardServer {
           debtAmortizedPct: amortizedPct,
           recoveredUsdt: grossRecovered,
           remainingUsdt: debtRemaining,
-          tradesCount: allMergedCycles.length
+          tradesCount: totalWins
         };
       })(),
     };
