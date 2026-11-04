@@ -1242,13 +1242,13 @@
       if (tDca && !tDca.matches(":focus")) tDca.checked = !!s.smart_dca;
       if (tGrid && !tGrid.matches(":focus")) tGrid.checked = !!s.micro_grid;
       if (tWeekend && !tWeekend.matches(":focus")) tWeekend.checked = !!s.cazador_weekend;
-      if (tFutures && s.futures !== undefined && !tFutures.matches(":focus")) tFutures.checked = !!s.futures;
+      if (tFutures && !tFutures.matches(":focus")) tFutures.checked = !!s.futures;
 
       if (cardTrailing) cardTrailing.classList.toggle("active-strat", !!s.trailing_rebound);
       if (cardDca) cardDca.classList.toggle("active-strat", !!s.smart_dca);
       if (cardGrid) cardGrid.classList.toggle("active-strat", !!s.micro_grid);
       if (cardWeekend) cardWeekend.classList.toggle("active-strat", !!s.cazador_weekend);
-      if (cardFutures && s.futures !== undefined) cardFutures.classList.toggle("active-strat", !!s.futures);
+      if (cardFutures) cardFutures.classList.toggle("active-strat", !!s.futures);
 
       const isWeekendMode = !!data.weekendMode;
 

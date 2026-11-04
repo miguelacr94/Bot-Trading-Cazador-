@@ -1647,15 +1647,23 @@ export class TrailingMasterBot {
         // NUNCA vender en rojo; esperar el rebote al alza (+0.80% mínimo) o promediar con Smart DCA.
         // (Stop-Loss eliminado al 100% de la lógica Spot para evitar whipsaws)
 
-        // 1. Activar Trailing si superó el umbral (adaptativo para Lote 3 con rango expandido)
+        // 1. Activar Trailing si superó el umbral (adaptativo por régimen Quieto / Weekend / Micro-Grid / Lote 3)
         const isLot3 = (pos.lotIndex && pos.lotIndex >= 3) || symbol.includes("_lot_3");
+        const btcRangeCur = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
+        const isQuietRegime = this.lastDetectedRegime === "QUIET" || btcRangeCur < 2.2;
+        const isWeekendChop = this.isWeekendWindow() && !this.isSundayCmeReopenWindow();
+        const isPreNightHarvest = this.isPreNightHarvestWindow();
+
         let activationTarget = pos.customMinGainPct || TRAILING_ACTIVATION_PCT;
-        if (isLot3 && (!pos.customMinGainPct || pos.customMinGainPct <= 0.8)) {
-          const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
+        if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
+          activationTarget = 0.58; // Canal lateral corto: activa en +0.58% para asegurar >= +0.46% neto
+        } else if (isLot3 && (!pos.customMinGainPct || pos.customMinGainPct <= 0.8)) {
           const isMeme = this.memeWatchlist.includes(actualSymbol) || actualSymbol.includes("PEPE") || actualSymbol.includes("BONK") || actualSymbol.includes("DOGE");
           if (isMeme) activationTarget = 2.20;
-          else if (btcRange >= 2.5) activationTarget = 1.80;
+          else if (btcRangeCur >= 2.5) activationTarget = 1.80;
           else activationTarget = 1.20;
+        } else if (!pos.customMinGainPct && (isQuietRegime || isWeekendChop || isPreNightHarvest)) {
+          activationTarget = 0.65; // Compresión cuantitativa en días quietos / fin de semana sin volumen
         }
 
         if (gainPct >= activationTarget && !pos.activated) {
@@ -1663,7 +1671,7 @@ export class TrailingMasterBot {
           pos.highestPrice = curPrice;
           const msg = `🎯 <b>[TRAILING ACTIVADO: ${symbol}]</b>\n\n` +
             `• El precio subió a $${curPrice} (<b>+${gainPct.toFixed(2)}%</b>).\n` +
-            `• 🛡️ Ganancia mínima asegurada (+0.8%).\n` +
+            `• 🛡️ Ganancia mínima asegurada (+${activationTarget.toFixed(2)}%).\n` +
             `• 🚀 <i>El bot ahora persigue el pico más alto. Mientras siga subiendo, ¡seguirá sumando!</i>`;
           await this.notifier.send(msg);
           console.log(`🎯 Trailing activado en ${symbol} a ${curPrice} (+${gainPct.toFixed(2)}%)`);
@@ -1739,13 +1747,13 @@ export class TrailingMasterBot {
         if (pos.activated) {
           const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
           const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
-          let callback = pos.strategy === "micro_grid" ? 0.15 : this.getCallbackPct(symbol, pos);
-          let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.60 : 0.80); // Blindado a +0.60% (grid) / +0.80% (trailing) mínimo para cubrir comisiones con holgura
+          let callback = pos.strategy === "micro_grid" ? 0.12 : this.getCallbackPct(symbol, pos);
+          let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.48 : 0.80);
 
-          // 🌆 COSECHA PRE-NOCTURNA (16:00 - 19:30 COT):
-          if (this.isPreNightHarvestWindow() && gainPct >= 0.65) {
-            callback = Math.min(callback, 0.20);
-            minGain = 0.65;
+          // 🌆 COMPRESIÓN CUANTITATIVA EN DÍAS QUIETOS, WEEKEND PLANO O COSECHA PRE-NOCTURNA:
+          if (!pos.customMinGainPct && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isQuietRegime || isWeekendChop) && gainPct >= 0.50) {
+            callback = Math.min(callback, 0.16);
+            minGain = 0.50;
           }
 
           // 🕯️ CENTINELA DE MECHA DE RECHAZO (AGOTAMIENTO INSTITUCIONAL EN CIMA)
@@ -1777,8 +1785,8 @@ export class TrailingMasterBot {
           // CANDADO SUPREMO: hitCallback se activa por Trailing regular (>= minGain) O por Piso Manual Asegurado (>= 0.30% neto)
           const hitCallback = (dropFromPeak >= callback && gainPct >= minGain) || (hitLockedFloor && gainPct >= 0.30);
 
-          // CANDADO FÉRREO: Venta autorizada si supera el mínimo de seguridad (>= 0.30% para piso asegurado, o >= 0.50% para trailing normal)
-          const minAllowedExit = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.30) ? 0.30 : 0.50;
+          // CANDADO FÉRREO: Venta autorizada si supera el mínimo de seguridad (>= 0.30% para piso asegurado, o >= 0.46% para micro-grid/compresión)
+          const minAllowedExit = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.30) ? 0.30 : (pos.strategy === "micro_grid" ? 0.46 : 0.48);
           if ((hitCallback || hitHardCap || isRejectionWick) && gainPct >= minAllowedExit) {
             const reasonOverride = isRejectionWick ? "RECHAZO_MECHA" : undefined;
             console.log(`🏆 ¡CERRANDO EN LA CIMA! Venta Trailing en ${symbol} a ${curPrice} (Pico: ${pos.highestPrice}) [${reasonOverride || 'TRAILING'}]`);
@@ -4390,10 +4398,27 @@ export class TrailingMasterBot {
   }
 
   /**
-   * ESCÁNER MICRO-GRID: Opera compras rápidas en canales laterales estrechos durante días quietos.
+   * Ventana de reapertura institucional de futuros CME (Domingo 16:00 a 23:00 COT),
+   * donde los rebotes de fin de semana suelen expandir su amplitud.
+   */
+  public isSundayCmeReopenWindow(): boolean {
+    try {
+      const now = new Date();
+      const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
+      const hour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+      return dayStr === "Sun" && hour >= 16 && hour <= 23;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * ESCÁNER MICRO-GRID: Opera compras rápidas en canales laterales estrechos durante días quietos o fines de semana planos.
    */
   async evaluateMicroGrid(usdt: number, activeSymbols: Set<string>): Promise<boolean> {
-    if (!this.controls.strategies.micro_grid) return false;
+    const btcRangeCur = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
+    const weekendQuietAssist = this.isWeekendWindow() && btcRangeCur < 2.2 && !this.isSundayCmeReopenWindow();
+    if (!this.controls.strategies.micro_grid && !weekendQuietAssist) return false;
     if (this.pendingOpportunity) return false;
     if (usdt < this.minUsdtToTrade) return false;
 
@@ -4416,21 +4441,22 @@ export class TrailingMasterBot {
         const max6h = Math.max(...highs);
         const channelRangePct = ((max6h - min6h) / min6h) * 100;
 
-        // Canal lateral plano ideal: rango entre 0.8% y 2.5%
-        if (channelRangePct >= 0.8 && channelRangePct <= 2.5) {
+        // Canal lateral calibrado con backtest de 30 días: rango entre 0.65% y 3.20%
+        if (channelRangePct >= 0.65 && channelRangePct <= 3.20) {
           const positionInChannel = (curPrice - min6h) / (max6h - min6h);
           const rsi = this.calculateRSI(closes, 14);
+          const bb = this.calculateBollingerBands(closes, 20, 2.0);
           const lastIdx = closes.length - 1;
-          const isGreenOrWick = closes[lastIdx] >= opens[lastIdx] || ((Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / Math.max(1e-9, highs[lastIdx] - lows[lastIdx])) >= 0.30;
+          const isGreenOrWick = closes[lastIdx] >= opens[lastIdx] || ((Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / Math.max(1e-9, highs[lastIdx] - lows[lastIdx])) >= 0.28;
 
-          // Si el precio está en el 30% inferior del canal, RSI en soporte (34-46) y la vela muestra soporte (verde o mecha): ¡Compra Micro-Grid con lote fraccionado!
-          if (positionInChannel <= 0.30 && rsi >= 34 && rsi <= 46 && isGreenOrWick) {
+          // Si el precio está en el 32% inferior del canal (o %B <= 0.25), RSI <= 46 (incluyendo sobreventa profunda < 34) y vela de soporte:
+          if ((positionInChannel <= 0.32 || bb.percentB <= 0.25) && rsi <= 46 && isGreenOrWick) {
             const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
             let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt || usdt, sessionPlan.lotFractionPct || 0.40, "micro_grid");
             amountToUse = Math.min(amountToUse, 20); // Tope conservador por rejilla para no agotar liquidez en 1 sola moneda
             if (amountToUse < this.minUsdtToTrade) continue;
 
-            console.log(`🌐 [MICRO-GRID] Entrada en canal lateral en ${sym}: precio ${curPrice} cerca de base ${min6h} (Canal ${channelRangePct.toFixed(2)}% | RSI ${rsi.toFixed(1)})`);
+            console.log(`🌐 [MICRO-GRID] Entrada en canal lateral en ${sym}: precio ${curPrice} cerca de base ${min6h} (Canal ${channelRangePct.toFixed(2)}% | RSI ${rsi.toFixed(1)} | %B ${(bb.percentB * 100).toFixed(0)}%)`);
             const ok = await this.executeSmartBuy(sym, amountToUse, `Micro-Grid Canal Lateral (${channelRangePct.toFixed(2)}%)`, "micro_grid");
             if (ok) return true;
           }
@@ -4850,6 +4876,11 @@ export class TrailingMasterBot {
         this.controls.notified50UsdtThreshold = false;
         this.saveStrategyControls();
       }
+      return;
+    }
+
+    // Si Futuros está desactivado por el usuario, jamás enviar notificaciones de viabilidad de Futuros a Telegram
+    if (!(this.controls.strategies as any)?.futures && !this.futuresEngine.isEnabled()) {
       return;
     }
 

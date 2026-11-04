@@ -111,7 +111,7 @@ export class FuturesEngine {
   private loadState(): FuturesState {
     const defaults: FuturesState = {
       isSimulated: true,
-      enabled: true,
+      enabled: false,
       virtualBalanceUsdt: 100.0,
       startingBalanceUsdt: 100.0,
       maxActivePositions: 2,
@@ -124,13 +124,34 @@ export class FuturesEngine {
       lastScanTime: 0
     };
 
+    let loaded = { ...defaults };
     try {
       if (fs.existsSync(this.stateFile)) {
-        return { ...defaults, ...JSON.parse(fs.readFileSync(this.stateFile, "utf-8")) };
+        loaded = { ...defaults, ...JSON.parse(fs.readFileSync(this.stateFile, "utf-8")) };
       }
     } catch {}
-    this.saveState(defaults);
-    return defaults;
+
+    // Sincronizar estrictamente con .strategy-controls.json: si futures está desactivado o en 0%, silenciar motor
+    try {
+      const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+      if (fs.existsSync(ctrlFile)) {
+        const ctrl = JSON.parse(fs.readFileSync(ctrlFile, "utf-8"));
+        const stratFutures = ctrl?.strategies?.futures;
+        const allocFutures = ctrl?.allocations?.futures ?? 0;
+        if (stratFutures === false || (stratFutures === undefined && allocFutures === 0)) {
+          loaded.enabled = false;
+        } else if (stratFutures === true) {
+          loaded.enabled = true;
+        }
+      }
+    } catch {}
+
+    return loaded;
+  }
+
+  public isEnabled(): boolean {
+    this.state = this.loadState();
+    return !!this.state.enabled;
   }
 
   private saveState(st?: FuturesState): void {
@@ -373,7 +394,7 @@ export class FuturesEngine {
   // --- MOTOR DE MONITOREO DE POSICIONES ABIERTAS ---
 
   public async updatePositions(): Promise<void> {
-    this.state = this.loadState();
+    if (!this.isEnabled()) return;
     if (this.positions.length === 0) return;
 
     for (let i = this.positions.length - 1; i >= 0; i--) {
@@ -403,14 +424,16 @@ export class FuturesEngine {
       pos.trailingStopPrice = curPrice * (1 - pos.trailingCallbackPct / 100);
       this.savePositions();
 
-      const gainPct = ((curPrice - pos.entryPrice) / pos.entryPrice) * 100;
-      await this.notifier.send(
-        `🎯 [FUTUROS SIMULACIÓN: TRAILING ACTIVADO] 🚀\n\n` +
-        `• Moneda: <b>${pos.symbol}</b> (LONG ${pos.leverage}x)\n` +
-        `• Precio actual: <b>${curPrice}</b> (+${gainPct.toFixed(2)}%)\n` +
-        `• 🛡️ Ganancia mínima asegurada (+${pos.trailingTriggerPct}%)\n` +
-        `• 🏹 El bot ahora persigue el pico más alto hacia arriba...`
-      );
+      if (this.isEnabled()) {
+        const gainPct = ((curPrice - pos.entryPrice) / pos.entryPrice) * 100;
+        await this.notifier.send(
+          `🎯 [FUTUROS SIMULACIÓN: TRAILING ACTIVADO] 🚀\n\n` +
+          `• Moneda: <b>${pos.symbol}</b> (LONG ${pos.leverage}x)\n` +
+          `• Precio actual: <b>${curPrice}</b> (+${gainPct.toFixed(2)}%)\n` +
+          `• 🛡️ Ganancia mínima asegurada (+${pos.trailingTriggerPct}%)\n` +
+          `• 🏹 El bot ahora persigue el pico más alto hacia arriba...`
+        );
+      }
       return;
     }
 
@@ -441,14 +464,16 @@ export class FuturesEngine {
       pos.trailingStopPrice = curPrice * (1 + pos.trailingCallbackPct / 100);
       this.savePositions();
 
-      const gainPct = ((pos.entryPrice - curPrice) / pos.entryPrice) * 100;
-      await this.notifier.send(
-        `🎯 [FUTUROS SIMULACIÓN: TRAILING ACTIVADO] 🚀\n\n` +
-        `• Moneda: <b>${pos.symbol}</b> (SHORT ${pos.leverage}x)\n` +
-        `• Precio actual: <b>${curPrice}</b> (+${gainPct.toFixed(2)}% neto en corto)\n` +
-        `• 🛡️ Ganancia mínima asegurada (+${pos.trailingTriggerPct}%)\n` +
-        `• 🏹 El bot ahora persigue el piso más profundo hacia abajo...`
-      );
+      if (this.isEnabled()) {
+        const gainPct = ((pos.entryPrice - curPrice) / pos.entryPrice) * 100;
+        await this.notifier.send(
+          `🎯 [FUTUROS SIMULACIÓN: TRAILING ACTIVADO] 🚀\n\n` +
+          `• Moneda: <b>${pos.symbol}</b> (SHORT ${pos.leverage}x)\n` +
+          `• Precio actual: <b>${curPrice}</b> (+${gainPct.toFixed(2)}% neto en corto)\n` +
+          `• 🛡️ Ganancia mínima asegurada (+${pos.trailingTriggerPct}%)\n` +
+          `• 🏹 El bot ahora persigue el piso más profundo hacia abajo...`
+        );
+      }
       return;
     }
 
@@ -517,7 +542,8 @@ export class FuturesEngine {
     // Establecer cooldown de 30 min en esta moneda
     this.symbolCooldowns.set(pos.symbol, Date.now() + 30 * 60 * 1000);
 
-    // Notificación Telegram
+    // Notificación Telegram (solo si el motor de Futuros está activo)
+    if (!this.isEnabled()) return;
     if (reason === "TRAILING_TP") {
       await this.notifier.send(
         `🏆 [FUTUROS SIMULACIÓN: GANANCIA COBRADA] 🎉\n\n` +
@@ -549,8 +575,7 @@ export class FuturesEngine {
   private radarSnapshot: any[] = [];
 
   public async scanMarket(): Promise<void> {
-    this.state = this.loadState(); // Sincronización en vivo con cambios del Dashboard
-    if (!this.state.enabled) return;
+    if (!this.isEnabled()) return;
     if (this.isScanning) return;
     this.isScanning = true;
 
@@ -714,6 +739,7 @@ export class FuturesEngine {
     this.positions.push(newPos);
     this.savePositions();
 
+    if (!this.isEnabled()) return;
     const maxRiskUsdt = (margin * (stopLossPct / 100) * leverage);
     const sideEmoji = side === "LONG" ? "🟢 LONG" : "🔴 SHORT";
 

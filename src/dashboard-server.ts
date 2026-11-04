@@ -1146,7 +1146,15 @@ export class DashboardServer {
             controls.strategies.trailing_rebound = t > 0;
             controls.strategies.smart_dca = d > 0;
             controls.strategies.micro_grid = g > 0;
-            if (f > 0) controls.strategies.futures = true;
+            controls.strategies.futures = f > 0;
+            try {
+              const futStateF = path.resolve(process.cwd(), ".futures-sim-state.json");
+              if (fs.existsSync(futStateF)) {
+                const futSt = JSON.parse(fs.readFileSync(futStateF, "utf-8"));
+                futSt.enabled = f > 0;
+                fs.writeFileSync(futStateF, JSON.stringify(futSt, null, 2), "utf-8");
+              }
+            } catch {}
             await this.saveControls(controls);
             res.writeHead(200, {
               "Content-Type": "application/json; charset=utf-8",
