@@ -2320,6 +2320,17 @@ export class TrailingMasterBot {
                     if (isMeme)
                         activeMemeCount++;
                     console.log(`🎯 [TRAILING BUY ARMADO] ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Rango 24h ${coinRange24hPct.toFixed(1)}% | Brecha +${upsideGapPct.toFixed(1)}% [${convictionTier}] | RVOL ${rvol.toFixed(2)}x)`);
+                    // Notificar armado de cacería en Telegram
+                    const msgArmado = `🎯 <b>[CACERÍA ARMADA: ${sym}]</b> 🏹\n\n` +
+                        `• <b>Precio actual:</b> $${curPrice}\n` +
+                        `• 📉 <b>Caída detectada:</b> -${dropPct.toFixed(2)}% (RSI: <b>${rsi.toFixed(1)}</b>)\n` +
+                        `• 🚀 <b>Brecha al Techo:</b> +${upsideGapPct.toFixed(2)}% [<b>${convictionTier}</b>]\n` +
+                        `• 🔻 <b>Acción:</b> El bot ahora persigue el piso tick a tick. Si sigue cayendo, bajará el piso sin comprar.\n` +
+                        `• ⚡ <b>Disparador:</b> Comprará al confirmar el primer rebote (+0.35%) con vela verde en 5m.`;
+                    try {
+                        await this.notifier.send(msgArmado);
+                    }
+                    catch { }
                 }
             }
             catch (e) { }
