@@ -1229,7 +1229,7 @@
       const tGrid = document.getElementById("toggle-grid");
       const tWeekend = document.getElementById("toggle-weekend");
       const tFutures = document.getElementById("toggle-futures");
-      const tWideGap = document.getElementById("toggle-wide-gap");
+      const tWideGap = document.getElementById("toggle-widegap") || document.getElementById("toggle-wide-gap");
       const tAuto = document.getElementById("toggle-autopilot");
       const modeLabel = document.getElementById("mode-label");
 
@@ -1237,6 +1237,7 @@
       const cardDca = document.getElementById("card-strat-dca");
       const cardGrid = document.getElementById("card-strat-grid");
       const cardWeekend = document.getElementById("card-strat-weekend");
+      const cardWideGap = document.getElementById("card-strat-widegap");
       const cardFutures = document.getElementById("card-strat-futures");
 
       if (tTrailing && !tTrailing.matches(":focus")) tTrailing.checked = !!s.trailing_rebound;
@@ -1250,7 +1251,21 @@
       if (cardDca) cardDca.classList.toggle("active-strat", !!s.smart_dca);
       if (cardGrid) cardGrid.classList.toggle("active-strat", !!s.micro_grid);
       if (cardWeekend) cardWeekend.classList.toggle("active-strat", !!s.cazador_weekend);
+      if (cardWideGap) cardWideGap.classList.toggle("active-strat", s.wide_gap_sniper !== false);
       if (cardFutures) cardFutures.classList.toggle("active-strat", !!s.futures);
+
+      const wideAmountInput = document.getElementById("input-widegap-amount");
+      if (wideAmountInput && !wideAmountInput.matches(":focus")) {
+        wideAmountInput.value = c.wideGapLotSize || 50;
+      }
+      const wideAllocLabel = document.getElementById("alloc-widegap-amount");
+      if (wideAllocLabel) {
+        wideAllocLabel.textContent = (c.wideGapLotSize || 50) + ".00 USDT / trade";
+      }
+      const wideStatusLabel = document.getElementById("lbl-widegap-status");
+      if (wideStatusLabel) {
+        wideStatusLabel.textContent = s.wide_gap_sniper !== false ? `Activo ($${c.wideGapLotSize || 50})` : "Desactivado";
+      }
 
       const isWeekendMode = !!data.weekendMode;
 
@@ -1453,7 +1468,22 @@
     document.getElementById("toggle-grid")?.addEventListener("change", (e) => toggleStrategy("micro_grid", false, e.target.checked));
     document.getElementById("toggle-weekend")?.addEventListener("change", (e) => toggleStrategy("cazador_weekend", false, e.target.checked));
     document.getElementById("toggle-wide-gap")?.addEventListener("change", (e) => toggleStrategy("wide_gap_sniper", false, e.target.checked));
+    document.getElementById("toggle-widegap")?.addEventListener("change", (e) => toggleStrategy("wide_gap_sniper", false, e.target.checked));
     document.getElementById("toggle-futures")?.addEventListener("change", (e) => toggleStrategy("futures", false, e.target.checked));
+
+    document.getElementById("btn-save-widegap-amount")?.addEventListener("click", async () => {
+      const val = parseInt(document.getElementById("input-widegap-amount")?.value || "50", 10);
+      try {
+        await fetch("/api/strategies/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wideGapLotSize: val })
+        });
+        alert(`✅ Presupuesto de Cazador de Brechas actualizado a $${val} USDT.`);
+      } catch (err) {
+        alert("Error guardando presupuesto: " + err.message);
+      }
+    });
 
     const sF = document.getElementById("slider-futures");
     if (sF) {

@@ -104,6 +104,7 @@ export interface StrategySuggestion {
 
 export interface StrategyControls {
   maxPositions?: number;
+  wideGapLotSize?: number; // Presupuesto fijo o por defecto ($50 USDT) para compras de Máxima Brecha
   strategies: {
     trailing_rebound: boolean;
     smart_dca: boolean;
@@ -2688,12 +2689,16 @@ export class TrailingMasterBot {
                 ? "ALTA_VOLATILIDAD"
                 : (coinVol >= 2.5 && upsideGapPct >= 1.5 ? "IMPULSO" : "ESTANDAR"));
 
-          // Verificar cupo concentrado: reservamos la 5ta ranura exclusivamente para oportunidades de ALTA_VOLATILIDAD o MAXIMA_BRECHA
+          // Verificar cupo de monedas activas: permitimos hasta 7 monedas para dar cabida plena a las brechas de NEAR/SUI/AVAX/SOL
           const uniqueActiveNow = this.getUniqueActiveSymbols().size;
-          const configuredMax = this.controls?.maxPositions || 5;
-          const stdCap = Math.max(3, Math.min(4, configuredMax - 1));
+          const configuredMax = Math.max(7, this.controls?.maxPositions || 7);
+          const stdCap = configuredMax - 1;
+          if (uniqueActiveNow >= configuredMax) {
+            console.log(`🎯 [CUPO LLENO] ${uniqueActiveNow}/${configuredMax} monedas activas en cartera. Esperando salida.`);
+            continue;
+          }
           if (uniqueActiveNow >= stdCap && convictionTier !== "ALTA_VOLATILIDAD" && convictionTier !== "MAXIMA_BRECHA") {
-            console.log(`🎯 [CUPO CONCENTRADO] ${ uniqueActiveNow }/${configuredMax} monedas activas: reservando último cupo exclusivamente para oportunidades de Alta Volatilidad / Máxima Brecha (${sym} es ${convictionTier}).`);
+            console.log(`🎯 [CUPO CONCENTRADO] ${uniqueActiveNow}/${configuredMax} monedas activas: reservando último cupo exclusivamente para oportunidades de Alta Volatilidad / Máxima Brecha (${sym} es ${convictionTier}).`);
             continue;
           }
 
@@ -5060,9 +5065,13 @@ export class TrailingMasterBot {
     let lot = Math.floor(spendableUsdt * effectiveFraction * allocMultiplier * tierMultiplier * 100) / 100;
     lot = Math.min(lot, Math.floor(tierMaxCap * 100) / 100);
 
-    // Pisos mínimos garantizados por Escalón si hay saldo gastable suficiente
-    if (tier === 1 && isMaxGapOpportunity && spendableUsdt >= 35 && lot < 35) {
-      lot = Math.min(spendableUsdt, Math.min(48, Math.floor(spendableUsdt * 0.88 * 100) / 100));
+    // Si es una oportunidad de MÁXIMA BRECHA (NEAR/SUI/AVAX/SOL), aplicamos el presupuesto configurable (default 50 USDT)
+    const configuredWideGapAmount = this.controls.wideGapLotSize || 50;
+    if (tier === 1 && isMaxGapOpportunity) {
+      const targetGapLot = Math.min(configuredWideGapAmount, spendableUsdt);
+      if (targetGapLot >= this.minUsdtToTrade) {
+        lot = targetGapLot;
+      }
     } else if (tier === 1 && isHighVolOpportunity && spendableUsdt >= 25 && lot < 25) {
       lot = Math.min(spendableUsdt, Math.min(35, Math.floor(spendableUsdt * 0.80 * 100) / 100));
     } else if (tier === 1 && isMediumImpulse && spendableUsdt >= 18 && lot < 18) {
@@ -5400,8 +5409,9 @@ export class TrailingMasterBot {
       this.lastSessionKey = sessionPlan.sessionKey;
 
       const uniqueActiveCount = this.getUniqueActiveSymbols().size;
-      // Concentración inteligente: máximo 5 monedas simultáneas (4 para estándar + 1 exclusiva para Alta Volatilidad/Brecha)
-      const maxUniqueCoins = Math.min(this.controls?.maxPositions || 5, 5);
+      // Capacidad ampliada: permite hasta el configured max (default 7) para dar espacio a la nueva estrategia de Brechas (NEAR/SUI/AVAX/SOL)
+      const configuredMax = Math.max(7, this.controls?.maxPositions || 7);
+      const maxUniqueCoins = configuredMax;
       console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva: ${sessionPlan.reservedUsdt.toFixed(2)}) | Monedas: ${uniqueActiveCount}/${maxUniqueCoins} (${this.activeTrailingPositions.size} lotes) | Cazando piso: ${this.buyWatches.size}`);
 
       // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros

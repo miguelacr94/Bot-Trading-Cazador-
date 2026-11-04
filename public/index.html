@@ -2946,34 +2946,20 @@
             <div class="strategy-mechanics">
               <strong>¿Cómo funciona?:</strong><br>
               • <b>1. Cuándo se arma:</b> Escanea velas de <b id="lbl-tf-trailing">1H</b> buscando caídas con sobreventa (<b>RSI ≤ 45</b> o ruptura de <b>Banda Inferior de Bollinger</b> con volumen <b>RVOL</b>).<br>
-              • <b>2. Modo Brechas 10%-15% (NEAR/SUI/AVAX/SOL):</b> Cuando está activo, detecta caídas con brecha libre al techo 24h (<b>≥ 4.2%</b>) y escala el lote a <b>$30–$56 USDT</b> con meta ampliada (<b>+1.60% a +2.40%</b>).<br>
-              • <b>3. Cuándo compra (Suelo Real):</b> Persigue el precio hacia abajo tick a tick. Solo compra cuando rebota (<b>+0.25% a +0.45%</b> según sesión COT) <u>y</u> la vela de <b>5m confirma giro a verde o mecha de absorción ≥ 30%</b>.<br>
+              • <b>2. Cuándo compra (Suelo Real):</b> Persigue el precio hacia abajo tick a tick. Solo compra cuando rebota (<b>+0.25% a +0.45%</b> según sesión COT) <u>y</u> la vela de <b>5m confirma giro a verde o mecha de absorción ≥ 30%</b>.<br>
+              • <b>3. Cuánto invierte:</b> <b>Nivel 1 de Pirámide Invertida</b> (máx 8.5% de cartera, ~$18–$25 USDT).<br>
               • <b>4. Cómo vende:</b> Activa <b>Trailing Take Profit</b> dinámico y persigue la cresta de la ola con callback ceñido en el pico más alto.
             </div>
             <div class="strategy-pills-row">
               <span class="strat-pill logic" id="badge-tf-trailing">⏱️ 1H</span>
               <span class="strat-pill logic">📉 RSI + Bollinger + Giro 5m</span>
-              <span class="strat-pill target">🎯 Salida +1.6% a +2.4% (Brechas)</span>
+              <span class="strat-pill target">🎯 Salida +0.8% a +3.5%</span>
               <span class="strat-pill risk" id="badge-sl-trailing">🛡️ Rescate DCA -4.0%</span>
             </div>
           </div>
 
           <!-- Controles Autónomos Independientes -->
           <div class="strat-autonomous-controls">
-            <!-- ⚡ Interruptor Especial Modo Brechas 10%-15% -->
-            <div class="strat-ctrl-row" style="background: rgba(139, 92, 246, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(139, 92, 246, 0.35); margin-bottom: 8px;">
-              <div style="display:flex; flex-direction:column;">
-                <span style="font-weight:700; color:#c4b5fd; font-size:0.84rem; display:flex; align-items:center; gap:6px;">
-                  <span>⚡ Modo Brechas 10%-15% (Sniper Volatilidad)</span>
-                </span>
-                <span style="font-size:0.73rem; color:#94a3b8;">NEAR • SUI • AVAX • SOL (Target +1.6% a +2.4% con $30-$56 USDT)</span>
-              </div>
-              <label class="switch" style="width:36px; height:20px; margin-left:auto;">
-                <input type="checkbox" id="toggle-wide-gap" checked>
-                <span class="slider" style="border-radius:20px;"></span>
-              </label>
-            </div>
-
             <div class="strat-ctrl-row">
               <span class="strat-ctrl-label">⏱️ Temporalidad del Radar:</span>
               <div class="mini-tf-group" data-strat="trailing_rebound">
@@ -3342,12 +3328,67 @@
           </div>
         </div>
 
-        <!-- 5. Futuros USD-M (Simulación Cuantitativa) -->
+        <!-- 5. Cazador de Brechas 10%-15% (Wide Gap Sniper) -->
+        <div class="strategy-item active-strat" id="card-strat-widegap">
+          <div class="strategy-card-header">
+            <div class="strategy-title-group">
+              <span class="strategy-type-tag" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">Alta Volatilidad • Sniper 10%–15%</span>
+              <div class="strategy-name">🚀 5. Cazador de Brechas (Wide Gap Sniper)</div>
+            </div>
+            <div class="strategy-card-header-actions">
+              <button class="btn-card-toggle" data-target="details-widegap" title="Mostrar/ocultar descripción y mecánicas">👁️ Info ▾</button>
+              <label class="switch">
+                <input type="checkbox" id="toggle-widegap" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="strategy-details-section" id="details-widegap">
+            <div class="strategy-mechanics">
+              <strong>¿Cómo funciona?:</strong><br>
+              • <b>1. Radar de Élite:</b> Monitorea monedas con oscilación diaria del <b>10% al 15%</b> (<b>NEAR, SUI, AVAX, SOL</b> y memecoins de alta liquidez).<br>
+              • <b>2. Detección de Brecha:</b> Se activa cuando una de estas monedas cae y deja una brecha libre al techo 24h <b>≥ 4.2%</b> (o caída ≥ 3.0% con rango 24h ≥ 5.0%).<br>
+              • <b>3. Presupuesto Manual Fijo:</b> Asigna directamente <b>$50 USDT por defecto</b> (ajustable en el campo inferior) tomando liquidez disponible del motor de Cazador.<br>
+              • <b>4. Súper Rebote Trailing:</b> Despierta el seguro en <b>+1.60% a +2.40%</b> y acompaña la cresta hasta el pico más alto.
+            </div>
+            <div class="strategy-pills-row">
+              <span class="strat-pill logic">⚡ NEAR • SUI • AVAX • SOL</span>
+              <span class="strat-pill logic">🎯 Brecha al Techo ≥ 4.2%</span>
+              <span class="strat-pill target">🚀 Target +1.60% a +2.40%</span>
+              <span class="strat-pill risk">🛡️ Inversión Manual Fija</span>
+            </div>
+          </div>
+
+          <!-- Controles Autónomos Independientes -->
+          <div class="strat-autonomous-controls">
+            <div class="strat-ctrl-row" style="background: rgba(168, 85, 247, 0.08); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(168, 85, 247, 0.25);">
+              <span class="strat-ctrl-label" style="font-weight: 700; color: #e9d5ff;">💵 Presupuesto Manual por Trade (USDT):</span>
+              <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+                <input type="number" id="input-widegap-amount" min="10" max="150" step="5" value="50" style="width: 70px; background: #0f172a; border: 1px solid #a855f7; color: #a855f7; font-weight: 800; border-radius: 6px; padding: 4px 8px; text-align: center; font-size: 0.95rem;">
+                <button id="btn-save-widegap-amount" style="background: #a855f7; color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">Guardar</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Presupuesto In-Card (Vinculado a Cazador) -->
+          <div class="strategy-bottom-budget">
+            <div class="strategy-alloc-row">
+              <span class="alloc-badge" id="alloc-widegap-badge" style="color:#C084FC; background:rgba(168,85,247,0.15);">Presupuesto Compartido con Cazador</span>
+              <span class="alloc-amount" id="alloc-widegap-amount">50.00 USDT / trade</span>
+              <div class="strategy-slider-ctrl">
+                <span>Modo:</span> <b class="slider-ctrl-val purple" id="lbl-widegap-status">Activo ($50)</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. Futuros USD-M (Simulación Cuantitativa) -->
         <div class="strategy-item" id="card-strat-futures">
           <div class="strategy-card-header">
             <div class="strategy-title-group">
               <span class="strategy-type-tag" style="background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4);">Derivados Bi-Direccional (LONG / SHORT)</span>
-              <div class="strategy-name">⚡ 5. Futuros Cuantitativo USDⓈ-M</div>
+              <div class="strategy-name">⚡ 6. Futuros Cuantitativo USDⓈ-M</div>
             </div>
             <div class="strategy-card-header-actions">
               <button class="btn-card-toggle" data-target="details-futures" title="Mostrar/ocultar descripción y mecánicas">👁️ Info ▾</button>

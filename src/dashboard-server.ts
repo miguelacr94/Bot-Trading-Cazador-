@@ -1754,6 +1754,9 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
             } else if (data.autoPilot !== undefined) {
               controls.autoPilot = !!data.autoPilot;
             }
+            if (data.wideGapLotSize !== undefined) {
+              controls.wideGapLotSize = Math.max(10, Math.min(100, Number(data.wideGapLotSize) || 50));
+            }
             await this.saveControls(controls);
             res.writeHead(200, {
               "Content-Type": "application/json; charset=utf-8",
