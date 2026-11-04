@@ -228,7 +228,8 @@ export class DashboardServer {
   }
 
   private async refreshRadar() {
-    for (const sym of PNL_SYMBOLS) {
+    const symbolsToScan = this.trackedSymbols().filter(s => s !== "USDTCOP");
+    for (const sym of symbolsToScan) {
       try {
         const res = await fetch(
           `${BINANCE_PUBLIC}/api/v3/klines?symbol=${sym}&interval=15m&limit=35`,
@@ -706,9 +707,9 @@ export class DashboardServer {
       };
     });
 
-    const radar = PNL_SYMBOLS.filter(
-      (s) => !rawPositions.some(([p]) => p === s),
-    ).map((sym) => {
+    const activeSymbolsSet = new Set(rawPositions.map(([p]) => (p || "").split("_")[0]));
+    const radarSymbols = this.trackedSymbols().filter(s => s !== "USDTCOP" && !activeSymbolsSet.has(s));
+    const radar = radarSymbols.map((sym) => {
       const meta = this.radarMeta[sym];
       const watch = rawBuys.find(([s]) => s === sym)?.[1];
       return {
