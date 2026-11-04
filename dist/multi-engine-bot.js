@@ -2296,9 +2296,11 @@ export class TrailingMasterBot {
                 // A) Suelo Bollinger + Sobreventa real (precio en banda inferior + RSI <= 45 + caída >= 1.5%)
                 // B) Caída profunda con RSI en sobreventa (drop >= 2.0% y RSI <= 42, o RSI <= 36)
                 // C) Absorción institucional (Mecha >= 35% + caída >= 1.2% + RSI <= 46 + volumen o soporte Bollinger)
+                // D) Brecha Amplia / Volatilidad Extrema (drop >= 4.5% o brecha al techo >= 5.0% con RSI <= 54): captura caídas rápidas de NEAR/SUI/AVAX
                 const isBollingerOversold = isNearLowerBollinger && rsi <= 45 && dropPct >= 1.4;
-                const isStandardDip = (dropPct >= 2.0 && rsi <= 42) || isBollingerOversold || (rsi <= 36);
-                const isWickRebound = hasPinbarRejection && dropPct >= 1.2 && rsi <= 46 && (rvol >= 0.85 || isNearLowerBollinger);
+                const isWideGapDip = (upsideGapPct >= 5.0 || dropPct >= 4.5) && rsi <= 54;
+                const isStandardDip = (dropPct >= 2.0 && rsi <= 42) || isBollingerOversold || isWideGapDip || (rsi <= 36);
+                const isWickRebound = hasPinbarRejection && dropPct >= 1.2 && rsi <= 48 && (rvol >= 0.80 || isNearLowerBollinger || isWideGapDip);
                 const isDip = isMeme
                     ? ((dropPct >= 2.4 && rsi <= 43) || (isBollingerOversold && dropPct >= 2.0) || (isWickRebound && dropPct >= 1.6) || (rsi <= 35))
                     : (isStandardDip || isWickRebound);
