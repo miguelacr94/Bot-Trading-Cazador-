@@ -2292,15 +2292,23 @@ export class TrailingMasterBot {
                 const lowerWickRatio = candleRange > 0 ? (lowerWick / candleRange) : 0;
                 const hasPinbarRejection = lowerWickRatio >= 0.35; // Mecha inferior >= 35% (Rechazo y absorción en suelo)
                 const isNearLowerBollinger = bb.percentB <= 0.15; // En el 15% inferior o por debajo de la Banda Inferior de Bollinger
-                // Condiciones cuantitativas estrictas de suelo (Prohibido armar con RSI > 46 para evitar comprar techos):
-                // A) Suelo Bollinger + Sobreventa real (precio en banda inferior + RSI <= 45 + caída >= 1.5%)
-                // B) Caída profunda con RSI en sobreventa (drop >= 2.0% y RSI <= 42, o RSI <= 36)
-                // C) Absorción institucional (Mecha >= 35% + caída >= 1.2% + RSI <= 46 + volumen o soporte Bollinger)
-                // D) Brecha Amplia / Volatilidad Extrema (drop >= 4.5% o brecha al techo >= 5.0% con RSI <= 54): captura caídas rápidas de NEAR/SUI/AVAX
-                const isBollingerOversold = isNearLowerBollinger && rsi <= 45 && dropPct >= 1.4;
-                const isWideGapDip = (upsideGapPct >= 5.0 || dropPct >= 4.5) && rsi <= 54;
+                // 🧠 CÁLCULO DINÁMICO ADAPTATIVO DEL UMBRAL DE RSI Y CAÍDA (Elastic Volatility Thresholds):
+                // En lugar de números estáticos fijos, el umbral de RSI permitido y la caída mínima se adaptan automáticamente:
+                // A mayor volatilidad de la moneda (rango 24h) y mayor brecha hacia el techo, el RSI de retroceso natural se expande:
+                // - Moneda lenta (rango < 3%): rsiMaxDip = 40–42 (estricto)
+                // - Moneda media (rango 3%–6%): rsiMaxDip = 45–48
+                // - Moneda hiper-volátil (rango 8%–16%, ej. NEAR/SUI/AVAX): rsiMaxDip = 52–56 con caída proporcional
+                const dynamicRsiCeiling = Math.min(56, Math.max(42, 40 + (coinRange24hPct * 0.95) + (upsideGapPct * 0.4)));
+                const reqDynamicDrop = Math.max(1.3, Math.min(4.8, 1.2 + (coinRange24hPct * 0.22)));
+                // Condiciones cuantitativas dinámicas de suelo:
+                // A) Suelo Bollinger + Sobreventa relativa adaptada
+                // B) Caída profunda con respecto a la volatilidad propia de la moneda
+                // C) Absorción institucional con mecha de rechazo en soporte
+                // D) Brecha Amplia Adaptativa: Caída >= reqDynamicDrop con RSI <= dynamicRsiCeiling
+                const isBollingerOversold = isNearLowerBollinger && rsi <= Math.min(47, dynamicRsiCeiling - 3) && dropPct >= 1.4;
+                const isWideGapDip = (upsideGapPct >= reqDynamicDrop || dropPct >= reqDynamicDrop) && rsi <= dynamicRsiCeiling;
                 const isStandardDip = (dropPct >= 2.0 && rsi <= 42) || isBollingerOversold || isWideGapDip || (rsi <= 36);
-                const isWickRebound = hasPinbarRejection && dropPct >= 1.2 && rsi <= 48 && (rvol >= 0.80 || isNearLowerBollinger || isWideGapDip);
+                const isWickRebound = hasPinbarRejection && dropPct >= 1.2 && rsi <= (dynamicRsiCeiling - 4) && (rvol >= 0.80 || isNearLowerBollinger || isWideGapDip);
                 const isDip = isMeme
                     ? ((dropPct >= 2.4 && rsi <= 43) || (isBollingerOversold && dropPct >= 2.0) || (isWickRebound && dropPct >= 1.6) || (rsi <= 35))
                     : (isStandardDip || isWickRebound);
