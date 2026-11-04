@@ -553,7 +553,6 @@ export class DashboardServer {
    */
   public computeSessionPlan(freeUsdt = 0): any {
     const now = new Date();
-    const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
     const cotHour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
     const cotMin = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
 
@@ -562,8 +561,6 @@ export class DashboardServer {
     const isAfternoonSlide = cotHour >= 14 && cotHour < 17; // 14:00 - 17:00 COT (Cierre NY y deslizamiento)
     const isPreNight = cotHour >= 17 && cotHour < 20; // 17:00 - 20:00 COT (Cosecha previa a Asia)
     const isNight = cotHour >= 20 || cotHour < 3; // 20:00 - 03:00 COT (Drenaje nocturno y trampas)
-    const isPreWeekend = dayStr === "Fri" && cotHour >= 6 && cotHour < 17;
-    const isWeekend = (dayStr === "Fri" && cotHour >= 17) || dayStr === "Sat" || (dayStr === "Sun" && cotHour < 18);
 
     let sessionKey: "NOCTURNO_DRENAJE" | "LONDRES_REBOTE" | "NY_IMPULSO" | "COSECHA_PRENOCTURNA" | "REGULAR" = "REGULAR";
     let sessionTitle = "🔄 Sesión Regular / Transición";
@@ -582,15 +579,6 @@ export class DashboardServer {
       trailingBounceTrigger = 0.45;
       reason = "Bajo volumen y alto riesgo de caza de stops. El 50% de la caja queda CONGELADA para aprovechar los suelos de Londres a las 03:00 COT.";
       recommendation = "🌙 Mantener reserva congelada. Compras bloqueadas salvo pánico extremo (RSI <= 26 con vela de rechazo).";
-    } else if (isPreWeekend) {
-      sessionKey = "COSECHA_PRENOCTURNA";
-      sessionTitle = "🏖️ Acumulación Pre-Weekend (Viernes 06:00 - 17:00 COT)";
-      reservePct = 0.40;
-      lotFractionPct = 0.30;
-      trailingBounceTrigger = 0.40;
-      harvestCallbackPct = 0.15;
-      reason = "Preparación estratégica de viernes: se blinda al menos el 25% del portafolio total y se cosechan posiciones en verde (+0.60%) para llegar a las 17:00 COT con liquidez garantizada para Cazador Weekend.";
-      recommendation = "🏖️ Prioridad Cosecha: Recoger ganancias en verde y guardar presupuesto garantizado para el fin de semana.";
     } else if (isLondon) {
       sessionKey = "LONDRES_REBOTE";
       sessionTitle = "🏰 Rebote de Londres (Apertura Europea / Absorción)";
@@ -626,29 +614,8 @@ export class DashboardServer {
       recommendation = "🌆 Vender y recoger ganancias del día. Maximizar saldo en USDT para recibir la sesión asiática en liquidez.";
     }
 
-    const rawPositions = this.cachedPositions.length > 0 ? this.cachedPositions : this.readJson(".trailing-positions.json");
-    let activeInvested = 0;
-    if (Array.isArray(rawPositions)) {
-      for (const entry of rawPositions) {
-        const p = Array.isArray(entry) ? entry[1] : entry;
-        activeInvested += Number(p?.investedUsdt || 0);
-      }
-    }
-    const totalPortfolioEst = activeInvested + freeUsdt;
-    let strategicFloorUsdt = 0;
-    if (activeInvested > 0) {
-      if (isPreWeekend) strategicFloorUsdt = Math.max(50, Math.round(totalPortfolioEst * 0.25 * 100) / 100);
-      else if (isWeekend) strategicFloorUsdt = Math.max(15, Math.round(totalPortfolioEst * 0.10 * 100) / 100);
-      else strategicFloorUsdt = Math.max(35, Math.round(totalPortfolioEst * 0.18 * 100) / 100);
-    }
-
-    const pctReserve = Math.round(freeUsdt * reservePct * 100) / 100;
-    let reservedUsdt = Math.min(freeUsdt, Math.max(strategicFloorUsdt, pctReserve));
-    let spendableUsdt = Math.max(0, Math.round((freeUsdt - reservedUsdt) * 100) / 100);
-    if (spendableUsdt < 10) {
-      reservedUsdt = freeUsdt;
-      spendableUsdt = 0;
-    }
+    const reservedUsdt = Math.round(freeUsdt * reservePct * 100) / 100;
+    const spendableUsdt = Math.max(0, Math.round((freeUsdt - reservedUsdt) * 100) / 100);
 
     return {
       sessionKey,

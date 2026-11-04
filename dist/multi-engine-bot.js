@@ -296,13 +296,31 @@ export class TrailingMasterBot {
         if (this.controls.trailingCallbacks && typeof this.controls.trailingCallbacks["default"] === "number") {
             return this.controls.trailingCallbacks["default"];
         }
-        // 4. 🚀 TRAILING CEÑIDO ESCALONADO DINÁMICO (Tiered Dynamic Callback)
-        // A medida que la ganancia sube, el lazo se ciñe automáticamente para capturar la cima intacta
+        // 4. 🚀 TRAILING CEÑIDO ESCALONADO DINÁMICO (Tiered Dynamic Callback + Expansión por Alta Volatilidad)
+        // En monedas con alta volatilidad intradía (ej. AVAX/SOL con rango 24h >= 3.8%), damos mayor respiro en el
+        // tramo medio para no vender en el primer descanso y alcanzar la MÁXIMA ALTURA del rebote.
         const isMeme = this.memeWatchlist.includes(symbol) || symbol.includes("PEPE") || symbol.includes("BONK") || symbol.includes("DOGE");
-        const isMid = symbol.includes("AVAX") || symbol.includes("SOL");
-        const baseCb = isMeme ? 0.45 : (isMid ? 0.35 : 0.25);
+        const isHighVolCoin = (pos?.coinRange24hPct || 0) >= 3.8 || pos?.convictionTier === "ALTA_VOLATILIDAD";
+        const isMid = symbol.includes("AVAX") || symbol.includes("SOL") || (pos?.coinRange24hPct || 0) >= 2.8;
+        const baseCb = isMeme ? 0.45 : (isHighVolCoin ? 0.40 : (isMid ? 0.35 : 0.25));
         if (pos && pos.buyPrice > 0 && pos.highestPrice > 0) {
             const peakGainPct = ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100;
+            if (isHighVolCoin) {
+                if (peakGainPct >= 3.5) {
+                    // Cima extrema alcanzada (> +3.5%) -> Candado ultra-ceñido en la punta de la ola
+                    return isMeme ? 0.16 : 0.13;
+                }
+                else if (peakGainPct >= 2.6) {
+                    // Zona de techo alto (+2.6% a +3.5%) -> Ceñir a 0.18%-0.20%
+                    return isMeme ? 0.20 : 0.18;
+                }
+                else if (peakGainPct >= 1.8) {
+                    // Escalando ola (+1.8% a +2.6%) -> Respiro intermedio (0.28%-0.32%) para dejarla correr
+                    return isMeme ? 0.32 : 0.28;
+                }
+                // Entre +0.95% y +1.8%: mantener baseCb (0.40%-0.45%) para aguantar micro-retrocesos rumbo a la cima
+                return baseCb;
+            }
             if (peakGainPct >= 3.0) {
                 // Fase 4: Parapeto Extremo (> +3.0%) -> Candado ultra-ceñido
                 return isMeme ? 0.15 : 0.12;
@@ -1349,7 +1367,9 @@ export class TrailingMasterBot {
                     lastPeakNotifiedTime: memItem.lastPeakNotifiedTime,
                     lastDcaTime: memItem.lastDcaTime,
                     dcaCount: memItem.dcaCount,
-                    isManual: memItem.isManual
+                    isManual: memItem.isManual,
+                    coinRange24hPct: dbItem.coinRange24hPct ?? memItem.coinRange24hPct,
+                    convictionTier: dbItem.convictionTier ?? memItem.convictionTier
                 });
             }
             else {
@@ -1448,13 +1468,16 @@ export class TrailingMasterBot {
                 // En Spot nunca hay liquidación de margen. Los tokens son propios.
                 // NUNCA vender en rojo; esperar el rebote al alza (+0.80% mínimo) o promediar con Smart DCA.
                 // (Stop-Loss eliminado al 100% de la lógica Spot para evitar whipsaws)
-                // 1. Activar Trailing si superó el umbral (adaptativo por régimen Quieto / Weekend / Pre-Weekend / Micro-Grid / Lote 3)
+                // 1. Activar Trailing si superó el umbral (adaptativo por Volatilidad de la Moneda / Régimen / Lote 3)
                 const isLot3 = (pos.lotIndex && pos.lotIndex >= 3) || symbol.includes("_lot_3");
                 const btcRangeCur = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
-                const isQuietRegime = this.lastDetectedRegime === "QUIET" || btcRangeCur < 2.2;
-                const isWeekendChop = this.isWeekendWindow() && !this.isSundayCmeReopenWindow();
-                const isPreNightHarvest = this.isPreNightHarvestWindow();
-                const isPreWeekendHarvest = this.isPreWeekendAccumulationWindow();
+                const coinVol = pos.coinRange24hPct || 0;
+                const isHighVolCoin = coinVol >= 3.8 || pos.convictionTier === "ALTA_VOLATILIDAD";
+                // Si la moneda por sí sola tiene alta volatilidad (>= 3.5%, ej. AVAX), NO aplicarle compresión de día quieto
+                const isQuietRegime = (this.lastDetectedRegime === "QUIET" || btcRangeCur < 2.2) && coinVol < 3.5 && !isHighVolCoin;
+                const isWeekendChop = this.isWeekendWindow() && !this.isSundayCmeReopenWindow() && !isHighVolCoin;
+                const isPreNightHarvest = this.isPreNightHarvestWindow() && !isHighVolCoin;
+                const isPreWeekendHarvest = this.isPreWeekendAccumulationWindow() && !isHighVolCoin;
                 let activationTarget = pos.customMinGainPct || TRAILING_ACTIVATION_PCT;
                 if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
                     activationTarget = 0.58; // Canal lateral corto: activa en +0.58% para asegurar >= +0.46% neto
@@ -1467,6 +1490,11 @@ export class TrailingMasterBot {
                         activationTarget = 1.80;
                     else
                         activationTarget = 1.20;
+                }
+                else if (!pos.customMinGainPct && isHighVolCoin) {
+                    // 🚀 EXPANSIÓN DE ALTURA EN MONEDA VOLÁTIL (Ej. AVAX/SOL con rango >= 3.8%):
+                    // Despierta en +1.00% a +1.15% para no cortar el impulso abajo y buscar la máxima altura del rebote
+                    activationTarget = coinVol >= 4.8 ? 1.15 : 1.00;
                 }
                 else if (!pos.customMinGainPct && isPreWeekendHarvest) {
                     activationTarget = 0.60; // Viernes 06:00-17:00 COT: cosecha ágil para liberar USDT antes de Cazador Weekend
@@ -1529,17 +1557,19 @@ export class TrailingMasterBot {
                         await this.notifier.send(peakAlert, buttons);
                     }
                 }
-                // 💎 PASO A: VENTA PARCIAL 50/50 AL TOCAR PICO ALTO (>= +2.20%)
+                // 💎 PASO A: VENTA PARCIAL 50/50 AL TOCAR PICO ALTO (>= +2.20% estándar, o >= +2.70% en monedas de alta volatilidad)
                 // Si el lote es pequeño (< $20 USDT) y no se puede partir en 2 por el minNotional ($10) de Binance,
-                // aseguramos automáticamente un piso blindado en +1.50% neto para no devolver la subida.
-                if (!pos.customMinGainPct && pos.activated && gainPct >= 2.20 && !pos.partialProfitTaken) {
+                // aseguramos automáticamente un piso blindado en +1.50% (o +1.95% en alta volatilidad) para no devolver la subida.
+                const partialTriggerPct = isHighVolCoin ? 2.70 : 2.20;
+                const autoLockFloorPct = isHighVolCoin ? 1.95 : 1.50;
+                if (!pos.customMinGainPct && pos.activated && gainPct >= partialTriggerPct && !pos.partialProfitTaken) {
                     try {
                         const partialOk = await this.executePartialSell(pos, curPrice, 0.50);
-                        if (!partialOk && (!pos.lockedFloorGainPct || pos.lockedFloorGainPct < 1.50)) {
-                            pos.lockedFloorGainPct = 1.50;
+                        if (!partialOk && (!pos.lockedFloorGainPct || pos.lockedFloorGainPct < autoLockFloorPct)) {
+                            pos.lockedFloorGainPct = autoLockFloorPct;
                             pos.partialProfitTaken = true;
                             await this.saveTrailingPositions();
-                            console.log(`🔒 [AUTO-CANDADO EN LOTE COMPACTO] ${symbol} superó +2.20%. Piso asegurado automáticamente en +1.50% neto.`);
+                            console.log(`🔒 [AUTO-CANDADO EN LOTE] ${symbol} superó +${partialTriggerPct.toFixed(2)}%. Piso asegurado automáticamente en +${autoLockFloorPct.toFixed(2)}% neto.`);
                         }
                     }
                     catch (e) { }
@@ -2020,7 +2050,7 @@ export class TrailingMasterBot {
     /**
      * Compra una moneda e inicia el rastreo con Trailing Take Profit
      */
-    async executeSmartBuy(symbol, usdtAmount, source, strategy = "trailing_rebound") {
+    async executeSmartBuy(symbol, usdtAmount, source, strategy = "trailing_rebound", meta) {
         try {
             const investStr = (usdtAmount - 0.15).toFixed(2);
             console.log(`🚀 [${source}] Ejecutando compra de ${investStr} USDT en ${symbol} con Trailing Stop...`);
@@ -2042,6 +2072,9 @@ export class TrailingMasterBot {
             // Incluir la comisión cobrada en la moneda base dentro del precio unitario de compra
             // para que jamás subestime el costo real de adquisición
             const buyPrice = qty > 0 ? (spent / qty) : (spent / grossQty);
+            const coinVol = meta?.coinRange24hPct || 0;
+            const isHighVol = coinVol >= 3.8 || meta?.convictionTier === "ALTA_VOLATILIDAD";
+            const activationPct = meta?.customMinGainPct || (strategy === "micro_grid" ? 0.58 : (isHighVol ? (coinVol >= 4.8 ? 1.15 : 1.00) : 0.80));
             // Registrar posición para Trailing Take Profit
             this.activeTrailingPositions.set(symbol, {
                 symbol,
@@ -2051,17 +2084,24 @@ export class TrailingMasterBot {
                 highestPrice: buyPrice,
                 activated: false,
                 buyTime: Date.now(),
-                strategy
+                strategy,
+                coinRange24hPct: meta?.coinRange24hPct,
+                convictionTier: meta?.convictionTier,
+                customMinGainPct: meta?.customMinGainPct
             });
             this.saveTrailingPositions();
-            const target08 = fmtPrice(buyPrice * 1.008);
+            const targetPriceStr = fmtPrice(buyPrice * (1 + activationPct / 100));
+            const volBadge = isHighVol
+                ? `🔥 <b>ALTA VOLATILIDAD (${coinVol.toFixed(1)}% 24h — Lote Potenciado & Rebote de Máxima Altura)</b>`
+                : (coinVol >= 2.6 ? `⚡ <b>IMPULSO MEDIO (${coinVol.toFixed(1)}% 24h)</b>` : `🛡️ <b>ESTÁNDAR / COMPACTO</b>`);
             const alertMsg = `🦅 <b>¡NUEVA COMPRA INTELIGENTE CON TRAILING!</b> 🚀\n\n` +
                 `• <b>Moneda:</b> ${symbol}\n` +
                 `• <b>Origen:</b> ${source}\n` +
-                `• <b>Inversión:</b> ${spent.toFixed(2)} USDT\n` +
+                `• <b>Calibre de Oportunidad:</b> ${volBadge}\n` +
+                `• <b>Inversión:</b> <b>${spent.toFixed(2)} USDT</b>\n` +
                 `• <b>Precio de entrada:</b> ${fmtPrice(buyPrice)}\n` +
-                `• 🎯 <b>Gatillo Trailing:</b> ${target08} (+0.8%)\n\n` +
-                `🛡️ <i>En cuanto suba al +0.8%, el bot asegura la ganancia y persigue el pico para exprimir el máximo beneficio.</i>`;
+                `• 🎯 <b>Despertar Trailing:</b> ${targetPriceStr} (<b>+${activationPct.toFixed(2)}%</b>)\n\n` +
+                `🛡️ <i>${isHighVol ? "Al ser una moneda con fuerte amplitud intradía, el bot invirtió más capital y amplió el respiro del Trailing para escalar hasta la máxima altura del rebote (+1.8% a +4.5%)." : "En cuanto supere la meta, el bot asegura la ganancia y persigue el pico más alto sin riesgo de venta en rojo."}</i>`;
             await this.notifier.send(alertMsg);
             console.log(alertMsg.replace(/<[^>]*>/g, "").replace(/<\/?i>/g, ""));
             return true;
@@ -2172,6 +2212,12 @@ export class TrailingMasterBot {
                 }
                 const maxRecent = Math.max(...highs.slice(-20));
                 const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
+                const low24 = Math.min(...lows.slice(-24));
+                const high24 = Math.max(...highs.slice(-24));
+                const coinRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
+                const convictionTier = (coinRange24hPct >= 3.8 && (dropPct >= 2.0 || rsi <= 39)) || coinRange24hPct >= 4.8
+                    ? "ALTA_VOLATILIDAD"
+                    : (coinRange24hPct >= 2.6 ? "IMPULSO" : "ESTANDAR");
                 // 🧠 ANÁLISIS DE ACCIÓN DEL PRECIO, BANDAS DE BOLLINGER Y VOLUMEN (PRICE ACTION CUANTITATIVO)
                 const lastIdx = closes.length - 1;
                 const candleRange = highs[lastIdx] - lows[lastIdx];
@@ -2190,11 +2236,21 @@ export class TrailingMasterBot {
                     ? ((dropPct >= 2.4 && rsi <= 43) || (isBollingerOversold && dropPct >= 2.0) || (isWickRebound && dropPct >= 1.6) || (rsi <= 35))
                     : (isStandardDip || isWickRebound);
                 if (isDip) {
-                    this.buyWatches.set(sym, { symbol: sym, armedPrice: curPrice, lowestPrice: curPrice, armedTime: Date.now(), rsi, dropPct });
+                    this.buyWatches.set(sym, {
+                        symbol: sym,
+                        armedPrice: curPrice,
+                        lowestPrice: curPrice,
+                        armedTime: Date.now(),
+                        rsi,
+                        dropPct,
+                        coinRange24hPct,
+                        rvol,
+                        convictionTier
+                    });
                     this.saveBuyWatches();
                     if (isMeme)
                         activeMemeCount++;
-                    console.log(`🎯 [TRAILING BUY ARMADO] ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | %B ${(bb.percentB * 100).toFixed(0)}% | RVOL ${rvol.toFixed(2)}x | Caída -${dropPct.toFixed(2)}%)`);
+                    console.log(`🎯 [TRAILING BUY ARMADO] ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Rango 24h ${coinRange24hPct.toFixed(1)}% [${convictionTier}] | RVOL ${rvol.toFixed(2)}x | Caída -${dropPct.toFixed(2)}%)`);
                 }
             }
             catch (e) { }
@@ -2269,16 +2325,22 @@ export class TrailingMasterBot {
                         }
                     }
                     catch { }
-                    let amountToUse = this.calculateSessionLotSize(sym, effectiveSpendable, sessionPlan.lotFractionPct, strat, 1, w.rsi || 40);
+                    const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
+                    const totalDropFromPeak = (w.dropPct || 1.5) + Math.max(0, saved);
+                    const coinVol = w.coinRange24hPct || 2.5;
+                    const convictionTier = w.convictionTier || ((coinVol >= 3.8 && (totalDropFromPeak >= 2.0 || (w.rsi || 40) <= 39)) ? "ALTA_VOLATILIDAD" : (coinVol >= 2.6 ? "IMPULSO" : "ESTANDAR"));
+                    let amountToUse = this.calculateSessionLotSize(sym, effectiveSpendable, sessionPlan.lotFractionPct, strat, 1, w.rsi || 40, coinVol, totalDropFromPeak);
                     if (amountToUse < this.minUsdtToTrade && effectiveSpendable >= this.minUsdtToTrade) {
                         amountToUse = this.minUsdtToTrade;
                     }
-                    const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
                     const sourceDesc = strat === "cazador_weekend"
                         ? `Cazador Weekend (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato)`
                         : `Trailing Buy (piso ${w.lowestPrice}, ${saved.toFixed(2)}% más barato que al armar)`;
-                    console.log(`✅ Rebote y giro 5m confirmado en ${sym}: piso ${w.lowestPrice} → ${cur} (+${bounce.toFixed(2)}%). Comprando ${amountToUse} USDT...`);
-                    const ok = await this.executeSmartBuy(sym, amountToUse, sourceDesc, strat);
+                    console.log(`✅ Rebote y giro 5m confirmado en ${sym} [${convictionTier} | Rango 24h ${coinVol.toFixed(1)}%]: piso ${w.lowestPrice} → ${cur} (+${bounce.toFixed(2)}%). Comprando ${amountToUse} USDT...`);
+                    const ok = await this.executeSmartBuy(sym, amountToUse, sourceDesc, strat, {
+                        coinRange24hPct: coinVol,
+                        convictionTier
+                    });
                     if (ok) {
                         this.buyWatches.delete(sym);
                         this.saveBuyWatches();
@@ -4122,6 +4184,12 @@ export class TrailingMasterBot {
                 const curPrice = closes[closes.length - 1];
                 const maxRecent = Math.max(...highs.slice(-36));
                 const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
+                const low24 = Math.min(...lows.slice(-24));
+                const high24 = Math.max(...highs.slice(-24));
+                const coinRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
+                const convictionTier = (coinRange24hPct >= 3.8 && (dropPct >= 2.0 || rsi <= 39)) || coinRange24hPct >= 4.8
+                    ? "ALTA_VOLATILIDAD"
+                    : (coinRange24hPct >= 2.6 ? "IMPULSO" : "ESTANDAR");
                 const lastIdx = closes.length - 1;
                 const candleRange = Math.max(1e-9, highs[lastIdx] - lows[lastIdx]);
                 const lowerWickRatio = (Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / candleRange;
@@ -4129,8 +4197,9 @@ export class TrailingMasterBot {
                 if ((dropPct >= 1.5 && rsi <= 55) || (rsi <= 45 && dropPct >= 0.8) || (rsi <= 38) || (bb.percentB <= 0.10 && rsi <= 48)) {
                     const bbBonus = bb.percentB <= 0.15 ? 4.0 : 0;
                     const wickBonus = lowerWickRatio >= 0.30 ? 3.0 : 0;
-                    const score = (dropPct * 1.5) + Math.max(0, (48 - rsi) * 2.0) + bbBonus + wickBonus;
-                    candidates.push({ symbol: sym, curPrice, dropPct, rsi, score });
+                    const volBonus = coinRange24hPct >= 3.8 ? 3.5 : 0;
+                    const score = (dropPct * 1.5) + Math.max(0, (48 - rsi) * 2.0) + bbBonus + wickBonus + volBonus;
+                    candidates.push({ symbol: sym, curPrice, dropPct, rsi, score, coinRange24hPct, convictionTier });
                 }
             }
             catch (e) { }
@@ -4148,6 +4217,8 @@ export class TrailingMasterBot {
             armedTime: Date.now(),
             rsi: best.rsi,
             dropPct: best.dropPct,
+            coinRange24hPct: best.coinRange24hPct,
+            convictionTier: best.convictionTier,
             strategy: "cazador_weekend"
         });
         this.saveBuyWatches();
@@ -4340,7 +4411,7 @@ export class TrailingMasterBot {
             updatedAt: Date.now()
         };
     }
-    calculateSessionLotSize(symbol, spendableUsdt, lotFractionPct, strategy = "trailing_rebound", tier = 1, rsi = 40) {
+    calculateSessionLotSize(symbol, spendableUsdt, lotFractionPct, strategy = "trailing_rebound", tier = 1, rsi = 40, coinRange24hPct = 2.5, dropPct = 1.5) {
         if (spendableUsdt < this.minUsdtToTrade)
             return 0;
         // Capital total estimado (invertido + disponible) para escalar techos dinámicamente a medida que crece la cuenta
@@ -4354,31 +4425,61 @@ export class TrailingMasterBot {
         // con el porcentaje asignado a la estrategia activa en controls.allocations
         const stratAllocPct = (this.controls?.allocations?.[strategy] ?? 50) / 100;
         const allocMultiplier = Math.max(0.75, Math.min(1.15, 0.65 + stratAllocPct * 0.70));
-        // Pirámide Invertida Institucional (1 : 1.5 : 2.2):
-        // - Nivel 1 (Explorador): prudente arriba para jamás congelar medio banco en el techo de una caída.
-        // - Nivel 2 (Soporte DCA -2.5%+): 1.35x más potente comprando monedas más baratas.
-        // - Nivel 3 (Capitulación DCA -5.5%+): 1.75x golpe maestro en el suelo estadístico.
+        // Evaluar si la moneda tiene Alta Volatilidad / Elasticidad en el día (ej. AVAX/SOL con rango >= 3.8% y caída a soporte)
+        const isHighVolOpportunity = (coinRange24hPct >= 3.8 && (dropPct >= 2.0 || rsi <= 39)) || coinRange24hPct >= 4.8;
+        const isMediumImpulse = !isHighVolOpportunity && coinRange24hPct >= 2.6;
+        // Pirámide Invertida Institucional + Potenciador por Elasticidad de la Moneda:
+        // - Moneda Tranquila (< 2.6% rango 24h): Lote compacto ($12-$16 USDT) para no inmovilizar capital en rangos lentos.
+        // - Moneda con Impulso Medio (2.6% - 3.7%): Lote equilibrado ($20-$28 USDT).
+        // - Moneda de Alta Volatilidad en Piso (>= 3.8% rango 24h, ej. AVAX): Lote Potenciado ($28-$42 USDT) para multiplicar la ganancia en dólares en el rebote a máxima altura.
+        let effectiveFraction = lotFractionPct;
         let tierMultiplier = 0.85;
         let tierMaxCap = isMeme
             ? Math.max(15, Math.min(22, totalPortfolioEst * 0.075))
-            : (rsi <= 28 ? Math.max(20, Math.min(35, totalPortfolioEst * 0.115)) : Math.max(18, Math.min(25, totalPortfolioEst * 0.085)));
-        if (tier === 2) {
+            : Math.max(16, Math.min(22, totalPortfolioEst * 0.08));
+        if (tier === 1 && strategy !== "micro_grid") {
+            if (isHighVolOpportunity) {
+                effectiveFraction = Math.max(lotFractionPct, 0.65);
+                tierMultiplier = rsi <= 34 || dropPct >= 3.0 ? 1.65 : 1.45;
+                tierMaxCap = isMeme
+                    ? Math.max(24, Math.min(34, totalPortfolioEst * 0.115))
+                    : Math.max(30, Math.min(44, totalPortfolioEst * 0.15));
+            }
+            else if (isMediumImpulse) {
+                effectiveFraction = Math.max(lotFractionPct, 0.45);
+                tierMultiplier = rsi <= 34 ? 1.25 : 1.10;
+                tierMaxCap = isMeme
+                    ? Math.max(18, Math.min(26, totalPortfolioEst * 0.09))
+                    : Math.max(22, Math.min(30, totalPortfolioEst * 0.105));
+            }
+            else if (rsi <= 28) {
+                tierMultiplier = 1.15;
+                tierMaxCap = Math.max(20, Math.min(28, totalPortfolioEst * 0.10));
+            }
+        }
+        else if (tier === 2) {
+            effectiveFraction = Math.max(lotFractionPct, 0.55);
             tierMultiplier = 1.35;
             tierMaxCap = isMeme
                 ? Math.max(18, Math.min(30, totalPortfolioEst * 0.10))
-                : Math.max(22, Math.min(36, totalPortfolioEst * 0.12));
+                : Math.max(24, Math.min(38, totalPortfolioEst * 0.13));
         }
         else if (tier === 3) {
+            effectiveFraction = Math.max(lotFractionPct, 0.70);
             tierMultiplier = 1.75;
             tierMaxCap = isMeme
                 ? Math.max(22, Math.min(38, totalPortfolioEst * 0.13))
-                : Math.max(28, Math.min(48, totalPortfolioEst * 0.16));
+                : Math.max(30, Math.min(48, totalPortfolioEst * 0.16));
         }
-        else if (rsi <= 28) {
-            tierMultiplier = 1.15;
-        }
-        let lot = Math.floor(spendableUsdt * lotFractionPct * allocMultiplier * tierMultiplier * 100) / 100;
+        let lot = Math.floor(spendableUsdt * effectiveFraction * allocMultiplier * tierMultiplier * 100) / 100;
         lot = Math.min(lot, Math.floor(tierMaxCap * 100) / 100);
+        // Piso mínimo garantizado para oportunidades de Alta Volatilidad si hay saldo gastable suficiente
+        if (tier === 1 && isHighVolOpportunity && spendableUsdt >= 25 && lot < 25) {
+            lot = Math.min(spendableUsdt, Math.min(32, Math.floor(spendableUsdt * 0.80 * 100) / 100));
+        }
+        else if (tier === 1 && isMediumImpulse && spendableUsdt >= 18 && lot < 18) {
+            lot = Math.min(spendableUsdt, 20);
+        }
         if (lot < this.minUsdtToTrade && spendableUsdt >= this.minUsdtToTrade) {
             lot = this.minUsdtToTrade;
         }
