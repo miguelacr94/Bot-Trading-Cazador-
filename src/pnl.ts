@@ -13,12 +13,13 @@ export const PNL_SYMBOLS = [
   "BTCUSDT",
   "BNBUSDT",
   "XRPUSDT",
+  "NEARUSDT",
+  "SUIUSDT",
   "PEPEUSDT",
   "DOGEUSDT",
   "BONKUSDT",
   "SHIBUSDT",
   "WIFUSDT",
-  "SUIUSDT",
 ];
 // Fecha fija de inicio del ciclo del Bot (15 Oct 2026) para que NUNCA se borren ganancias pasadas al avanzar el calendario
 export const PNL_SINCE = new Date("2026-10-15T00:00:00Z").getTime();
