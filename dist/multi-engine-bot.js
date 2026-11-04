@@ -1448,12 +1448,13 @@ export class TrailingMasterBot {
                 // En Spot nunca hay liquidación de margen. Los tokens son propios.
                 // NUNCA vender en rojo; esperar el rebote al alza (+0.80% mínimo) o promediar con Smart DCA.
                 // (Stop-Loss eliminado al 100% de la lógica Spot para evitar whipsaws)
-                // 1. Activar Trailing si superó el umbral (adaptativo por régimen Quieto / Weekend / Micro-Grid / Lote 3)
+                // 1. Activar Trailing si superó el umbral (adaptativo por régimen Quieto / Weekend / Pre-Weekend / Micro-Grid / Lote 3)
                 const isLot3 = (pos.lotIndex && pos.lotIndex >= 3) || symbol.includes("_lot_3");
                 const btcRangeCur = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
                 const isQuietRegime = this.lastDetectedRegime === "QUIET" || btcRangeCur < 2.2;
                 const isWeekendChop = this.isWeekendWindow() && !this.isSundayCmeReopenWindow();
                 const isPreNightHarvest = this.isPreNightHarvestWindow();
+                const isPreWeekendHarvest = this.isPreWeekendAccumulationWindow();
                 let activationTarget = pos.customMinGainPct || TRAILING_ACTIVATION_PCT;
                 if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
                     activationTarget = 0.58; // Canal lateral corto: activa en +0.58% para asegurar >= +0.46% neto
@@ -1466,6 +1467,9 @@ export class TrailingMasterBot {
                         activationTarget = 1.80;
                     else
                         activationTarget = 1.20;
+                }
+                else if (!pos.customMinGainPct && isPreWeekendHarvest) {
+                    activationTarget = 0.60; // Viernes 06:00-17:00 COT: cosecha ágil para liberar USDT antes de Cazador Weekend
                 }
                 else if (!pos.customMinGainPct && (isQuietRegime || isWeekendChop || isPreNightHarvest)) {
                     activationTarget = 0.65; // Compresión cuantitativa en días quietos / fin de semana sin volumen
@@ -1546,9 +1550,9 @@ export class TrailingMasterBot {
                     const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
                     let callback = pos.strategy === "micro_grid" ? 0.12 : this.getCallbackPct(symbol, pos);
                     let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.48 : 0.80);
-                    // 🌆 COMPRESIÓN CUANTITATIVA EN DÍAS QUIETOS, WEEKEND PLANO O COSECHA PRE-NOCTURNA:
-                    if (!pos.customMinGainPct && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isQuietRegime || isWeekendChop) && gainPct >= 0.50) {
-                        callback = Math.min(callback, 0.16);
+                    // 🌆 COMPRESIÓN CUANTITATIVA EN DÍAS QUIETOS, WEEKEND PLANO, PRE-WEEKEND O COSECHA PRE-NOCTURNA:
+                    if (!pos.customMinGainPct && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop) && gainPct >= 0.50) {
+                        callback = Math.min(callback, isPreWeekendHarvest ? 0.15 : 0.16);
                         minGain = 0.50;
                     }
                     // 🕯️ CENTINELA DE MECHA DE RECHAZO (AGOTAMIENTO INSTITUCIONAL EN CIMA)
@@ -2226,8 +2230,13 @@ export class TrailingMasterBot {
                 const botAvailableUsdt = Math.max(0, usdt - this.walletSplit.manualUsdt);
                 const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(botAvailableUsdt);
                 const reqBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
-                // CANDADO ESTRICTO DE RESERVA: Solo comprar si el saldo GASTABLE supera el mínimo ($10 USDT)
-                if (bounce >= reqBounce && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
+                const strat = w.strategy || "trailing_rebound";
+                // Si es Cazador Weekend en ventana de fin de semana, desbloquea el presupuesto de fin de semana (usdt pasado)
+                const effectiveSpendable = (strat === "cazador_weekend" && this.isWeekendWindow())
+                    ? Math.max(sessionPlan.spendableUsdt, usdt)
+                    : sessionPlan.spendableUsdt;
+                // CANDADO ESTRICTO DE RESERVA: Solo comprar si el saldo GASTABLE de la estrategia supera el mínimo ($10 USDT)
+                if (bounce >= reqBounce && effectiveSpendable >= this.minUsdtToTrade) {
                     // 🧠 CONFIRMACIÓN DE GIRO EN 5M SINCRONIZADA CON LA SESIÓN HORARIA (ANTI-ENTRADA ANTICIPADA):
                     // Evita comprar en el primer micro-rebote ("Dead Cat Bounce") si la vela de 5m sigue siendo roja y cayendo.
                     let turnaroundConfirmed = true;
@@ -2260,9 +2269,8 @@ export class TrailingMasterBot {
                         }
                     }
                     catch { }
-                    const strat = w.strategy || "trailing_rebound";
-                    let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt, sessionPlan.lotFractionPct, strat, 1, w.rsi || 40);
-                    if (amountToUse < this.minUsdtToTrade && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
+                    let amountToUse = this.calculateSessionLotSize(sym, effectiveSpendable, sessionPlan.lotFractionPct, strat, 1, w.rsi || 40);
+                    if (amountToUse < this.minUsdtToTrade && effectiveSpendable >= this.minUsdtToTrade) {
                         amountToUse = this.minUsdtToTrade;
                     }
                     const saved = ((w.armedPrice - w.lowestPrice) / w.armedPrice) * 100;
@@ -4067,7 +4075,8 @@ export class TrailingMasterBot {
                     // Si el precio está en el 32% inferior del canal (o %B <= 0.25), RSI <= 46 (incluyendo sobreventa profunda < 34) y vela de soporte:
                     if ((positionInChannel <= 0.32 || bb.percentB <= 0.25) && rsi <= 46 && isGreenOrWick) {
                         const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
-                        let amountToUse = this.calculateSessionLotSize(sym, sessionPlan.spendableUsdt || usdt, sessionPlan.lotFractionPct || 0.40, "micro_grid");
+                        const gridPoolUsdt = Math.max(sessionPlan.spendableUsdt || 0, usdt);
+                        let amountToUse = this.calculateSessionLotSize(sym, gridPoolUsdt, sessionPlan.lotFractionPct || 0.40, "micro_grid");
                         amountToUse = Math.min(amountToUse, 20); // Tope conservador por rejilla para no agotar liquidez en 1 sola moneda
                         if (amountToUse < this.minUsdtToTrade)
                             continue;
@@ -4171,6 +4180,21 @@ export class TrailingMasterBot {
         const minute = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
         return (hour === 8 && minute >= 30) || (hour > 8 && hour < 14);
     }
+    /**
+     * Ventana de Acumulación y Cosecha Pre-Weekend (Viernes 06:00 a 16:59 COT):
+     * Asegura liquidez fresca antes de que se abra Cazador Weekend a las 17:00 COT.
+     */
+    isPreWeekendAccumulationWindow() {
+        try {
+            const now = new Date();
+            const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
+            const hour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+            return dayStr === "Fri" && hour >= 6 && hour < 17;
+        }
+        catch {
+            return false;
+        }
+    }
     getSessionLiquidityPlan(totalFreeUsdt) {
         const now = new Date();
         const cotHour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
@@ -4183,6 +4207,8 @@ export class TrailingMasterBot {
         const isAfternoonSlide = cotHour >= 14 && cotHour < 17; // 14:00 - 17:00 COT (Cierre NY y deslizamiento)
         const isPreNight = cotHour >= 17 && cotHour < 20; // 17:00 - 20:00 COT (Cosecha previa a Asia)
         const isNight = cotHour >= 20 || cotHour < 3; // 20:00 - 03:00 COT (Drenaje nocturno y trampas)
+        const isPreWeekend = this.isPreWeekendAccumulationWindow();
+        const isWeekend = this.isWeekendWindow();
         let sessionKey = "REGULAR";
         let sessionTitle = "🔄 Sesión Regular / Transición";
         let reservePct = baseReservePct; // Por defecto siempre respetar mínimo el 25%
@@ -4199,6 +4225,16 @@ export class TrailingMasterBot {
             trailingBounceTrigger = 0.45;
             reason = "Bajo volumen y alto riesgo de caza de stops (Win Rate 38%-43%). El 50% de la caja queda CONGELADA para aprovechar los suelos de Londres a las 03:00 COT.";
             recommendation = "🌙 Mantener reserva congelada. Compras bloqueadas salvo pánico extremo (RSI <= 26 con vela de rechazo).";
+        }
+        else if (isPreWeekend) {
+            sessionKey = "COSECHA_PRENOCTURNA";
+            sessionTitle = "🏖️ Acumulación Pre-Weekend (Viernes 06:00 - 17:00 COT)";
+            reservePct = Math.max(0.40, baseReservePct);
+            lotFractionPct = 0.30;
+            trailingBounceTrigger = 0.40;
+            harvestCallbackPct = 0.15;
+            reason = "Preparación estratégica de viernes: se blinda al menos el 25% del portafolio total y se cosechan posiciones en verde (+0.60%) para llegar a las 17:00 COT con liquidez garantizada para Cazador Weekend.";
+            recommendation = "🏖️ Prioridad Cosecha: Recoger ganancias en verde y guardar presupuesto garantizado para el fin de semana.";
         }
         else if (isLondon) {
             sessionKey = "LONDRES_REBOTE";
@@ -4236,13 +4272,38 @@ export class TrailingMasterBot {
             reason = "Preparación para el drenaje nocturno. El 45% de la cuenta se protege en USDT líquido.";
             recommendation = "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para cerrar en verde y acumular USDT para la noche.";
         }
-        // Calcular montos exactos respetando los mínimos de Binance ($10 USDT)
+        // 🛡️ BÓVEDA DE RESERVA ESTRATÉGICA BASADA EN PORTAFOLIO TOTAL (ANTI-SEQUÍA DE SALDO):
+        // Evita que las compras normales de Cazador Trailing (Lote 1) entre semana agoten el 100% del USDT,
+        // garantizando presupuesto intocable para Fin de Semana (Cazador Weekend), Días Quietos (Micro-Grid) y Rescates (Smart DCA).
+        let activeInvested = 0;
+        for (const p of this.activeTrailingPositions.values()) {
+            activeInvested += (p.investedUsdt || 0);
+        }
+        const totalPortfolioEst = activeInvested + totalFreeUsdt;
+        // Piso estratégico que Cazador Trailing (Tier 1) NO puede gastar:
+        // - Viernes Pre-Weekend (06:00-17:00 COT): mín. 25% del portafolio total (o $50 USDT) para asegurar munición a las 17:00 COT.
+        // - Fin de Semana (Vie 17:00 - Dom 18:00 COT): se libera la bóveda (solo retiene 10% o $15 USDT para emergencias DCA).
+        // - Lunes a Jueves: mín. 18% del portafolio total (o $35 USDT) reservado para Días Quietos (Micro-Grid), Weekend y Smart DCA.
+        let strategicFloorUsdt = 0;
+        if (activeInvested > 0) {
+            if (isPreWeekend) {
+                strategicFloorUsdt = Math.max(50, Math.round(totalPortfolioEst * 0.25 * 100) / 100);
+            }
+            else if (isWeekend) {
+                strategicFloorUsdt = Math.max(15, Math.round(totalPortfolioEst * 0.10 * 100) / 100);
+            }
+            else {
+                strategicFloorUsdt = Math.max(35, Math.round(totalPortfolioEst * 0.18 * 100) / 100);
+            }
+        }
+        // Calcular montos exactos respetando los mínimos de Binance ($10 USDT) y el Piso Estratégico
         let reservedUsdt = 0;
         let spendableUsdt = totalFreeUsdt;
         if (totalFreeUsdt >= 20) {
-            reservedUsdt = Math.max(10, Math.round(totalFreeUsdt * reservePct * 100) / 100);
+            const pctReserve = Math.round(totalFreeUsdt * reservePct * 100) / 100;
+            reservedUsdt = Math.min(totalFreeUsdt, Math.max(10, strategicFloorUsdt, pctReserve));
             spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
-            // Si lo que queda para gastar es menor a $10 USDT, se congela todo como reserva para no dejar órdenes inválidas
+            // Si lo que queda para gastar es menor a $10 USDT, se congela todo como reserva para Weekend / Quieto / DCA
             if (spendableUsdt < this.minUsdtToTrade) {
                 reservedUsdt = totalFreeUsdt;
                 spendableUsdt = 0;
@@ -4250,9 +4311,9 @@ export class TrailingMasterBot {
         }
         else if (totalFreeUsdt >= this.minUsdtToTrade) {
             // Si el capital libre es entre 10 y 20 USDT:
-            // En noche profunda (20:00-03:00 COT), blindar al 100% para Londres (03:00 COT)
-            // En horario diurno / de mercado, permitir 1 micro-lote de alta convicción (mínimo de Binance $10)
-            if (isNight) {
+            // Si ya tenemos posiciones abiertas (activeInvested > 0) o es de noche, BLINDAR al 100% como reserva
+            // (Jamás gastar el último billete de $10-$19 en otro Lote 1 de Trailing; guardarlo para DCA / Weekend / Micro-Grid).
+            if (isNight || activeInvested > 0) {
                 reservedUsdt = totalFreeUsdt;
                 spendableUsdt = 0;
             }
@@ -4635,34 +4696,41 @@ export class TrailingMasterBot {
             console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva: ${sessionPlan.reservedUsdt.toFixed(2)}) | Monedas: ${uniqueActiveCount}/${maxUniqueCoins} (${this.activeTrailingPositions.size} lotes) | Cazando piso: ${this.buyWatches.size}`);
             // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
             await this.checkLiquidityAndFuturesViability(usdt);
-            // 2. Evaluar oportunidades si hay saldo libre gastable y no hay oportunidad pendiente
-            if (sessionPlan.spendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
-                // A) Primero evaluar Smart DCA en posiciones activas que hayan caído y ya muestren frenado
-                const dcaTriggered = await this.checkSmartDcaOpportunities(sessionPlan.spendableUsdt);
-                // B) Centinela Alpha (Estrategia Autónoma de Recuperación con 20% del presupuesto)
+            // 2. Evaluar oportunidades por Bolsillos Estratégicos (DCA, Weekend y Día Quieto tienen llave sobre la Reserva Protegida)
+            if (botSpendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
+                // Bolsillo 1 (Prioridad Máxima): Smart DCA puede usar tanto el saldo gastable como la Bóveda de Reserva para rescatar posiciones
+                const dcaTriggered = await this.checkSmartDcaOpportunities(botSpendableUsdt);
+                // Bolsillo 2: Centinela Alpha (solo con saldo gastable ordinario)
                 let alphaTriggered = false;
-                if (!dcaTriggered && this.controls.strategies?.centinela_alpha) {
+                if (!dcaTriggered && this.controls.strategies?.centinela_alpha && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
                     alphaTriggered = await this.evaluateCentinelaAlpha(sessionPlan.spendableUsdt);
                 }
-                // C) Si estamos en Fin de Semana y Cazador Weekend está activo (contando monedas únicas):
+                // Bolsillo 3: Fin de Semana (Cazador Weekend desbloquea la Bóveda de Reserva acumulada el viernes, dejando $15 de colchón DCA)
                 let weekendTriggered = false;
-                if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && uniqueActiveCount < maxUniqueCoins) {
-                    weekendTriggered = await this.evaluateCazadorWeekend(sessionPlan.spendableUsdt, activeSymbols);
+                const weekendUnlockedUsdt = Math.max(sessionPlan.spendableUsdt, Math.max(0, botSpendableUsdt - 15));
+                if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && uniqueActiveCount < maxUniqueCoins && weekendUnlockedUsdt >= this.minUsdtToTrade) {
+                    weekendTriggered = await this.evaluateCazadorWeekend(weekendUnlockedUsdt, activeSymbols);
                 }
-                // D) Si Micro-Grid está activo (en días quietos): operar canales laterales en monedas libres
+                // Bolsillo 4: Día Quieto / Lateral (Micro-Grid desbloquea hasta $20 USDT de la Bóveda de Reserva, dejando $15 de colchón DCA)
                 let gridTriggered = false;
-                if (!dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && uniqueActiveCount < maxUniqueCoins) {
-                    gridTriggered = await this.evaluateMicroGrid(sessionPlan.spendableUsdt, activeSymbols);
+                const btcRangeNow = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
+                const isQuietOrGridActive = this.controls.strategies.micro_grid || (this.isWeekendWindow() && btcRangeNow < 2.2 && !this.isSundayCmeReopenWindow());
+                const gridUnlockedUsdt = Math.max(sessionPlan.spendableUsdt, Math.min(20, Math.max(0, botSpendableUsdt - 15)));
+                if (!dcaTriggered && !weekendTriggered && isQuietOrGridActive && uniqueActiveCount < maxUniqueCoins && gridUnlockedUsdt >= this.minUsdtToTrade) {
+                    gridTriggered = await this.evaluateMicroGrid(gridUnlockedUsdt, activeSymbols);
                 }
-                // E) Si Trailing Rebound está activo: vigilar caídas y suelos en monedas libres (incluso en paralelo si Micro-Grid no compró en este ciclo)
+                // Bolsillo 5: Cazador Trailing Estándar (Tier 1 entre semana): respeta ESTRICTAMENTE sessionPlan.spendableUsdt
+                // para JAMÁS agotar la reserva destinada a Fin de Semana, Días Quietos y Smart DCA.
                 if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins) {
-                    await this.scanForDips(activeSymbols);
+                    if (sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
+                        await this.scanForDips(activeSymbols);
+                    }
                     if (this.buyWatches.size > 0) {
-                        await this.checkBuyWatches(sessionPlan.spendableUsdt);
+                        await this.checkBuyWatches(this.isWeekendWindow() ? weekendUnlockedUsdt : sessionPlan.spendableUsdt);
                     }
                 }
             }
-            else if (sessionPlan.reservedUsdt >= 15.0) {
+            if (sessionPlan.spendableUsdt < this.minUsdtToTrade && sessionPlan.reservedUsdt >= 15.0 && !this.pendingOpportunity) {
                 await this.checkPrimeHarvestOpportunities(sessionPlan.reservedUsdt);
             }
         }
