@@ -972,20 +972,30 @@ export class TrailingMasterBot {
             const newLotId = `${cleanSym}_lot_${lotIndex}_${Date.now()}`;
             pos.lastDcaTime = Date.now();
             pos.dcaCount = (pos.dcaCount || 0) + 1;
-            // Meta de salida adaptativa según el lote: Lote 3 tiene rango expandido de rebote
-            let lotMinGainPct = 0.80;
-            if (lotIndex >= 3) {
-                const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
-                const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
+            // Calcular descuento real de este lote frente al Lote #1 (brecha de rebote disponible)
+            const dropFromLot1Pct = pos.buyPrice > 0 ? Math.max(0, ((pos.buyPrice - buyPriceThisLot) / pos.buyPrice) * 100) : 3.0;
+            const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
+            const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
+            // 🚀 META DE SALIDA ADAPTATIVA POR PROFUNDIDAD DE CAÍDA (TANTO EN LOTE #2 COMO EN LOTE #3):
+            // Si la moneda cayó -5.5% o -6.5%+ antes de comprar el Lote #2 (o Lote #3), ese lote se compró en descuento profundo
+            // y su rebote natural hacia el Lote #1 será mucho más grande (+1.5% a +3.5%).
+            let lotMinGainPct = 0.90;
+            let dcaConviction = "IMPULSO";
+            if (dropFromLot1Pct >= 6.0 || lotIndex >= 3) {
+                dcaConviction = "MAXIMA_BRECHA";
                 if (isMeme) {
-                    lotMinGainPct = 2.20; // Rango de rebote amplio en memecoins
+                    lotMinGainPct = dropFromLot1Pct >= 7.0 ? 2.40 : 2.10;
                 }
-                else if (btcRange >= 2.5) {
-                    lotMinGainPct = 1.80; // Mercado con volumen
+                else if (btcRange >= 2.3 || dropFromLot1Pct >= 6.0) {
+                    lotMinGainPct = 1.80;
                 }
                 else {
-                    lotMinGainPct = 1.20; // Mercado lateral
+                    lotMinGainPct = 1.35;
                 }
+            }
+            else if (dropFromLot1Pct >= 4.2) {
+                dcaConviction = "ALTA_VOLATILIDAD";
+                lotMinGainPct = isMeme ? 1.65 : 1.35;
             }
             // 🛡️ REGLA DE ORO: CADA COMPRA ES UN LOTE 100% AISLADO (NUNCA COMBINAR)
             this.activeTrailingPositions.set(newLotId, {
@@ -1001,20 +1011,23 @@ export class TrailingMasterBot {
                 strategy: "smart_dca",
                 customCallbackPct: pos.customCallbackPct,
                 customTimeframe: pos.customTimeframe,
-                customMinGainPct: lotMinGainPct
+                customMinGainPct: lotMinGainPct,
+                coinRange24hPct: Math.max(pos.coinRange24hPct || 3.5, dropFromLot1Pct),
+                upsideGapPct: dropFromLot1Pct,
+                convictionTier: dcaConviction
             });
             this.saveTrailingPositions();
             const newTarget = (buyPriceThisLot * (1 + lotMinGainPct / 100)).toFixed(4);
-            const isExtreme = lotIndex >= 3;
-            const title = isExtreme
-                ? `🚨 <b>¡SMART DCA: LOTE #3 (RESCATE EXTREMO) CREADO!</b> 💎`
+            const isDeepDiscount = lotIndex >= 3 || dropFromLot1Pct >= 5.5;
+            const title = isDeepDiscount
+                ? `🚨 <b>¡SMART DCA: LOTE #${lotIndex} EN DESCUENTO PROFUNDO (-${dropFromLot1Pct.toFixed(1)}%) CREADO!</b> 💎`
                 : `🛡️ <b>¡SMART DCA: NUEVO LOTE INDEPENDIENTE CREADO!</b> 🎯`;
             const alertMsg = `${title}\n\n` +
-                `• <b>Moneda:</b> <b>${cleanSym}</b> (Lote #${lotIndex} - ${isExtreme ? "Suelo Profundo" : "Soporte"})\n` +
-                `• 💵 <b>Inversión de este lote:</b> ${spent.toFixed(2)} USDT (+${newQty.toFixed(4)} ${asset})\n` +
-                `• 🎯 <b>Precio de compra de este lote:</b> <b>${fmtPrice(buyPriceThisLot)}</b>\n` +
-                `• 🏁 <b>Meta de salida (+${lotMinGainPct.toFixed(1)}%):</b> ${newTarget}\n\n` +
-                `🔒 <i>LOTE AISLADO CON RANGO EXPANDIDO: ${isExtreme ? "Como se compró en descuento extremo, tiene mayor rango de rebote para capturar toda la recuperación. " : ""}Cuando este lote alcance su meta, ¡venderá ÚNICAMENTE este lote con ganancia limpia! Tus lotes anteriores quedan intactos esperando su propia meta sin arrastrar pérdidas.</i>`;
+                `• <b>Moneda:</b> <b>${cleanSym}</b> (Lote #${lotIndex} — Descuento <b>-${dropFromLot1Pct.toFixed(2)}%</b> vs Lote 1)\n` +
+                `• 💵 <b>Inversión escalonada de este lote:</b> <b>${spent.toFixed(2)} USDT</b> (+${newQty.toFixed(4)} ${asset})\n` +
+                `• 🎯 <b>Precio de compra en piso:</b> <b>${fmtPrice(buyPriceThisLot)}</b>\n` +
+                `• 🚀 <b>Despertar Trailing Ampliado (+${lotMinGainPct.toFixed(2)}%):</b> ${newTarget} <i>(persiguiendo rebote mayor hacia ${fmtPrice(pos.buyPrice)})</i>\n\n` +
+                `🔒 <i>LOTE AISLADO CON RANGO EXPANDIDO: Al haberse comprado con -${dropFromLot1Pct.toFixed(1)}% de descuento, el algoritmo amplió la meta y el respiro del Trailing para capturar un rebote grande en este lote sin venderlo prematuramente.</i>`;
             await this.notifier.send(alertMsg);
             console.log(alertMsg.replace(/<[^>]*>/g, ""));
             return true;
@@ -1186,42 +1199,70 @@ export class TrailingMasterBot {
                         continue;
                 }
                 const dcaTf = this.controls.strategySettings?.smart_dca?.timeframe || "4h";
-                const klines = await this.client.klines(cleanSym, dcaTf, { limit: 25 });
-                const closes = klines.data.map((k) => parseFloat(k[4]));
-                const rsi = this.calculateRSI(closes, 14);
-                // 🛡️ FILTRO ANTI-CUCHILLO CAYENDO EN SMART DCA (15m):
-                // Si la vela actual de 15m está cayendo con fuerza (<= -0.45%) sin mecha de absorción (< 25%),
-                // esperar a que el precio deje de caer para comprar el lote DCA en el verdadero fondo y no anticipado.
+                const [klinesDca, klines1h] = await Promise.all([
+                    this.client.klines(cleanSym, dcaTf, { limit: 25 }),
+                    this.client.klines(cleanSym, "1h", { limit: 25 })
+                ]);
+                const closesDca = klinesDca.data.map((k) => parseFloat(k[4]));
+                const closes1h = klines1h.data.map((k) => parseFloat(k[4]));
+                const rsi4h = this.calculateRSI(closesDca, 14);
+                const rsi1h = this.calculateRSI(closes1h, 14);
+                // Usar el menor entre RSI 4H y RSI 1H para que cuando una moneda caiga -6% en pocas horas,
+                // el rezago de 4H jamás bloquee la detección del suelo en 1H.
+                const rsi = Math.min(rsi4h, rsi1h);
+                // 🛡️ FILTRO ANTI-CUCHILLO CAYENDO Y CONFIRMACIÓN DE PISO EN SMART DCA (15m):
+                // Exige que la vela de 15m no solo deje de desplomarse, sino que muestre absorción (vela verde, mecha >= 25% o suelo creciente)
+                // para no comprar a mitad de una caída sino cuando ya tocó fondo.
                 let isFallingKnife15m = false;
                 try {
-                    const k15 = await this.client.klines(cleanSym, "15m", { limit: 2 });
-                    if (k15?.data?.length > 0) {
+                    const k15 = await this.client.klines(cleanSym, "15m", { limit: 3 });
+                    if (k15?.data?.length >= 2) {
                         const last15 = k15.data[k15.data.length - 1];
+                        const prev15 = k15.data[k15.data.length - 2];
                         const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
+                        const prevLow15 = parseFloat(prev15[3]);
                         const bodyDrop15 = ((c15 - o15) / o15) * 100;
                         const range15 = h15 - l15;
                         const lowerWick15 = range15 > 0 ? (Math.min(o15, c15) - l15) / range15 : 0;
-                        if (bodyDrop15 <= -0.45 && lowerWick15 < 0.25) {
+                        const isGreen15 = c15 >= o15;
+                        const isHigherLow15 = l15 >= prevLow15 * 0.999;
+                        if (bodyDrop15 <= -0.35 && lowerWick15 < 0.28) {
+                            isFallingKnife15m = true;
+                        }
+                        else if (!isGreen15 && lowerWick15 < 0.25 && !isHigherLow15) {
+                            // Sigue goteando en rojo sin mecha de rechazo ni doble suelo
                             isFallingKnife15m = true;
                         }
                     }
                 }
                 catch { }
                 if (isFallingKnife15m) {
-                    console.log(`⏳ [SMART DCA: ESPERANDO PISO] ${cleanSym} ya cayó ${dropFromLot1.toFixed(2)}%, pero la vela 15m sigue cayendo sin absorción. Esperando giro real para entrar más barato.`);
+                    console.log(`⏳ [SMART DCA: ESPERANDO PISO REAL] ${cleanSym} ya cayó ${dropFromLot1.toFixed(2)}%, pero 15m aún no confirma vela de giro/absorción. Esperando el fondo exacto.`);
                     continue;
                 }
                 const dcaAllocWeight = Math.max(0.35, Math.min(0.65, ((this.controls.allocations?.smart_dca || 40) / 100)));
                 const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
                 const spendableForDca = sessionPlan.spendableUsdt >= this.minUsdtToTrade ? sessionPlan.spendableUsdt : usdt;
+                const absDrop = Math.abs(dropFromLot1);
+                const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
+                const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
                 if (lotCount === 1) {
-                    // --- EVALUACIÓN LOTE #2 (Pirámide Invertida Nivel 2: 1.5x fuerza en soporte) ---
-                    if (dropFromLot1 <= -2.5 && rsi <= 45) {
-                        const amount = this.calculateSessionLotSize(cleanSym, spendableForDca, dcaAllocWeight, "smart_dca", 2, rsi);
+                    // --- EVALUACIÓN LOTE #2 (Escalonado: si cayó -5.5% o -6%+, activa modo Descuento Profundo con mayor inversión y meta ampliada) ---
+                    const qualifiesLot2 = (dropFromLot1 <= -2.5 && rsi <= 45) || (dropFromLot1 <= -5.5 && rsi <= 50);
+                    if (qualifiesLot2) {
+                        const isDeepLot2 = absDrop >= 5.5;
+                        const amount = this.calculateSessionLotSize(cleanSym, spendableForDca, isDeepLot2 ? Math.max(dcaAllocWeight, 0.65) : dcaAllocWeight, "smart_dca", isDeepLot2 ? 3 : 2, rsi, Math.max(absDrop, 3.5), absDrop);
                         if (amount < this.minUsdtToTrade)
                             continue;
-                        const target08 = (curPrice * 1.008).toFixed(4);
-                        const score = Math.abs(dropFromLot1) * 1.5 + (50 - rsi);
+                        let minGainLot2 = 0.90;
+                        if (absDrop >= 6.0) {
+                            minGainLot2 = isMeme ? 2.20 : 1.80;
+                        }
+                        else if (absDrop >= 4.2) {
+                            minGainLot2 = isMeme ? 1.65 : 1.35;
+                        }
+                        const targetPriceStr = (curPrice * (1 + minGainLot2 / 100)).toFixed(4);
+                        const score = absDrop * (isDeepLot2 ? 2.2 : 1.5) + (50 - rsi) + (isDeepLot2 ? 25 : 0);
                         candidates.push({
                             pos: lot1,
                             cleanSym,
@@ -1230,29 +1271,30 @@ export class TrailingMasterBot {
                             curPrice,
                             rsi,
                             score,
-                            isExtreme: false,
-                            minGainPct: 0.80,
+                            isExtreme: isDeepLot2,
+                            minGainPct: minGainLot2,
                             amount,
-                            potentialTarget: target08,
-                            reason: `Cayó ${dropFromLot1.toFixed(2)}% desde Lote 1 (RSI ${rsi.toFixed(1)}). Pirámide Invertida Nivel 2 (${amount.toFixed(2)} USDT) en soporte con meta inicial ${target08}.`
+                            potentialTarget: targetPriceStr,
+                            reason: isDeepLot2
+                                ? `🚨 OPORTUNIDAD DE CAÍDA PROFUNDA (${dropFromLot1.toFixed(2)}% desde Lote 1 | RSI ${rsi.toFixed(1)}): Lote #2 Potenciado (${amount.toFixed(2)} USDT) con meta de rebote ampliada (+${minGainLot2.toFixed(2)}% → ${targetPriceStr}) para aprovechar el gran rebote.`
+                                : `Cayó ${dropFromLot1.toFixed(2)}% desde Lote 1 (RSI ${rsi.toFixed(1)}). Pirámide Invertida Nivel 2 (${amount.toFixed(2)} USDT) en soporte con meta inicial +${minGainLot2.toFixed(2)}% (${targetPriceStr}).`
                         });
                     }
                 }
                 else if (lotCount === 2) {
-                    // --- EVALUACIÓN LOTE #3 (Pirámide Invertida Nivel 3: 2.2x Golpe Maestro en capitulación) ---
-                    if (dropFromLot1 <= -5.5 && dropFromLatest <= -2.0 && rsi <= 38) {
-                        const amount = this.calculateSessionLotSize(cleanSym, spendableForDca, dcaAllocWeight, "smart_dca", 3, rsi);
+                    // --- EVALUACIÓN LOTE #3 (Pirámide Invertida Nivel 3: Golpe Maestro en capitulación) ---
+                    const qualifiesLot3 = (dropFromLot1 <= -5.5 && dropFromLatest <= -2.0 && rsi <= 42) || (dropFromLot1 <= -7.5 && dropFromLatest <= -2.5 && rsi <= 46);
+                    if (qualifiesLot3) {
+                        const amount = this.calculateSessionLotSize(cleanSym, spendableForDca, dcaAllocWeight, "smart_dca", 3, rsi, Math.max(absDrop, 5.0), absDrop);
                         if (amount < this.minUsdtToTrade)
                             continue;
-                        const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
-                        const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
-                        let expandedMinGain = 1.20;
+                        let expandedMinGain = 1.40;
                         if (isMeme)
                             expandedMinGain = 2.20;
-                        else if (btcRange >= 2.5)
-                            expandedMinGain = 1.80;
+                        else if (btcRange >= 2.5 || absDrop >= 6.0)
+                            expandedMinGain = 1.85;
                         const targetExpanded = (curPrice * (1 + expandedMinGain / 100)).toFixed(4);
-                        const score = Math.abs(dropFromLot1) * 2.0 + (50 - rsi) * 1.5 + 30; // Bonificación de prioridad
+                        const score = absDrop * 2.0 + (50 - rsi) * 1.5 + 30; // Bonificación de prioridad
                         candidates.push({
                             pos: lot1,
                             cleanSym,
@@ -1265,7 +1307,7 @@ export class TrailingMasterBot {
                             minGainPct: expandedMinGain,
                             amount,
                             potentialTarget: targetExpanded,
-                            reason: `🚨 DESCUENTO EXTREMO: Cayó ${dropFromLot1.toFixed(2)}% acumulado (RSI ${rsi.toFixed(1)} en piso). Lote 3 con Rango de Rebote Ampliado (+${expandedMinGain.toFixed(1)}%). Meta: ${targetExpanded}.`
+                            reason: `🚨 DESCUENTO EXTREMO: Cayó ${dropFromLot1.toFixed(2)}% acumulado (RSI ${rsi.toFixed(1)} en piso). Lote 3 con Rango de Rebote Ampliado (+${expandedMinGain.toFixed(2)}%). Meta: ${targetExpanded}.`
                         });
                     }
                 }
@@ -2321,11 +2363,25 @@ export class TrailingMasterBot {
                     : sessionPlan.spendableUsdt;
                 // CANDADO ESTRICTO DE RESERVA: Solo comprar si el saldo GASTABLE de la estrategia supera el mínimo ($10 USDT)
                 if (bounce >= reqBounce && effectiveSpendable >= this.minUsdtToTrade) {
-                    // 🧠 CONFIRMACIÓN DE GIRO EN 5M SINCRONIZADA CON LA SESIÓN HORARIA (ANTI-ENTRADA ANTICIPADA):
-                    // Evita comprar en el primer micro-rebote ("Dead Cat Bounce") si la vela de 5m sigue siendo roja y cayendo.
+                    // 🧠 DOBLE CONFIRMACIÓN DE PISO EN 15M + 5M (ANTI-CASCADA / ANTI-ENTRADA A MITAD DE CAÍDA):
+                    // Evita que el Lote 1 compre en un primer micro-rebote ("Dead Cat Bounce") cuando la vela de 15m sigue en cascada roja.
                     let turnaroundConfirmed = true;
                     try {
-                        const k5 = await this.client.klines(sym, "5m", { limit: 16 });
+                        const [k5, k15] = await Promise.all([
+                            this.client.klines(sym, "5m", { limit: 16 }),
+                            this.client.klines(sym, "15m", { limit: 3 })
+                        ]);
+                        if (k15?.data?.length >= 1) {
+                            const last15 = k15.data[k15.data.length - 1];
+                            const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
+                            const drop15Pct = ((c15 - o15) / o15) * 100;
+                            const wick15 = (h15 - l15) > 0 ? (Math.min(o15, c15) - l15) / (h15 - l15) : 0;
+                            // Si la vela de 15m sigue cayendo fuerte (<= -0.50%) sin mecha de absorción (< 28%), prohibido comprar aún: seguir rastreando el fondo
+                            if (drop15Pct <= -0.50 && wick15 < 0.28) {
+                                console.log(`⏳ [FILTRO ANTI-CASCADA 15M: ${sym}] Vela 15m cayendo ${drop15Pct.toFixed(2)}% sin absorción. Evitando entrada anticipada; esperando fondo real.`);
+                                continue;
+                            }
+                        }
                         if (k5?.data?.length >= 2) {
                             const last5 = k5.data[k5.data.length - 1];
                             const prev5 = k5.data[k5.data.length - 2];
@@ -2343,8 +2399,8 @@ export class TrailingMasterBot {
                                 turnaroundConfirmed = (isGreen5m && (lowerWick5 >= 0.25 || isHigherLow5m)) && rsi5m <= 50;
                             }
                             else {
-                                // En Londres / Wall Street: entrada ágil si la vela 5m ya es verde, o tiene mecha de absorción >= 30%, o rebote fuerte
-                                turnaroundConfirmed = isGreen5m || lowerWick5 >= 0.30 || bounce >= reqBounce * 1.6;
+                                // En Londres / Wall Street: exigir que la vela 5m sea verde o tenga absorción >= 30% con suelo creciente (nunca comprar en vela 5m roja sin mecha)
+                                turnaroundConfirmed = isGreen5m || (lowerWick5 >= 0.30 && isHigherLow5m);
                             }
                             if (!turnaroundConfirmed) {
                                 console.log(`⏳ [FILTRO GIRO 5M: ${sym}] Rebote +${bounce.toFixed(2)}% detectado, pero vela 5m sigue en presión vendedora (${isGreen5m ? "Verde" : "Roja"}, mecha ${(lowerWick5 * 100).toFixed(0)}%, Sesión ${sessionPlan.sessionKey}). Esperando confirmación de suelo.`);
