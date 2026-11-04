@@ -167,7 +167,7 @@ export class DashboardServer {
             }
         }
         catch { }
-        const allKnown = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "NEARUSDT", "SUIUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "PEPEUSDT", "DOGEUSDT", "BONKUSDT", "SHIBUSDT", "WIFUSDT", "USDTCOP"];
+        const allKnown = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "NEARUSDT", "SUIUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT", "PEPEUSDT", "DOGEUSDT", "BONKUSDT", "SHIBUSDT", "USDTCOP"];
         const set = new Set([...PNL_SYMBOLS, ...allKnown, ...dbCoins, ...pos, ...buys]);
         return Array.from(set)
             .map((s) => (s || "").trim().toUpperCase())

@@ -19,7 +19,6 @@ export const PNL_SYMBOLS = [
   "DOGEUSDT",
   "BONKUSDT",
   "SHIBUSDT",
-  "WIFUSDT",
 ];
 // Fecha fija de inicio del ciclo del Bot (15 Oct 2026) para que NUNCA se borren ganancias pasadas al avanzar el calendario
 export const PNL_SINCE = new Date("2026-10-15T00:00:00Z").getTime();
