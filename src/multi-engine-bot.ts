@@ -109,6 +109,7 @@ export interface StrategyControls {
     smart_dca: boolean;
     micro_grid: boolean;
     cazador_weekend: boolean;
+    wide_gap_sniper?: boolean;
     centinela_alpha?: boolean;
   };
   allocations: {
@@ -314,7 +315,8 @@ export class TrailingMasterBot {
       trailing_rebound: true,
       smart_dca: true,
       micro_grid: false,
-      cazador_weekend: true
+      cazador_weekend: true,
+      wide_gap_sniper: true
     },
     allocations: {
       trailing_rebound: 70,
@@ -2529,8 +2531,9 @@ export class TrailingMasterBot {
         const high24 = Math.max(...highs.slice(-24));
         const coinRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
         const upsideGapPct = curPrice > 0 ? ((high24 - curPrice) / curPrice) * 100 : dropPct;
+        const isWideGapEnabled = this.controls.strategies?.wide_gap_sniper !== false;
         const convictionTier: "ESTANDAR" | "IMPULSO" | "ALTA_VOLATILIDAD" | "MAXIMA_BRECHA" =
-          (coinRange24hPct >= 5.0 && (upsideGapPct >= 3.2 || dropPct >= 2.8 || rsi <= 37)) || upsideGapPct >= 4.2
+          isWideGapEnabled && ((coinRange24hPct >= 5.0 && (upsideGapPct >= 3.2 || dropPct >= 2.8 || rsi <= 37)) || upsideGapPct >= 4.2)
             ? "MAXIMA_BRECHA"
             : ((coinRange24hPct >= 3.8 && (upsideGapPct >= 2.2 || dropPct >= 2.0 || rsi <= 39)) || coinRange24hPct >= 4.6
               ? "ALTA_VOLATILIDAD"
@@ -2677,8 +2680,9 @@ export class TrailingMasterBot {
           const totalDropFromPeak = (w.dropPct || 1.5) + Math.max(0, saved);
           const coinVol = w.coinRange24hPct || 2.5;
           const upsideGapPct = w.high24h && cur > 0 ? ((w.high24h - cur) / cur) * 100 : Math.max(w.upsideGapPct || 0, totalDropFromPeak);
+          const isWideGapEnabled = this.controls.strategies?.wide_gap_sniper !== false;
           const convictionTier: "ESTANDAR" | "IMPULSO" | "ALTA_VOLATILIDAD" | "MAXIMA_BRECHA" =
-            (coinVol >= 5.0 && (upsideGapPct >= 3.2 || totalDropFromPeak >= 2.8 || (w.rsi || 40) <= 37)) || upsideGapPct >= 4.2
+            isWideGapEnabled && ((coinVol >= 5.0 && (upsideGapPct >= 3.2 || totalDropFromPeak >= 2.8 || (w.rsi || 40) <= 37)) || upsideGapPct >= 4.2)
               ? "MAXIMA_BRECHA"
               : ((coinVol >= 3.8 && (upsideGapPct >= 2.2 || totalDropFromPeak >= 2.0 || (w.rsi || 40) <= 39)) || coinVol >= 4.6
                 ? "ALTA_VOLATILIDAD"
@@ -5005,7 +5009,8 @@ export class TrailingMasterBot {
     // - Escalón 3 (ALTA_VOLATILIDAD): Rango 24h >= 3.8% y brecha/caída >= 2.0% -> $30 a $44 USDT
     // - Escalón 2 (IMPULSO MEDIO): Rango 24h >= 2.5% y brecha >= 1.5% -> $20 a $30 USDT
     // - Escalón 1 (COMPACTO / LENTO): Rango 24h < 2.5% -> $12 a $18 USDT
-    const isMaxGapOpportunity = (coinRange24hPct >= 5.0 && (dropPct >= 3.0 || rsi <= 37)) || dropPct >= 4.2;
+    const isWideGapEnabled = this.controls.strategies?.wide_gap_sniper !== false;
+    const isMaxGapOpportunity = isWideGapEnabled && (((coinRange24hPct >= 5.0 && (dropPct >= 3.0 || rsi <= 37)) || dropPct >= 4.2));
     const isHighVolOpportunity = !isMaxGapOpportunity && ((coinRange24hPct >= 3.8 && (dropPct >= 2.0 || rsi <= 39)) || coinRange24hPct >= 4.6);
     const isMediumImpulse = !isMaxGapOpportunity && !isHighVolOpportunity && coinRange24hPct >= 2.5;
 

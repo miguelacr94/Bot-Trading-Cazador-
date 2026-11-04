@@ -1229,6 +1229,7 @@
       const tGrid = document.getElementById("toggle-grid");
       const tWeekend = document.getElementById("toggle-weekend");
       const tFutures = document.getElementById("toggle-futures");
+      const tWideGap = document.getElementById("toggle-wide-gap");
       const tAuto = document.getElementById("toggle-autopilot");
       const modeLabel = document.getElementById("mode-label");
 
@@ -1243,6 +1244,7 @@
       if (tGrid && !tGrid.matches(":focus")) tGrid.checked = !!s.micro_grid;
       if (tWeekend && !tWeekend.matches(":focus")) tWeekend.checked = !!s.cazador_weekend;
       if (tFutures && !tFutures.matches(":focus")) tFutures.checked = !!s.futures;
+      if (tWideGap && !tWideGap.matches(":focus")) tWideGap.checked = s.wide_gap_sniper !== false;
 
       if (cardTrailing) cardTrailing.classList.toggle("active-strat", !!s.trailing_rebound);
       if (cardDca) cardDca.classList.toggle("active-strat", !!s.smart_dca);
@@ -1450,6 +1452,7 @@
     document.getElementById("toggle-dca")?.addEventListener("change", (e) => toggleStrategy("smart_dca", false, e.target.checked));
     document.getElementById("toggle-grid")?.addEventListener("change", (e) => toggleStrategy("micro_grid", false, e.target.checked));
     document.getElementById("toggle-weekend")?.addEventListener("change", (e) => toggleStrategy("cazador_weekend", false, e.target.checked));
+    document.getElementById("toggle-wide-gap")?.addEventListener("change", (e) => toggleStrategy("wide_gap_sniper", false, e.target.checked));
     document.getElementById("toggle-futures")?.addEventListener("change", (e) => toggleStrategy("futures", false, e.target.checked));
 
     const sF = document.getElementById("slider-futures");
