@@ -14,11 +14,13 @@ export const PNL_SYMBOLS = [
     "XRPUSDT",
     "PEPEUSDT",
     "DOGEUSDT",
-    "BONKUSDT"
+    "BONKUSDT",
+    "SHIBUSDT",
+    "WIFUSDT",
+    "SUIUSDT"
 ];
-// Inicio del bot: ignorar trades anteriores
-// Ventana rodante para no agotar el límite de 1000 trades por consulta
-export const PNL_SINCE = Date.now() - 14 * 86400 * 1000;
+// Fecha fija de inicio del ciclo del Bot (15 Oct 2026) para que NUNCA se borren ganancias pasadas al avanzar el calendario
+export const PNL_SINCE = new Date("2026-10-15T00:00:00Z").getTime();
 export async function computeRealizedPnl(client, since = PNL_SINCE) {
     let bnbPrice = 0;
     try {
@@ -30,14 +32,9 @@ export async function computeRealizedPnl(client, since = PNL_SINCE) {
         const base = symbol.replace("USDT", "");
         let trades = [];
         try {
-            let res;
-            try {
-                res = await client.myTrades(symbol, { startTime: since, limit: 1000, recvWindow: 60000 });
-            }
-            catch {
-                res = await client.myTrades(symbol, { limit: 1000, recvWindow: 60000 });
-            }
-            trades = res ? res.data : [];
+            const res = await client.myTrades(symbol, { limit: 1000, recvWindow: 60000 });
+            const allTrades = res ? res.data : [];
+            trades = since > 0 ? allTrades.filter((t) => t.time >= since) : allTrades;
         }
         catch {
             continue;
