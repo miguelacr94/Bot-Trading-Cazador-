@@ -2564,13 +2564,20 @@ export class TrailingMasterBot {
         // A) Suelo Bollinger + Sobreventa relativa adaptada
         // B) Caída profunda con respecto a la volatilidad propia de la moneda
         // C) Absorción institucional con mecha de rechazo en soporte
-        // D) Brecha Amplia Adaptativa: Caída >= reqDynamicDrop con RSI <= dynamicRsiCeiling
+        // D) Brecha Amplia Adaptativa: Caída >= reqDynamicDrop con RSI <= dynamicRsiCeiling (Exclusivo Monedas Core)
         const isBollingerOversold = isNearLowerBollinger && rsi <= Math.min(47, dynamicRsiCeiling - 3) && dropPct >= 1.4;
-        const isWideGapDip = (upsideGapPct >= reqDynamicDrop || dropPct >= reqDynamicDrop) && rsi <= dynamicRsiCeiling;
+        const isWideGapDip = !isMeme && (upsideGapPct >= reqDynamicDrop || dropPct >= reqDynamicDrop) && rsi <= dynamicRsiCeiling;
         const isStandardDip = (dropPct >= 2.0 && rsi <= 42) || isBollingerOversold || isWideGapDip || (rsi <= 36);
         const isWickRebound = hasPinbarRejection && dropPct >= 1.2 && rsi <= (dynamicRsiCeiling - 4) && (rvol >= 0.80 || isNearLowerBollinger || isWideGapDip);
+        // 🐶 ESCUDO 3 (FILTRO DE HIERRO PARA MEMECOINS):
+        // Las memecoins (BONK, PEPE, DOGE, SHIB) caen -7% fácilmente si se arman con caídas leves (-1.6% / -2.4%).
+        // Exigimos agotamiento extremo real: caída >= 3.4% con Banda Inferior de Bollinger rota y RSI <= 36, o capitulación severa (RSI <= 31 con mecha de absorción).
+        const isMemeExtremeDip =
+          (dropPct >= 3.4 && bb.percentB <= 0.12 && rsi <= 36) ||
+          (dropPct >= 4.2 && rsi <= 38 && hasPinbarRejection) ||
+          (rsi <= 31 && dropPct >= 2.8 && (hasPinbarRejection || bb.percentB <= 0.10));
         const isDip = isMeme
-          ? ((dropPct >= 2.4 && rsi <= 43) || (isBollingerOversold && dropPct >= 2.0) || (isWickRebound && dropPct >= 1.6) || (rsi <= 35))
+          ? isMemeExtremeDip
           : (isStandardDip || isWickRebound);
 
         if (isDip) {
@@ -2645,7 +2652,10 @@ export class TrailingMasterBot {
         this.loadWalletSplit();
         const botAvailableUsdt = Math.max(0, usdt - this.walletSplit.manualUsdt);
         const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(botAvailableUsdt);
-        const reqBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
+        const isMemeCoin = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE") || sym.includes("SHIB");
+        const baseBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
+        // Rebote mínimo elástico: memecoins exigen >= 0.55% desde el mínimo para filtrar micro-rebotes falsos ("Dead Cat Bounce")
+        const reqBounce = isMemeCoin ? Math.max(0.55, baseBounce) : Math.max(0.38, baseBounce);
         const strat = w.strategy || "trailing_rebound";
         // Si es Cazador Weekend en ventana de fin de semana, desbloquea el presupuesto de fin de semana (usdt pasado)
         const effectiveSpendable = (strat === "cazador_weekend" && this.isWeekendWindow())
@@ -2653,48 +2663,83 @@ export class TrailingMasterBot {
           : sessionPlan.spendableUsdt;
         // CANDADO ESTRICTO DE RESERVA: Solo comprar si el saldo GASTABLE de la estrategia supera el mínimo ($10 USDT)
         if (bounce >= reqBounce && effectiveSpendable >= this.minUsdtToTrade) {
-          // 🧠 DOBLE CONFIRMACIÓN DE PISO EN 15M + 5M (ANTI-CASCADA / ANTI-ENTRADA A MITAD DE CAÍDA):
-          // Evita que el Lote 1 compre en un primer micro-rebote ("Dead Cat Bounce") cuando la vela de 15m sigue en cascada roja.
+          // 🚦 ESCUDO 1 (SEMÁFORO DE BITCOIN EN VIVO - BTC VETO) +
+          // 🕯️ ESCUDO 2 (FIN DEL FALSO VERDE INTRA-VELA: ESTRUCTURA DE SUELO 15M/5M + VOLUMEN):
           let turnaroundConfirmed = true;
           try {
-            const [k5, k15] = await Promise.all([
+            const [k5, k15, btcK5, btcK15] = await Promise.all([
               this.client.klines(sym, "5m", { limit: 16 }),
-              this.client.klines(sym, "15m", { limit: 3 })
+              this.client.klines(sym, "15m", { limit: 3 }),
+              sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "5m", { limit: 3 }) : Promise.resolve({ data: [] }),
+              sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "15m", { limit: 2 }) : Promise.resolve({ data: [] })
             ]);
-            if (k15?.data?.length >= 1) {
-              const last15 = k15.data[k15.data.length - 1];
-              const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
-              const drop15Pct = ((c15 - o15) / o15) * 100;
-              const wick15 = (h15 - l15) > 0 ? (Math.min(o15, c15) - l15) / (h15 - l15) : 0;
-              // Si la vela de 15m sigue cayendo fuerte (<= -0.50%) sin mecha de absorción (< 28%), prohibido comprar aún: seguir rastreando el fondo
-              if (drop15Pct <= -0.50 && wick15 < 0.28) {
-                console.log(`⏳ [FILTRO ANTI-CASCADA 15M: ${sym}] Vela 15m cayendo ${drop15Pct.toFixed(2)}% sin absorción. Evitando entrada anticipada; esperando fondo real.`);
+
+            // 1. Evaluar Semáforo de Bitcoin (BTC Veto)
+            if (sym !== "BTCUSDT" && btcK15?.data?.length >= 1 && btcK5?.data?.length >= 2) {
+              const b15 = btcK15.data[btcK15.data.length - 1];
+              const bo15 = parseFloat(b15[1]), bh15 = parseFloat(b15[2]), bl15 = parseFloat(b15[3]), bc15 = parseFloat(b15[4]);
+              const btcDrop15 = ((bc15 - bo15) / bo15) * 100;
+              const btcWick15 = (bh15 - bl15) > 0 ? (Math.min(bo15, bc15) - bl15) / (bh15 - bl15) : 0;
+
+              const b5 = btcK5.data[btcK5.data.length - 1];
+              const bPrev5 = btcK5.data[btcK5.data.length - 2];
+              const bo5 = parseFloat(b5[1]), bc5 = parseFloat(b5[4]);
+              const bpo5 = parseFloat(bPrev5[1]), bpc5 = parseFloat(bPrev5[4]);
+              const btcDrop5 = ((bc5 - bo5) / bo5) * 100;
+              const btcTwoRed5m = bc5 < bo5 && bpc5 < bpo5 && btcDrop5 <= -0.12;
+
+              if ((btcDrop15 <= -0.25 && btcWick15 < 0.35) || btcDrop5 <= -0.18 || btcTwoRed5m) {
+                console.log(`🚦 [ESCUDO BTC VETO: ${sym}] Bitcoin en caída activa (${btcDrop15.toFixed(2)}% en 15m | ${btcDrop5.toFixed(2)}% en 5m). Prohibido comprar altcoin en pleno arrastre; acompañando piso más abajo.`);
                 continue;
               }
             }
+
+            // 2. Evaluar Cascada 15m en la moneda
+            if (k15?.data?.length >= 2) {
+              const last15 = k15.data[k15.data.length - 1];
+              const prev15 = k15.data[k15.data.length - 2];
+              const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
+              const po15 = parseFloat(prev15[1]), pc15 = parseFloat(prev15[4]);
+              const drop15Pct = ((c15 - o15) / o15) * 100;
+              const prevDrop15Pct = ((pc15 - po15) / po15) * 100;
+              const wick15 = (h15 - l15) > 0 ? (Math.min(o15, c15) - l15) / (h15 - l15) : 0;
+              // Si la vela 15m actual sigue cayendo (<= -0.35%) sin absorción (< 32%), o si la vela 15m previa se desplomó (<= -0.80%) y la actual sigue roja sin mecha fuerte: esperar
+              if ((drop15Pct <= -0.35 && wick15 < 0.32) || (prevDrop15Pct <= -0.80 && c15 < o15 && wick15 < 0.38)) {
+                console.log(`⏳ [FILTRO ANTI-CASCADA 15M: ${sym}] Vela 15m en presión bajista (actual ${drop15Pct.toFixed(2)}%, previa ${prevDrop15Pct.toFixed(2)}%, mecha ${(wick15 * 100).toFixed(0)}%). Esperando piso firme.`);
+                continue;
+              }
+            }
+
+            // 3. Evaluar Confirmación Real de Suelo en 5m (Fin del Falso Verde Intra-vela)
             if (k5?.data?.length >= 2) {
               const last5 = k5.data[k5.data.length - 1];
               const prev5 = k5.data[k5.data.length - 2];
-              const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]);
-              const prevLow5 = parseFloat(prev5[3]);
+              const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]), v5 = parseFloat(last5[5]);
+              const po5 = parseFloat(prev5[1]), ph5 = parseFloat(prev5[2]), pl5 = parseFloat(prev5[3]), pc5 = parseFloat(prev5[4]), pv5 = parseFloat(prev5[5]);
               const range5 = h5 - l5;
+              const prevRange5 = ph5 - pl5;
               const lowerWick5 = range5 > 0 ? (Math.min(o5, c5) - l5) / range5 : 0;
-              const isGreen5m = c5 >= o5;
-              const isHigherLow5m = l5 >= prevLow5 * 0.9995;
+              const prevLowerWick5 = prevRange5 > 0 ? (Math.min(po5, pc5) - pl5) / prevRange5 : 0;
+              const isGreen5m = c5 > o5;
+              const prevIsGreen5m = pc5 >= po5;
+              const isHigherLow5m = l5 >= pl5 * 0.9995;
+              const brokePrevMidpoint = c5 >= (po5 + pc5) / 2;
+              const hasHealthyBuyVolume = pv5 <= 0 || v5 >= pv5 * 0.65 || prevIsGreen5m;
               const closes5m = k5.data.map((row: any) => parseFloat(row[4]));
               const rsi5m = this.calculateRSI(closes5m, 14);
 
+              // Prohibir comprar en un simple parpadeo verde intra-vela:
+              // Exigimos que la vela 5m actual sea verde Y que exista estructura de soporte (vela previa ya verde, o vela previa con mecha >= 25%, o suelo creciente + ruptura de mitad de vela previa con volumen)
+              const hasFloorStructure = prevIsGreen5m || prevLowerWick5 >= 0.25 || (isHigherLow5m && brokePrevMidpoint) || (lowerWick5 >= 0.35 && brokePrevMidpoint);
               const isDefensiveSession = sessionPlan.sessionKey === "COSECHA_PRENOCTURNA" || sessionPlan.sessionKey === "NOCTURNO_DRENAJE";
-              if (isDefensiveSession) {
-                // En tarde/noche (deslizamiento post-NY o drenaje nocturno): exigir vela 5m verde + absorción o suelo creciente
-                turnaroundConfirmed = (isGreen5m && (lowerWick5 >= 0.25 || isHigherLow5m)) && rsi5m <= 50;
+              if (isDefensiveSession || isMemeCoin) {
+                turnaroundConfirmed = isGreen5m && hasFloorStructure && brokePrevMidpoint && hasHealthyBuyVolume && rsi5m <= (isMemeCoin ? 45 : 50);
               } else {
-                // En Londres / Wall Street: exigir que la vela 5m sea verde o tenga absorción >= 30% con suelo creciente (nunca comprar en vela 5m roja sin mecha)
-                turnaroundConfirmed = isGreen5m || (lowerWick5 >= 0.30 && isHigherLow5m);
+                turnaroundConfirmed = isGreen5m && hasFloorStructure;
               }
 
               if (!turnaroundConfirmed) {
-                console.log(`⏳ [FILTRO GIRO 5M: ${sym}] Rebote +${bounce.toFixed(2)}% detectado, pero vela 5m sigue en presión vendedora (${isGreen5m ? "Verde" : "Roja"}, mecha ${(lowerWick5 * 100).toFixed(0)}%, Sesión ${sessionPlan.sessionKey}). Esperando confirmación de suelo.`);
+                console.log(`⏳ [ESCUDO ANTI-FALSO VERDE 5M: ${sym}] Rebote +${bounce.toFixed(2)}% insuficiente en estructura (Verde5m=${isGreen5m}, EstructuraPiso=${hasFloorStructure}, SuperaMitadPrevia=${brokePrevMidpoint}). Evitando trampa bajista.`);
                 continue;
               }
             }
@@ -5037,67 +5082,72 @@ export class TrailingMasterBot {
     // - Escalón 3 (ALTA_VOLATILIDAD): Rango 24h >= 3.8% y brecha/caída >= 2.0% -> $30 a $44 USDT
     // - Escalón 2 (IMPULSO MEDIO): Rango 24h >= 2.5% y brecha >= 1.5% -> $20 a $30 USDT
     // - Escalón 1 (COMPACTO / LENTO): Rango 24h < 2.5% -> $12 a $18 USDT
+    // 📐 ESCUDO 4 (ENTRADA PIRAMIDAL INVERTIDA: LIGERO EN LOTE 1, FUERTE EN EL FONDO LOTE 2/3):
+    // Las memecoins quedan excluidas del presupuesto de $50 de Brecha Amplia en Lote 1 (máx $18-$22 USDT en Lote 1),
+    // reservando mayor poder de fuego para el Lote 2 ($28-$36 USDT) y Lote 3 ($36-$48 USDT) si el mercado hace un barrido profundo.
     const isWideGapEnabled = this.controls.strategies?.wide_gap_sniper !== false;
-    const isMaxGapOpportunity = isWideGapEnabled && (((coinRange24hPct >= 5.0 && (dropPct >= 3.0 || rsi <= 37)) || dropPct >= 4.2));
+    const isMaxGapOpportunity = !isMeme && isWideGapEnabled && (((coinRange24hPct >= 5.0 && (dropPct >= 3.0 || rsi <= 37)) || dropPct >= 4.2));
     const isHighVolOpportunity = !isMaxGapOpportunity && ((coinRange24hPct >= 3.8 && (dropPct >= 2.0 || rsi <= 39)) || coinRange24hPct >= 4.6);
     const isMediumImpulse = !isMaxGapOpportunity && !isHighVolOpportunity && coinRange24hPct >= 2.5;
 
     let effectiveFraction = lotFractionPct;
     let tierMultiplier = 0.85;
     let tierMaxCap = isMeme
-      ? Math.max(14, Math.min(20, totalPortfolioEst * 0.07))
+      ? Math.max(14, Math.min(18, totalPortfolioEst * 0.065))
       : Math.max(15, Math.min(20, totalPortfolioEst * 0.075));
 
     if (tier === 1 && strategy !== "micro_grid") {
       if (isMaxGapOpportunity) {
         effectiveFraction = Math.max(lotFractionPct, 0.80);
         tierMultiplier = 1.85;
-        tierMaxCap = isMeme
-          ? Math.max(28, Math.min(40, totalPortfolioEst * 0.14))
-          : Math.max(40, Math.min(56, totalPortfolioEst * 0.20));
+        tierMaxCap = Math.max(40, Math.min(56, totalPortfolioEst * 0.20));
       } else if (isHighVolOpportunity) {
-        effectiveFraction = Math.max(lotFractionPct, 0.65);
-        tierMultiplier = rsi <= 34 || dropPct >= 3.0 ? 1.65 : 1.45;
+        effectiveFraction = Math.max(lotFractionPct, isMeme ? 0.45 : 0.65);
+        tierMultiplier = isMeme ? 1.15 : (rsi <= 34 || dropPct >= 3.0 ? 1.65 : 1.45);
         tierMaxCap = isMeme
-          ? Math.max(24, Math.min(34, totalPortfolioEst * 0.115))
+          ? Math.max(16, Math.min(22, totalPortfolioEst * 0.08))
           : Math.max(30, Math.min(44, totalPortfolioEst * 0.155));
       } else if (isMediumImpulse) {
-        effectiveFraction = Math.max(lotFractionPct, 0.45);
-        tierMultiplier = rsi <= 34 ? 1.25 : 1.10;
+        effectiveFraction = Math.max(lotFractionPct, isMeme ? 0.40 : 0.45);
+        tierMultiplier = rsi <= 34 ? 1.20 : 1.05;
         tierMaxCap = isMeme
-          ? Math.max(18, Math.min(26, totalPortfolioEst * 0.09))
+          ? Math.max(14, Math.min(20, totalPortfolioEst * 0.075))
           : Math.max(22, Math.min(30, totalPortfolioEst * 0.105));
       } else if (rsi <= 28) {
         tierMultiplier = 1.15;
-        tierMaxCap = Math.max(20, Math.min(28, totalPortfolioEst * 0.10));
+        tierMaxCap = isMeme
+          ? Math.max(16, Math.min(22, totalPortfolioEst * 0.08))
+          : Math.max(20, Math.min(28, totalPortfolioEst * 0.10));
       }
     } else if (tier === 2) {
-      effectiveFraction = Math.max(lotFractionPct, 0.55);
-      tierMultiplier = 1.35;
+      // Lote 2 (Refuerzo Piramidal): Mayor peso que Lote 1 para arrastrar el precio promedio pegado al piso
+      effectiveFraction = Math.max(lotFractionPct, 0.65);
+      tierMultiplier = 1.50;
       tierMaxCap = isMeme
-        ? Math.max(18, Math.min(30, totalPortfolioEst * 0.10))
-        : Math.max(24, Math.min(38, totalPortfolioEst * 0.13));
+        ? Math.max(24, Math.min(36, totalPortfolioEst * 0.13))
+        : Math.max(32, Math.min(48, totalPortfolioEst * 0.17));
     } else if (tier === 3) {
-      effectiveFraction = Math.max(lotFractionPct, 0.70);
-      tierMultiplier = 1.75;
+      // Lote 3 (Golpe Maestro en Capitulación): Máximo poder de fuego
+      effectiveFraction = Math.max(lotFractionPct, 0.80);
+      tierMultiplier = 1.85;
       tierMaxCap = isMeme
-        ? Math.max(22, Math.min(38, totalPortfolioEst * 0.13))
-        : Math.max(30, Math.min(48, totalPortfolioEst * 0.16));
+        ? Math.max(30, Math.min(44, totalPortfolioEst * 0.16))
+        : Math.max(38, Math.min(58, totalPortfolioEst * 0.21));
     }
 
     let lot = Math.floor(spendableUsdt * effectiveFraction * allocMultiplier * tierMultiplier * 100) / 100;
     lot = Math.min(lot, Math.floor(tierMaxCap * 100) / 100);
 
-    // Si es una oportunidad de MÁXIMA BRECHA (NEAR/SUI/AVAX/SOL), aplicamos el presupuesto configurable (default 50 USDT)
+    // Si es una oportunidad de MÁXIMA BRECHA en Monedas Core (NEAR/SUI/AVAX/SOL), aplicamos el presupuesto configurable (default 50 USDT)
     const configuredWideGapAmount = this.controls.wideGapLotSize || 50;
-    if (tier === 1 && isMaxGapOpportunity) {
+    if (tier === 1 && isMaxGapOpportunity && !isMeme) {
       const targetGapLot = Math.min(configuredWideGapAmount, spendableUsdt);
       if (targetGapLot >= this.minUsdtToTrade) {
         lot = targetGapLot;
       }
-    } else if (tier === 1 && isHighVolOpportunity && spendableUsdt >= 25 && lot < 25) {
+    } else if (tier === 1 && isHighVolOpportunity && !isMeme && spendableUsdt >= 25 && lot < 25) {
       lot = Math.min(spendableUsdt, Math.min(35, Math.floor(spendableUsdt * 0.80 * 100) / 100));
-    } else if (tier === 1 && isMediumImpulse && spendableUsdt >= 18 && lot < 18) {
+    } else if (tier === 1 && isMediumImpulse && !isMeme && spendableUsdt >= 18 && lot < 18) {
       lot = Math.min(spendableUsdt, 20);
     }
 
