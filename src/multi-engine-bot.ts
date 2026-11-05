@@ -1415,23 +1415,30 @@ export class TrailingMasterBot {
 
         const dcaTf = this.controls.strategySettings?.smart_dca?.timeframe || "4h";
         const [klinesDca, klines1h] = await Promise.all([
-          this.client.klines(cleanSym, dcaTf, { limit: 25 }),
-          this.client.klines(cleanSym, "1h", { limit: 25 })
+          this.client.klines(cleanSym, dcaTf, { limit: 35 }),
+          this.client.klines(cleanSym, "1h", { limit: 55 })
         ]);
         const closesDca = klinesDca.data.map((k: any) => parseFloat(k[4]));
         const closes1h = klines1h.data.map((k: any) => parseFloat(k[4]));
+        const highs1h24 = klines1h.data.slice(-24).map((k: any) => parseFloat(k[2]));
+        const lows1h24 = klines1h.data.slice(-24).map((k: any) => parseFloat(k[3]));
+        const high24Real = highs1h24.length > 0 ? Math.max(...highs1h24) : curPrice;
+        const low24Real = lows1h24.length > 0 ? Math.min(...lows1h24) : curPrice;
+        const realRange24hPct = low24Real > 0 ? ((high24Real - low24Real) / low24Real) * 100 : 4.0;
+
         const rsi4h = this.calculateRSI(closesDca, 14);
         const rsi1h = this.calculateRSI(closes1h, 14);
-        // Usar el menor entre RSI 4H y RSI 1H para que cuando una moneda caiga -6% en pocas horas,
-        // el rezago de 4H jamás bloquee la detección del suelo en 1H.
         const rsi = Math.min(rsi4h, rsi1h);
+        const stoch1h = this.calculateStochRSI(closes1h, 14, 14, 3, 3);
+        const ema50_1h = this.calculateEMA(closes1h, 50);
+        const lastOpen1h = parseFloat(klines1h.data[klines1h.data.length - 1][1]);
+        const isBreakingEma50_1h = lastOpen1h >= ema50_1h && curPrice < ema50_1h * 0.996;
 
-        // 🛡️ FILTRO ANTI-CUCHILLO CAYENDO Y CONFIRMACIÓN DE PISO EN SMART DCA (15m):
-        // Exige que la vela de 15m no solo deje de desplomarse, sino que muestre absorción (vela verde, mecha >= 25% o suelo creciente)
-        // para no comprar a mitad de una caída sino cuando ya tocó fondo.
+        // 🛡️ FILTRO ANTI-CUCHILLO CAYENDO + STOCHRSI + MACD EN SMART DCA (15m):
+        // Exige que la vela de 15m muestre absorción, que el MACD desacelere la caída y que StochRSI esté en zona de suelo.
         let isFallingKnife15m = false;
         try {
-          const k15 = await this.client.klines(cleanSym, "15m", { limit: 3 });
+          const k15 = await this.client.klines(cleanSym, "15m", { limit: 40 });
           if (k15?.data?.length >= 2) {
             const last15 = k15.data[k15.data.length - 1];
             const prev15 = k15.data[k15.data.length - 2];
@@ -1442,16 +1449,25 @@ export class TrailingMasterBot {
             const lowerWick15 = range15 > 0 ? (Math.min(o15, c15) - l15) / range15 : 0;
             const isGreen15 = c15 >= o15;
             const isHigherLow15 = l15 >= prevLow15 * 0.999;
+            const closes15m = k15.data.map((k: any) => parseFloat(k[4]));
+            const stoch15m = this.calculateStochRSI(closes15m, 14, 14, 3, 3);
+            const macd15m = this.calculateMACDHistogram(closes15m, 12, 26, 9);
+
             if (bodyDrop15 <= -0.35 && lowerWick15 < 0.28) {
               isFallingKnife15m = true;
             } else if (!isGreen15 && lowerWick15 < 0.25 && !isHigherLow15) {
-              // Sigue goteando en rojo sin mecha de rechazo ni doble suelo
+              isFallingKnife15m = true;
+            } else if (!macd15m.isDecelerating && stoch15m.k > 25) {
+              // Momentum bajista sigue expandiéndose en MACD sin haber llegado a suelo de StochRSI
+              isFallingKnife15m = true;
+            } else if (isBreakingEma50_1h && lowerWick15 < 0.35) {
+              // Acaba de romper soporte mayor EMA 50 en 1H sin mecha de absorción
               isFallingKnife15m = true;
             }
           }
         } catch {}
         if (isFallingKnife15m) {
-          console.log(`⏳ [SMART DCA: ESPERANDO PISO REAL] ${cleanSym} ya cayó ${dropFromLot1.toFixed(2)}%, pero 15m aún no confirma vela de giro/absorción. Esperando el fondo exacto.`);
+          console.log(`⏳ [SMART DCA: ESPERANDO PISO REAL] ${cleanSym} ya cayó ${dropFromLot1.toFixed(2)}%, pero indicadores (15m/MACD/StochRSI/EMA50) aún no confirman agotamiento de caída.`);
           continue;
         }
 
@@ -1462,9 +1478,17 @@ export class TrailingMasterBot {
         const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
         const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
 
+        // 📐 DISTANCIA DINÁMICA POR VOLATILIDAD (ATR / Rango 24h Real):
+        // En monedas que se mueven 10%-14% al día (ej. NEAR/SOL/AVAX/BONK), prohibido quemar el Lote 2 con apenas -2.5%.
+        // Exigimos una caída proporcional a su volatilidad real (entre -3.8% y -6.2%) + RSI <= 40 + StochRSI en suelo.
+        const reqDropLot2 = Math.max(3.8, Math.min(6.2, 2.4 + realRange24hPct * 0.34));
+        const reqDropLot3 = Math.max(6.5, reqDropLot2 + 2.5);
+
         if (lotCount === 1) {
-          // --- EVALUACIÓN LOTE #2 (Escalonado: si cayó -5.5% o -6%+, activa modo Descuento Profundo con mayor inversión y meta ampliada) ---
-          const qualifiesLot2 = (dropFromLot1 <= -2.5 && rsi <= 45) || (dropFromLot1 <= -5.5 && rsi <= 50);
+          // --- EVALUACIÓN LOTE #2 (Escalonado proporcional a volatilidad real + StochRSI) ---
+          const qualifiesLot2 =
+            (dropFromLot1 <= -reqDropLot2 && rsi <= 40 && stoch1h.k <= 30) ||
+            (dropFromLot1 <= -(reqDropLot2 + 1.5) && rsi <= 44);
           if (qualifiesLot2) {
             const isDeepLot2 = absDrop >= 5.5;
             const amount = this.calculateSessionLotSize(
@@ -1474,7 +1498,7 @@ export class TrailingMasterBot {
               "smart_dca",
               isDeepLot2 ? 3 : 2,
               rsi,
-              Math.max(absDrop, 3.5),
+              Math.max(absDrop, realRange24hPct),
               absDrop
             );
             if (amount < this.minUsdtToTrade) continue;
@@ -1500,15 +1524,15 @@ export class TrailingMasterBot {
               amount,
               potentialTarget: targetPriceStr,
               reason: isDeepLot2
-                ? `🚨 OPORTUNIDAD DE CAÍDA PROFUNDA (${dropFromLot1.toFixed(2)}% desde Lote 1 | RSI ${rsi.toFixed(1)}): Lote #2 Potenciado (${amount.toFixed(2)} USDT) con meta de rebote ampliada (+${minGainLot2.toFixed(2)}% → ${targetPriceStr}) para aprovechar el gran rebote.`
-                : `Cayó ${dropFromLot1.toFixed(2)}% desde Lote 1 (RSI ${rsi.toFixed(1)}). Pirámide Invertida Nivel 2 (${amount.toFixed(2)} USDT) en soporte con meta inicial +${minGainLot2.toFixed(2)}% (${targetPriceStr}).`
+                ? `🚨 OPORTUNIDAD DE CAÍDA PROFUNDA (${dropFromLot1.toFixed(2)}% desde Lote 1 | Req -${reqDropLot2.toFixed(1)}% | RSI ${rsi.toFixed(1)} | StochRSI ${stoch1h.k.toFixed(0)}): Lote #2 Potenciado (${amount.toFixed(2)} USDT) con meta +${minGainLot2.toFixed(2)}% → ${targetPriceStr}.`
+                : `Cayó ${dropFromLot1.toFixed(2)}% desde Lote 1 (umbral dinámico -${reqDropLot2.toFixed(1)}% | RSI ${rsi.toFixed(1)} | StochRSI ${stoch1h.k.toFixed(0)}). Pirámide Invertida Nivel 2 (${amount.toFixed(2)} USDT) en soporte con meta +${minGainLot2.toFixed(2)}% (${targetPriceStr}).`
             });
           }
         } else if (lotCount === 2) {
           // --- EVALUACIÓN LOTE #3 (Pirámide Invertida Nivel 3: Golpe Maestro en capitulación) ---
-          const qualifiesLot3 = (dropFromLot1 <= -5.5 && dropFromLatest <= -2.0 && rsi <= 42) || (dropFromLot1 <= -7.5 && dropFromLatest <= -2.5 && rsi <= 46);
+          const qualifiesLot3 = (dropFromLot1 <= -reqDropLot3 && dropFromLatest <= -2.8 && rsi <= 38 && stoch1h.k <= 25) || (dropFromLot1 <= -(reqDropLot3 + 1.5) && dropFromLatest <= -3.2 && rsi <= 42);
           if (qualifiesLot3) {
-            const amount = this.calculateSessionLotSize(cleanSym, spendableForDca, dcaAllocWeight, "smart_dca", 3, rsi, Math.max(absDrop, 5.0), absDrop);
+            const amount = this.calculateSessionLotSize(cleanSym, spendableForDca, dcaAllocWeight, "smart_dca", 3, rsi, Math.max(absDrop, realRange24hPct), absDrop);
             if (amount < this.minUsdtToTrade) continue;
             let expandedMinGain = 1.40;
             if (isMeme) expandedMinGain = 2.20;
@@ -2445,6 +2469,84 @@ export class TrailingMasterBot {
   }
 
   /**
+   * Calcula la Media Móvil Exponencial (EMA) para detectar soportes dinámicos y quiebres de estructura (EMA 20 / EMA 50)
+   */
+  private calculateEMA(values: number[], period: number): number {
+    if (!values || values.length === 0) return 0;
+    const k = 2 / (period + 1);
+    let ema = values[0];
+    for (let i = 1; i < values.length; i++) {
+      ema = values[i] * k + ema * (1 - k);
+    }
+    return ema;
+  }
+
+  /**
+   * Calcula el Estocástico RSI (StochRSI 0-100) con suavizado %K y %D para detectar el agotamiento exacto de caída (<= 22)
+   */
+  private calculateStochRSI(closes: number[], rsiPeriod: number = 14, stochPeriod: number = 14, kSmooth: number = 3, dSmooth: number = 3): { k: number; d: number; prevK: number; turningUp: boolean } {
+    if (!closes || closes.length < rsiPeriod + stochPeriod) {
+      const fallbackRsi = this.calculateRSI(closes || [], rsiPeriod);
+      return { k: fallbackRsi, d: fallbackRsi, prevK: fallbackRsi, turningUp: true };
+    }
+    const rsiSeries: number[] = [];
+    for (let end = rsiPeriod + 1; end <= closes.length; end++) {
+      rsiSeries.push(this.calculateRSI(closes.slice(0, end), rsiPeriod));
+    }
+    const rawStoch: number[] = [];
+    for (let i = 0; i < rsiSeries.length; i++) {
+      const win = rsiSeries.slice(Math.max(0, i - stochPeriod + 1), i + 1);
+      const minR = Math.min(...win);
+      const maxR = Math.max(...win);
+      const val = maxR - minR > 1e-9 ? ((rsiSeries[i] - minR) / (maxR - minR)) * 100 : 50;
+      rawStoch.push(val);
+    }
+    const kSeries: number[] = [];
+    for (let i = 0; i < rawStoch.length; i++) {
+      const win = rawStoch.slice(Math.max(0, i - kSmooth + 1), i + 1);
+      kSeries.push(win.reduce((a, b) => a + b, 0) / win.length);
+    }
+    const dSeries: number[] = [];
+    for (let i = 0; i < kSeries.length; i++) {
+      const win = kSeries.slice(Math.max(0, i - dSmooth + 1), i + 1);
+      dSeries.push(win.reduce((a, b) => a + b, 0) / win.length);
+    }
+    const k = kSeries[kSeries.length - 1] ?? 50;
+    const prevK = kSeries.length >= 2 ? kSeries[kSeries.length - 2] : k;
+    const d = dSeries[dSeries.length - 1] ?? 50;
+    return { k, d, prevK, turningUp: k >= prevK || k >= d };
+  }
+
+  /**
+   * Calcula el Histograma MACD (12, 26, 9) para verificar que la aceleración bajista se esté encogiendo antes de comprar
+   */
+  private calculateMACDHistogram(closes: number[], fast: number = 12, slow: number = 26, signal: number = 9): { hist: number; prevHist: number; isDecelerating: boolean } {
+    if (!closes || closes.length < slow + signal) {
+      return { hist: 0, prevHist: 0, isDecelerating: true };
+    }
+    const kFast = 2 / (fast + 1);
+    const kSlow = 2 / (slow + 1);
+    const kSig = 2 / (signal + 1);
+    let emaFast = closes[0];
+    let emaSlow = closes[0];
+    const macdLine: number[] = [];
+    for (let i = 0; i < closes.length; i++) {
+      emaFast = i === 0 ? closes[0] : closes[i] * kFast + emaFast * (1 - kFast);
+      emaSlow = i === 0 ? closes[0] : closes[i] * kSlow + emaSlow * (1 - kSlow);
+      macdLine.push(emaFast - emaSlow);
+    }
+    let sigEma = macdLine[0];
+    const histSeries: number[] = [];
+    for (let i = 0; i < macdLine.length; i++) {
+      sigEma = i === 0 ? macdLine[0] : macdLine[i] * kSig + sigEma * (1 - kSig);
+      histSeries.push(macdLine[i] - sigEma);
+    }
+    const hist = histSeries[histSeries.length - 1] ?? 0;
+    const prevHist = histSeries.length >= 2 ? histSeries[histSeries.length - 2] : hist;
+    return { hist, prevHist, isDecelerating: hist >= prevHist || hist >= 0 };
+  }
+
+  /**
    * TRAILING BUY - Paso 1: detectar caídas y "armar" la vigilancia del piso.
    * Ya no compra en la primera vela verde: registra el precio y rastrea el piso más bajo.
    */
@@ -2488,7 +2590,10 @@ export class TrailingMasterBot {
         }
 
         const symTf = this.getTimeframeForSymbol(sym);
-        const klinesRes = await this.client.klines(sym, symTf, { limit: 35 });
+        // Asegurar verdaderas 24 horas de datos (96 velas en 15m, 24 en 1h) y suficiente historial para EMA50, MACD y StochRSI
+        const candlesIn24h = symTf === "15m" ? 96 : (symTf === "4h" ? 6 : 24);
+        const klinesLimit = Math.max(55, candlesIn24h + 4);
+        const klinesRes = await this.client.klines(sym, symTf, { limit: klinesLimit });
         const data = klinesRes.data;
         const opens = data.map((k: any) => parseFloat(k[1]));
         const highs = data.map((k: any) => parseFloat(k[2]));
@@ -2516,6 +2621,9 @@ export class TrailingMasterBot {
 
         const rsi = this.calculateRSI(closes, 14);
         const bb = this.calculateBollingerBands(closes, 20, 2.0);
+        const stochRsi = this.calculateStochRSI(closes, 14, 14, 3, 3);
+        const macd = this.calculateMACDHistogram(closes, 12, 26, 9);
+        const ema50 = this.calculateEMA(closes, 50);
 
         // Volumen relativo (RVOL) respecto a las últimas 20 velas cerradas
         const recentVols = volumes.slice(-21, -1);
@@ -2531,10 +2639,12 @@ export class TrailingMasterBot {
         }
         const maxRecent = Math.max(...highs.slice(-20));
         const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
-        const low24 = Math.min(...lows.slice(-24));
-        const high24 = Math.max(...highs.slice(-24));
+        const low24 = Math.min(...lows.slice(-candlesIn24h));
+        const high24 = Math.max(...highs.slice(-candlesIn24h));
         const coinRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
         const upsideGapPct = curPrice > 0 ? ((high24 - curPrice) / curPrice) * 100 : dropPct;
+        // Ubicación Fibonacci real dentro del canal de 24h (0.0 = fondo absoluto, 1.0 = techo 24h)
+        const fibPosition24h = (high24 - low24) > 0 ? (curPrice - low24) / (high24 - low24) : 0.5;
         const isWideGapEnabled = this.controls.strategies?.wide_gap_sniper !== false;
         const convictionTier: "ESTANDAR" | "IMPULSO" | "ALTA_VOLATILIDAD" | "MAXIMA_BRECHA" =
           isWideGapEnabled && ((coinRange24hPct >= 5.0 && (upsideGapPct >= 3.2 || dropPct >= 2.8 || rsi <= 37)) || upsideGapPct >= 4.2)
@@ -2543,7 +2653,7 @@ export class TrailingMasterBot {
               ? "ALTA_VOLATILIDAD"
               : (coinRange24hPct >= 2.5 && upsideGapPct >= 1.5 ? "IMPULSO" : "ESTANDAR"));
 
-        // 🧠 ANÁLISIS DE ACCIÓN DEL PRECIO, BANDAS DE BOLLINGER Y VOLUMEN (PRICE ACTION CUANTITATIVO)
+        // 🧠 ANÁLISIS DE ACCIÓN DEL PRECIO, BANDAS DE BOLLINGER, STOCHRSI, MACD Y EMA 50
         const lastIdx = closes.length - 1;
         const candleRange = highs[lastIdx] - lows[lastIdx];
         const lowerWick = Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx];
@@ -2551,31 +2661,38 @@ export class TrailingMasterBot {
         const hasPinbarRejection = lowerWickRatio >= 0.35; // Mecha inferior >= 35% (Rechazo y absorción en suelo)
         const isNearLowerBollinger = bb.percentB <= 0.15; // En el 15% inferior o por debajo de la Banda Inferior de Bollinger
 
-        // 🧠 CÁLCULO DINÁMICO ADAPTATIVO DEL UMBRAL DE RSI Y CAÍDA (Elastic Volatility Thresholds):
-        // En lugar de números estáticos fijos, el umbral de RSI permitido y la caída mínima se adaptan automáticamente:
-        // A mayor volatilidad de la moneda (rango 24h) y mayor brecha hacia el techo, el RSI de retroceso natural se expande:
-        // - Moneda lenta (rango < 3%): rsiMaxDip = 40–42 (estricto)
-        // - Moneda media (rango 3%–6%): rsiMaxDip = 45–48
-        // - Moneda hiper-volátil (rango 8%–16%, ej. NEAR/SUI/AVAX): rsiMaxDip = 52–56 con caída proporcional
-        const dynamicRsiCeiling = Math.min(56, Math.max(42, 40 + (coinRange24hPct * 0.95) + (upsideGapPct * 0.4)));
-        const reqDynamicDrop = Math.max(1.3, Math.min(4.8, 1.2 + (coinRange24hPct * 0.22)));
+        // 🛡️ DETECTOR DE RUPTURA EMA 50 (ANTI-BREAKDOWN):
+        // Si la vela actual acaba de romper la EMA 50 hacia abajo con fuerza sin mecha de absorción, NO armar compra en la trampilla rota.
+        const isFreshEma50Breakdown = opens[lastIdx] >= ema50 && curPrice < ema50 * 0.996 && lowerWickRatio < 0.35;
+        if (isFreshEma50Breakdown) {
+          continue;
+        }
 
-        // Condiciones cuantitativas dinámicas de suelo:
-        // A) Suelo Bollinger + Sobreventa relativa adaptada
-        // B) Caída profunda con respecto a la volatilidad propia de la moneda
-        // C) Absorción institucional con mecha de rechazo en soporte
-        // D) Brecha Amplia Adaptativa: Caída >= reqDynamicDrop con RSI <= dynamicRsiCeiling (Exclusivo Monedas Core)
-        const isBollingerOversold = isNearLowerBollinger && rsi <= Math.min(47, dynamicRsiCeiling - 3) && dropPct >= 1.4;
-        const isWideGapDip = !isMeme && (upsideGapPct >= reqDynamicDrop || dropPct >= reqDynamicDrop) && rsi <= dynamicRsiCeiling;
-        const isStandardDip = (dropPct >= 2.0 && rsi <= 42) || isBollingerOversold || isWideGapDip || (rsi <= 36);
-        const isWickRebound = hasPinbarRejection && dropPct >= 1.2 && rsi <= (dynamicRsiCeiling - 4) && (rvol >= 0.80 || isNearLowerBollinger || isWideGapDip);
+        // 🛡️ REGLA DE ORO FIBONACCI 24H + STOCHRSI:
+        // Prohibido comprar en la mitad superior del rango de 24h (ej. NEAR en $4.04 cuando el rango es $3.63-$4.15, fib=0.78).
+        // Exigimos estar en el 40% inferior del rango 24h (Zona de Descuento Fibonacci <= 0.40) o en sobreventa real (RSI <= 36 y StochRSI <= 25).
+        const isInFibonacciDiscountZone = fibPosition24h <= 0.40 || (rsi <= 36 && stochRsi.k <= 25);
+        if (!isInFibonacciDiscountZone) {
+          continue;
+        }
+
+        // Umbral de RSI disciplinado (jamás comprar en RSI 52): máximo 44 solo si StochRSI <= 25 en zona baja de Fibonacci
+        const dynamicRsiCeiling = Math.min(44, Math.max(38, 37 + (coinRange24hPct * 0.45)));
+        const reqDynamicDrop = Math.max(2.0, Math.min(5.2, 1.6 + (coinRange24hPct * 0.28)));
+
+        // Condiciones cuantitativas institucionales de suelo:
+        // Exigimos que StochRSI esté en zona de agotamiento (<= 28) o Banda Inferior de Bollinger con RSI bajo
+        const isStochOversold = stochRsi.k <= 28 || rsi <= 34;
+        const isBollingerOversold = isNearLowerBollinger && rsi <= Math.min(42, dynamicRsiCeiling) && dropPct >= 1.8 && isStochOversold;
+        const isWideGapDip = !isMeme && (upsideGapPct >= reqDynamicDrop && dropPct >= Math.min(2.4, reqDynamicDrop * 0.8)) && rsi <= dynamicRsiCeiling && stochRsi.k <= 25 && fibPosition24h <= 0.35;
+        const isStandardDip = ((dropPct >= 2.2 && rsi <= 39 && isStochOversold) || isBollingerOversold || isWideGapDip || (rsi <= 33 && stochRsi.k <= 22));
+        const isWickRebound = hasPinbarRejection && dropPct >= 1.8 && rsi <= 40 && stochRsi.k <= 30 && (rvol >= 0.85 || isNearLowerBollinger);
+
         // 🐶 ESCUDO 3 (FILTRO DE HIERRO PARA MEMECOINS):
-        // Las memecoins (BONK, PEPE, DOGE, SHIB) caen -7% fácilmente si se arman con caídas leves (-1.6% / -2.4%).
-        // Exigimos agotamiento extremo real: caída >= 3.4% con Banda Inferior de Bollinger rota y RSI <= 36, o capitulación severa (RSI <= 31 con mecha de absorción).
         const isMemeExtremeDip =
-          (dropPct >= 3.4 && bb.percentB <= 0.12 && rsi <= 36) ||
-          (dropPct >= 4.2 && rsi <= 38 && hasPinbarRejection) ||
-          (rsi <= 31 && dropPct >= 2.8 && (hasPinbarRejection || bb.percentB <= 0.10));
+          (dropPct >= 3.4 && bb.percentB <= 0.12 && rsi <= 35 && stochRsi.k <= 22) ||
+          (dropPct >= 4.2 && rsi <= 37 && hasPinbarRejection && stochRsi.k <= 25) ||
+          (rsi <= 30 && dropPct >= 2.8 && (hasPinbarRejection || bb.percentB <= 0.10));
         const isDip = isMeme
           ? isMemeExtremeDip
           : (isStandardDip || isWickRebound);
@@ -2596,15 +2713,15 @@ export class TrailingMasterBot {
           });
           this.saveBuyWatches();
           if (isMeme) activeMemeCount++;
-          console.log(`🎯 [TRAILING BUY ARMADO] ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | Rango 24h ${coinRange24hPct.toFixed(1)}% | Brecha +${upsideGapPct.toFixed(1)}% [${convictionTier}] | RVOL ${rvol.toFixed(2)}x)`);
+          console.log(`🎯 [TRAILING BUY ARMADO] ${sym} a ${curPrice} (RSI ${rsi.toFixed(1)} | StochRSI ${stochRsi.k.toFixed(0)} | Fib24h ${(fibPosition24h * 100).toFixed(0)}% | Rango 24h ${coinRange24hPct.toFixed(1)}% | Brecha +${upsideGapPct.toFixed(1)}% [${convictionTier}])`);
 
           // Notificar armado de cacería en Telegram
           const msgArmado = `🎯 <b>[CACERÍA ARMADA: ${sym}]</b> 🏹\n\n` +
             `• <b>Precio actual:</b> $${curPrice}\n` +
-            `• 📉 <b>Caída detectada:</b> -${dropPct.toFixed(2)}% (RSI: <b>${rsi.toFixed(1)}</b>)\n` +
-            `• 🚀 <b>Brecha al Techo:</b> +${upsideGapPct.toFixed(2)}% [<b>${convictionTier}</b>]\n` +
+            `• 📉 <b>Caída detectada:</b> -${dropPct.toFixed(2)}% (RSI: <b>${rsi.toFixed(1)}</b> | StochRSI: <b>${stochRsi.k.toFixed(0)}</b>)\n` +
+            `• 📐 <b>Ubicación 24h:</b> Piso ${(fibPosition24h * 100).toFixed(0)}% del canal | 🚀 <b>Brecha:</b> +${upsideGapPct.toFixed(2)}% [<b>${convictionTier}</b>]\n` +
             `• 🔻 <b>Acción:</b> El bot ahora persigue el piso tick a tick. Si sigue cayendo, bajará el piso sin comprar.\n` +
-            `• ⚡ <b>Disparador:</b> Comprará al confirmar el primer rebote (+0.35%) con vela verde en 5m.`;
+            `• ⚡ <b>Disparador:</b> Comprará al confirmar giro de StochRSI + desaceleración MACD + vela verde en 5m.`;
           try { await this.notifier.send(msgArmado); } catch {}
         }
       } catch (e: any) {}
@@ -2664,12 +2781,12 @@ export class TrailingMasterBot {
         // CANDADO ESTRICTO DE RESERVA: Solo comprar si el saldo GASTABLE de la estrategia supera el mínimo ($10 USDT)
         if (bounce >= reqBounce && effectiveSpendable >= this.minUsdtToTrade) {
           // 🚦 ESCUDO 1 (SEMÁFORO DE BITCOIN EN VIVO - BTC VETO) +
-          // 🕯️ ESCUDO 2 (FIN DEL FALSO VERDE INTRA-VELA: ESTRUCTURA DE SUELO 15M/5M + VOLUMEN):
+          // 🕯️ ESCUDO 2 (ESTRUCTURA DE SUELO 15M/5M + STOCHRSI + MACD + EMA 50):
           let turnaroundConfirmed = true;
           try {
             const [k5, k15, btcK5, btcK15] = await Promise.all([
-              this.client.klines(sym, "5m", { limit: 16 }),
-              this.client.klines(sym, "15m", { limit: 3 }),
+              this.client.klines(sym, "5m", { limit: 40 }),
+              this.client.klines(sym, "15m", { limit: 52 }),
               sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "5m", { limit: 3 }) : Promise.resolve({ data: [] }),
               sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "15m", { limit: 2 }) : Promise.resolve({ data: [] })
             ]);
@@ -2694,7 +2811,7 @@ export class TrailingMasterBot {
               }
             }
 
-            // 2. Evaluar Cascada 15m en la moneda
+            // 2. Evaluar Cascada 15m, Ruptura EMA 50 y MACD 15m en la moneda
             if (k15?.data?.length >= 2) {
               const last15 = k15.data[k15.data.length - 1];
               const prev15 = k15.data[k15.data.length - 2];
@@ -2703,14 +2820,17 @@ export class TrailingMasterBot {
               const drop15Pct = ((c15 - o15) / o15) * 100;
               const prevDrop15Pct = ((pc15 - po15) / po15) * 100;
               const wick15 = (h15 - l15) > 0 ? (Math.min(o15, c15) - l15) / (h15 - l15) : 0;
-              // Si la vela 15m actual sigue cayendo (<= -0.35%) sin absorción (< 32%), o si la vela 15m previa se desplomó (<= -0.80%) y la actual sigue roja sin mecha fuerte: esperar
-              if ((drop15Pct <= -0.35 && wick15 < 0.32) || (prevDrop15Pct <= -0.80 && c15 < o15 && wick15 < 0.38)) {
-                console.log(`⏳ [FILTRO ANTI-CASCADA 15M: ${sym}] Vela 15m en presión bajista (actual ${drop15Pct.toFixed(2)}%, previa ${prevDrop15Pct.toFixed(2)}%, mecha ${(wick15 * 100).toFixed(0)}%). Esperando piso firme.`);
+              const closes15m = k15.data.map((row: any) => parseFloat(row[4]));
+              const ema50_15m = this.calculateEMA(closes15m, 50);
+              const brokeEma50_15m = o15 >= ema50_15m && c15 < ema50_15m * 0.996 && wick15 < 0.35;
+
+              if ((drop15Pct <= -0.35 && wick15 < 0.32) || (prevDrop15Pct <= -0.80 && c15 < o15 && wick15 < 0.38) || brokeEma50_15m) {
+                console.log(`⏳ [FILTRO ANTI-CASCADA / EMA50 15M: ${sym}] Vela 15m en presión bajista o rompiendo EMA50 (actual ${drop15Pct.toFixed(2)}%, mecha ${(wick15 * 100).toFixed(0)}%). Esperando piso firme.`);
                 continue;
               }
             }
 
-            // 3. Evaluar Confirmación Real de Suelo en 5m (Fin del Falso Verde Intra-vela)
+            // 3. Evaluar Confirmación Real de Suelo en 5m + StochRSI + Desaceleración MACD
             if (k5?.data?.length >= 2) {
               const last5 = k5.data[k5.data.length - 1];
               const prev5 = k5.data[k5.data.length - 2];
@@ -2727,19 +2847,21 @@ export class TrailingMasterBot {
               const hasHealthyBuyVolume = pv5 <= 0 || v5 >= pv5 * 0.65 || prevIsGreen5m;
               const closes5m = k5.data.map((row: any) => parseFloat(row[4]));
               const rsi5m = this.calculateRSI(closes5m, 14);
+              const stoch5m = this.calculateStochRSI(closes5m, 14, 14, 3, 3);
+              const macd5m = this.calculateMACDHistogram(closes5m, 12, 26, 9);
 
-              // Prohibir comprar en un simple parpadeo verde intra-vela:
-              // Exigimos que la vela 5m actual sea verde Y que exista estructura de soporte (vela previa ya verde, o vela previa con mecha >= 25%, o suelo creciente + ruptura de mitad de vela previa con volumen)
+              // Exigimos que el MACD 5m ya esté desacelerando la caída y que el StochRSI venga girando desde abajo
+              const indicatorsConfirmTurn = macd5m.isDecelerating && stoch5m.turningUp && stoch5m.k <= 65;
               const hasFloorStructure = prevIsGreen5m || prevLowerWick5 >= 0.25 || (isHigherLow5m && brokePrevMidpoint) || (lowerWick5 >= 0.35 && brokePrevMidpoint);
               const isDefensiveSession = sessionPlan.sessionKey === "COSECHA_PRENOCTURNA" || sessionPlan.sessionKey === "NOCTURNO_DRENAJE";
               if (isDefensiveSession || isMemeCoin) {
-                turnaroundConfirmed = isGreen5m && hasFloorStructure && brokePrevMidpoint && hasHealthyBuyVolume && rsi5m <= (isMemeCoin ? 45 : 50);
+                turnaroundConfirmed = isGreen5m && hasFloorStructure && brokePrevMidpoint && hasHealthyBuyVolume && indicatorsConfirmTurn && rsi5m <= (isMemeCoin ? 45 : 50);
               } else {
-                turnaroundConfirmed = isGreen5m && hasFloorStructure;
+                turnaroundConfirmed = isGreen5m && hasFloorStructure && indicatorsConfirmTurn;
               }
 
               if (!turnaroundConfirmed) {
-                console.log(`⏳ [ESCUDO ANTI-FALSO VERDE 5M: ${sym}] Rebote +${bounce.toFixed(2)}% insuficiente en estructura (Verde5m=${isGreen5m}, EstructuraPiso=${hasFloorStructure}, SuperaMitadPrevia=${brokePrevMidpoint}). Evitando trampa bajista.`);
+                console.log(`⏳ [ESCUDO 5M/STOCH/MACD: ${sym}] Rebote +${bounce.toFixed(2)}% sin confirmación completa (Verde5m=${isGreen5m}, Piso=${hasFloorStructure}, MACD_Frena=${macd5m.isDecelerating}, StochK=${stoch5m.k.toFixed(0)}). Esperando fondo real.`);
                 continue;
               }
             }
