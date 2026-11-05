@@ -1419,12 +1419,21 @@ export class TrailingMasterBot {
           this.client.klines(cleanSym, "1h", { limit: 55 })
         ]);
         const closesDca = klinesDca.data.map((k: any) => parseFloat(k[4]));
+        const highs1h = klines1h.data.map((k: any) => parseFloat(k[2]));
+        const lows1h = klines1h.data.map((k: any) => parseFloat(k[3]));
         const closes1h = klines1h.data.map((k: any) => parseFloat(k[4]));
-        const highs1h24 = klines1h.data.slice(-24).map((k: any) => parseFloat(k[2]));
-        const lows1h24 = klines1h.data.slice(-24).map((k: any) => parseFloat(k[3]));
+        const highs1h24 = highs1h.slice(-24);
+        const lows1h24 = lows1h.slice(-24);
         const high24Real = highs1h24.length > 0 ? Math.max(...highs1h24) : curPrice;
         const low24Real = lows1h24.length > 0 ? Math.min(...lows1h24) : curPrice;
         const realRange24hPct = low24Real > 0 ? ((high24Real - low24Real) / low24Real) * 100 : 4.0;
+        const atr1hPct = this.calculateATRPct(highs1h, lows1h, closes1h, 14);
+        const macro = await this.getLiveMacroRegime();
+
+        if (macro.isMacroStorm && !macro.isBtcCapitulationFloor) {
+          console.log(`🌪️ [SMART DCA RETENIDO POR TORMENTA MACRO] ${cleanSym}: BTC en cascada (Stress ${(macro.btcStressIndex * 100).toFixed(0)}%, 3h ${macro.btcDrop3hPct.toFixed(2)}%). Esperando capitulación de BTC para no quemar Lote #${lotCount + 1} prematuro.`);
+          continue;
+        }
 
         const rsi4h = this.calculateRSI(closesDca, 14);
         const rsi1h = this.calculateRSI(closes1h, 14);
@@ -1478,10 +1487,13 @@ export class TrailingMasterBot {
         const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
         const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
 
-        // 📐 DISTANCIA DINÁMICA POR VOLATILIDAD (ATR / Rango 24h Real):
-        // En monedas que se mueven 10%-14% al día (ej. NEAR/SOL/AVAX/BONK), prohibido quemar el Lote 2 con apenas -2.5%.
-        // Exigimos una caída proporcional a su volatilidad real (entre -3.8% y -6.2%) + RSI <= 40 + StochRSI en suelo.
-        const reqDropLot2 = Math.max(3.8, Math.min(6.2, 2.4 + realRange24hPct * 0.34));
+        // 📐 DISTANCIA DINÁMICA POR VOLATILIDAD (ATR 1H + Rango 24h Real + Estrés Macro BTC):
+        // En monedas que se mueven 10%-14% al día (ej. NEAR/SOL/AVAX/BONK) o bajo presión de BTC, prohibido quemar el Lote 2 con -2.5%.
+        // Se auto-expande continuamente entre -3.8% y -7.5% según el ATR de la moneda y el estrés de Bitcoin.
+        const reqDropLot2 = Math.max(
+          3.8,
+          Math.min(7.5, Math.max(atr1hPct * 3.0, 2.4 + realRange24hPct * 0.34) * (1 + macro.btcStressIndex * 0.28))
+        );
         const reqDropLot3 = Math.max(6.5, reqDropLot2 + 2.5);
 
         if (lotCount === 1) {
@@ -1756,7 +1768,13 @@ export class TrailingMasterBot {
         // NUNCA vender en rojo; esperar el rebote al alza (+0.80% mínimo) o promediar con Smart DCA.
         // (Stop-Loss eliminado al 100% de la lógica Spot para evitar whipsaws)
 
-        // 1. Activar Trailing si superó el umbral (adaptativo por Escalón de Brecha / Volatilidad / Régimen / Lote 3)
+        // 1. Activar Trailing si superó el umbral (adaptativo por Escalón de Brecha / Volatilidad / Régimen / Lote 3 / Anti-Estancamiento)
+        const macro = await this.getLiveMacroRegime();
+        const hoursOpen = pos.buyTime ? (Date.now() - pos.buyTime) / 3600000 : 0;
+        const isStagnantPosition = hoursOpen >= 4.0;
+        const isBearishMacroRelief = macro.btcStressIndex >= 0.55;
+        const isReliefHarvestMode = isBearishMacroRelief || isStagnantPosition;
+
         const isLot3 = (pos.lotIndex && pos.lotIndex >= 3) || symbol.includes("_lot_3");
         const btcRangeCur = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
         const coinVol = pos.coinRange24hPct || 0;
@@ -1772,6 +1790,12 @@ export class TrailingMasterBot {
         let activationTarget = pos.customMinGainPct || TRAILING_ACTIVATION_PCT;
         if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
           activationTarget = 0.58; // Canal lateral corto: activa en +0.58% para asegurar >= +0.46% neto
+        } else if (!pos.customMinGainPct && isReliefHarvestMode && !isLot3) {
+          // ⚡ MOTOR ANTI-ESTANCAMIENTO Y COSECHA DE REBOTE DE ALIVIO:
+          // Cuando el mercado macro está bajista (btcStressIndex >= 0.55) o la posición lleva >= 4 horas atrapada,
+          // los rebotes suelen ser cortos (+0.70% a +1.05%). En vez de exigir +1.80% y volver a caer quedando atrapados días,
+          // despertamos el Trailing en +0.65% para cobrar el primer rebote verde en ganancia neta y liberar liquidez.
+          activationTarget = 0.65;
         } else if (isLot3 && (!pos.customMinGainPct || pos.customMinGainPct <= 0.8)) {
           const isMeme = this.memeWatchlist.includes(actualSymbol) || actualSymbol.includes("PEPE") || actualSymbol.includes("BONK") || actualSymbol.includes("DOGE");
           if (isMeme) activationTarget = 2.20;
@@ -1877,9 +1901,9 @@ export class TrailingMasterBot {
           let callback = pos.strategy === "micro_grid" ? 0.12 : this.getCallbackPct(symbol, pos);
           let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.48 : 0.80);
 
-          // 🌆 COMPRESIÓN CUANTITATIVA EN DÍAS QUIETOS, WEEKEND PLANO, PRE-WEEKEND O COSECHA PRE-NOCTURNA:
-          if (!pos.customMinGainPct && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop) && gainPct >= 0.50) {
-            callback = Math.min(callback, isPreWeekendHarvest ? 0.15 : 0.16);
+          // 🌆 COMPRESIÓN CUANTITATIVA EN DÍAS QUIETOS, WEEKEND PLANO, PRE-WEEKEND, COSECHA PRE-NOCTURNA O ANTI-ESTANCAMIENTO:
+          if (!pos.customMinGainPct && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode) && gainPct >= 0.50) {
+            callback = Math.min(callback, (isPreWeekendHarvest || isReliefHarvestMode) ? 0.15 : 0.16);
             minGain = 0.50;
           }
 
@@ -2547,13 +2571,144 @@ export class TrailingMasterBot {
   }
 
   /**
+   * Calcula el ATR (Average True Range) expresado en porcentaje del precio actual.
+   * Permite que todos los umbrales de caída, rebote y DCA se auto-calibren según la volatilidad viva de cada moneda.
+   */
+  private calculateATRPct(highs: number[], lows: number[], closes: number[], period: number = 14): number {
+    if (closes.length < 2) return 1.2;
+    const trs: number[] = [];
+    for (let i = 1; i < closes.length; i++) {
+      const h = highs[i], l = lows[i], pc = closes[i - 1];
+      const tr = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+      trs.push(tr);
+    }
+    const slice = trs.slice(-period);
+    const avgTr = slice.reduce((a, b) => a + b, 0) / (slice.length || 1);
+    const curPrice = closes[closes.length - 1] || 1;
+    return curPrice > 0 ? (avgTr / curPrice) * 100 : 1.2;
+  }
+
+  private cachedMacroRegime: {
+    timestamp: number;
+    btcStressIndex: number; // 0.0 (alcista tranquilo) a 1.0 (tormenta/crash macro)
+    isMacroStorm: boolean;
+    isBtcCapitulationFloor: boolean;
+    btcDrop3hPct: number;
+    btcPrice: number;
+    btcEma50: number;
+    btcEma200: number;
+    btcRsi1h: number;
+    btcStochK: number;
+    btcAtr1hPct: number;
+  } | null = null;
+
+  /**
+   * 🧠 MOTOR AUTÓNOMO DE RÉGIMEN MACRO (BTC 1H + 15M):
+   * Evalúa la estructura institucional de Bitcoin (EMA 20/50/200 1H, caída acumulada de 3H, ATR, RSI, StochRSI y MACD)
+   * y devuelve un Índice Continuo de Estrés Macro (0.0 a 1.0) para que todo el bot adapte sus ecuaciones dinámicamente
+   * sin depender de reglas fijas ni caer en "pausas trampa" de 15m/1h en medio de un desplome.
+   */
+  private async getLiveMacroRegime() {
+    if (this.cachedMacroRegime && Date.now() - this.cachedMacroRegime.timestamp < 20000) {
+      return this.cachedMacroRegime;
+    }
+    try {
+      const btcK1h = await this.client.klines("BTCUSDT", "1h", { limit: 205 });
+      const data = btcK1h.data;
+      if (!data || data.length < 30) throw new Error("insuficientes velas BTC 1h");
+      const opens = data.map((k: any) => parseFloat(k[1]));
+      const highs = data.map((k: any) => parseFloat(k[2]));
+      const lows = data.map((k: any) => parseFloat(k[3]));
+      const closes = data.map((k: any) => parseFloat(k[4]));
+
+      const btcPrice = closes[closes.length - 1];
+      const btcEma20 = this.calculateEMA(closes, 20);
+      const btcEma50 = this.calculateEMA(closes, 50);
+      const btcEma200 = this.calculateEMA(closes, Math.min(200, closes.length));
+      const btcRsi1h = this.calculateRSI(closes, 14);
+      const btcStoch1h = this.calculateStochRSI(closes, 14, 14, 3, 3);
+      const btcMacd1h = this.calculateMACDHistogram(closes, 12, 26, 9);
+      const btcAtr1hPct = this.calculateATRPct(highs, lows, closes, 14);
+
+      // Caída acumulada en las últimas 3 horas (detecta crashes escalonados aunque haya 1 hora de pausa plana)
+      const high3h = Math.max(...highs.slice(-4));
+      const btcDrop3hPct = high3h > 0 ? ((btcPrice - high3h) / high3h) * 100 : 0;
+
+      // Mecha inferior de absorción en la vela actual de 1H
+      const lastIdx = closes.length - 1;
+      const range1h = highs[lastIdx] - lows[lastIdx];
+      const lowerWick1h = range1h > 0 ? (Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / range1h : 0;
+
+      // Cálculo continuo de btcStressIndex (0.00 a 1.00)
+      let stress = 0;
+      if (btcPrice < btcEma20) stress += 0.15;
+      if (btcPrice < btcEma50) stress += 0.25;
+      if (btcPrice < btcEma200) stress += 0.20;
+      if (btcDrop3hPct <= -1.2) {
+        stress += Math.min(0.40, Math.abs(btcDrop3hPct) * 0.12);
+      }
+      if (!btcMacd1h.isDecelerating && btcMacd1h.hist < 0) {
+        stress += 0.15;
+      }
+      const btcStressIndex = Math.max(0, Math.min(1.0, Number(stress.toFixed(2))));
+
+      // Tormenta Macro activa: cuando BTC perdió su EMA50 con caída acumulada fuerte o el estrés supera 0.60
+      const isMacroStorm = btcStressIndex >= 0.60 || (btcPrice < btcEma50 && btcDrop3hPct <= -1.35);
+
+      // Piso de Capitulación Real de BTC: único momento donde se permite cazar durante una tormenta macro
+      const isBtcCapitulationFloor =
+        (btcRsi1h <= 33 || btcStoch1h.k <= 18) &&
+        (lowerWick1h >= 0.32 || (btcMacd1h.isDecelerating && btcStoch1h.turningUp));
+
+      this.cachedMacroRegime = {
+        timestamp: Date.now(),
+        btcStressIndex,
+        isMacroStorm,
+        isBtcCapitulationFloor,
+        btcDrop3hPct,
+        btcPrice,
+        btcEma50,
+        btcEma200,
+        btcRsi1h,
+        btcStochK: btcStoch1h.k,
+        btcAtr1hPct,
+      };
+      return this.cachedMacroRegime;
+    } catch {
+      return {
+        timestamp: Date.now(),
+        btcStressIndex: 0.25,
+        isMacroStorm: false,
+        isBtcCapitulationFloor: false,
+        btcDrop3hPct: 0,
+        btcPrice: 0,
+        btcEma50: 0,
+        btcEma200: 0,
+        btcRsi1h: 50,
+        btcStochK: 50,
+        btcAtr1hPct: 0.8,
+      };
+    }
+  }
+
+  /**
    * TRAILING BUY - Paso 1: detectar caídas y "armar" la vigilancia del piso.
    * Ya no compra en la primera vela verde: registra el precio y rastrea el piso más bajo.
    */
   async scanForDips(activeSymbols: Set<string>): Promise<void> {
     const tf = this.controls.strategySettings?.trailing_rebound?.timeframe || this.controls.timeframe || "1h";
+    const macro = await this.getLiveMacroRegime();
 
-    // 🛡️ FILTRO MACRO INSTITUCIONAL BTC: Si Bitcoin está en caída libre activa en la vela actual de 15m
+    // 🛡️ ESCUDO DE TORMENTA MACRO CONTINUA (1H + 3H + 15M):
+    // Evita la "trampa de pausa de 1 hora" (cuando BTC cae fuerte, hace 1 vela neutra y luego sigue desplomándose -4% más).
+    // Si Bitcoin está en Tormenta Macro (debajo de EMA50/200 con caída 3H o alto estrés) y NO ha llegado a piso de capitulación,
+    // el bot congela automáticamente el armado de compras en altcoins sin necesidad de intervención humana.
+    if (macro.isMacroStorm && !macro.isBtcCapitulationFloor) {
+      console.log(`🌪️ [RÉGIMEN TORMENTA MACRO ACTIVO] BTC Stress=${(macro.btcStressIndex * 100).toFixed(0)}% | 3h=${macro.btcDrop3hPct.toFixed(2)}% | RSI1H=${macro.btcRsi1h.toFixed(1)} | Stoch1H=${macro.btcStochK.toFixed(0)}. Esperando suelo de capitulación de BTC.`);
+      return;
+    }
+
+    // 🛡️ FILTRO MACRO INSTITUCIONAL BTC 15M: Si Bitcoin está en caída libre activa en la vela actual de 15m
     // (caída <= -0.65% sin mecha de absorción inferior), pausar el armado de compras en altcoins para no atrapar cuchillos cayendo.
     try {
       const btcK = await this.client.klines("BTCUSDT", "15m", { limit: 3 });
@@ -2668,25 +2823,32 @@ export class TrailingMasterBot {
           continue;
         }
 
-        // 🛡️ REGLA DE ORO FIBONACCI 24H + STOCHRSI:
-        // Prohibido comprar en la mitad superior del rango de 24h (ej. NEAR en $4.04 cuando el rango es $3.63-$4.15, fib=0.78).
-        // Exigimos estar en el 40% inferior del rango 24h (Zona de Descuento Fibonacci <= 0.40) o en sobreventa real (RSI <= 36 y StochRSI <= 25).
-        const isInFibonacciDiscountZone = fibPosition24h <= 0.40 || (rsi <= 36 && stochRsi.k <= 25);
+        // 📐 AUTO-CALIBRACIÓN MATEMÁTICA CONTINUA (ATR + Estrés Macro BTC):
+        // A mayor estrés de BTC (0.0 a 1.0) y mayor ATR de la moneda, el bot contrae automáticamente el techo Fibonacci,
+        // baja el techo de RSI y StochRSI, y exige más caída previa sin que el usuario tenga que tocar parámetros.
+        const atrPct = this.calculateATRPct(highs, lows, closes, 14);
+        const dynamicFibCeiling = Math.max(0.18, 0.42 - macro.btcStressIndex * 0.25);
+        const dynamicStochCeiling = Math.max(15, Math.round(28 - macro.btcStressIndex * 14));
+
+        // 🛡️ REGLA DE ORO FIBONACCI 24H + STOCHRSI ELÁSTICA:
+        // En mercado normal permite el 40% inferior; bajo presión de BTC exige el 18%-25% inferior del canal 24h.
+        const isInFibonacciDiscountZone =
+          fibPosition24h <= dynamicFibCeiling ||
+          (rsi <= Math.max(30, 36 - macro.btcStressIndex * 6) && stochRsi.k <= dynamicStochCeiling);
         if (!isInFibonacciDiscountZone) {
           continue;
         }
 
-        // Umbral de RSI disciplinado (jamás comprar en RSI 52): máximo 44 solo si StochRSI <= 25 en zona baja de Fibonacci
-        const dynamicRsiCeiling = Math.min(44, Math.max(38, 37 + (coinRange24hPct * 0.45)));
-        const reqDynamicDrop = Math.max(2.0, Math.min(5.2, 1.6 + (coinRange24hPct * 0.28)));
+        // Umbral de RSI y caída auto-calibrados por ATR de la moneda y Estrés Macro de Bitcoin
+        const dynamicRsiCeiling = Math.max(31, Math.min(43, 42 - (macro.btcStressIndex * 12) + (coinRange24hPct * 0.20)));
+        const reqDynamicDrop = Math.max(1.8, Math.min(6.5, Math.max(atrPct * 2.2, 1.5 + coinRange24hPct * 0.26) * (1 + macro.btcStressIndex * 0.40)));
 
         // Condiciones cuantitativas institucionales de suelo:
-        // Exigimos que StochRSI esté en zona de agotamiento (<= 28) o Banda Inferior de Bollinger con RSI bajo
-        const isStochOversold = stochRsi.k <= 28 || rsi <= 34;
-        const isBollingerOversold = isNearLowerBollinger && rsi <= Math.min(42, dynamicRsiCeiling) && dropPct >= 1.8 && isStochOversold;
-        const isWideGapDip = !isMeme && (upsideGapPct >= reqDynamicDrop && dropPct >= Math.min(2.4, reqDynamicDrop * 0.8)) && rsi <= dynamicRsiCeiling && stochRsi.k <= 25 && fibPosition24h <= 0.35;
-        const isStandardDip = ((dropPct >= 2.2 && rsi <= 39 && isStochOversold) || isBollingerOversold || isWideGapDip || (rsi <= 33 && stochRsi.k <= 22));
-        const isWickRebound = hasPinbarRejection && dropPct >= 1.8 && rsi <= 40 && stochRsi.k <= 30 && (rvol >= 0.85 || isNearLowerBollinger);
+        const isStochOversold = stochRsi.k <= dynamicStochCeiling || rsi <= Math.max(29, 34 - macro.btcStressIndex * 5);
+        const isBollingerOversold = isNearLowerBollinger && rsi <= Math.min(41, dynamicRsiCeiling) && dropPct >= Math.max(1.8, reqDynamicDrop * 0.75) && isStochOversold;
+        const isWideGapDip = !isMeme && (upsideGapPct >= reqDynamicDrop && dropPct >= Math.min(2.6, reqDynamicDrop * 0.85)) && rsi <= dynamicRsiCeiling && stochRsi.k <= dynamicStochCeiling && fibPosition24h <= Math.min(0.35, dynamicFibCeiling);
+        const isStandardDip = ((dropPct >= Math.max(2.2, reqDynamicDrop * 0.85) && rsi <= Math.min(39, dynamicRsiCeiling) && isStochOversold) || isBollingerOversold || isWideGapDip || (rsi <= 32 && stochRsi.k <= 20));
+        const isWickRebound = hasPinbarRejection && dropPct >= Math.max(1.8, atrPct * 1.6) && rsi <= Math.min(40, dynamicRsiCeiling) && stochRsi.k <= Math.min(30, dynamicStochCeiling + 4) && (rvol >= 0.85 || isNearLowerBollinger);
 
         // 🐶 ESCUDO 3 (FILTRO DE HIERRO PARA MEMECOINS):
         const isMemeExtremeDip =
@@ -2733,6 +2895,8 @@ export class TrailingMasterBot {
    * Devuelve true si ejecutó una compra.
    */
   async checkBuyWatches(usdt: number): Promise<boolean> {
+    const macro = await this.getLiveMacroRegime();
+
     // 🏆 RANKING INTELIGENTE POR BRECHA Y VOLATILIDAD:
     // Evaluamos primero las monedas con mayor rango 24h y mayor brecha libre hacia el techo,
     // para que si 2 monedas rebotan al mismo tiempo, el bot invierta primero en la de mayor ganancia potencial (ej. AVAX/SOL).
@@ -2765,14 +2929,22 @@ export class TrailingMasterBot {
           continue;
         }
 
+        // Si BTC está en Tormenta Macro sin haber tocado piso de capitulación, seguimos bajando el lowestPrice pero NO gatillamos compra aún
+        if (sym !== "BTCUSDT" && macro.isMacroStorm && !macro.isBtcCapitulationFloor) {
+          console.log(`🌪️ [VETO TORMENTA MACRO: ${sym}] BTC Stress=${(macro.btcStressIndex * 100).toFixed(0)}% (${macro.btcDrop3hPct.toFixed(2)}% en 3h). Reteniendo disparo y acompañando suelo.`);
+          continue;
+        }
+
         const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
         this.loadWalletSplit();
         const botAvailableUsdt = Math.max(0, usdt - this.walletSplit.manualUsdt);
         const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(botAvailableUsdt);
         const isMemeCoin = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE") || sym.includes("SHIB");
         const baseBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
-        // Rebote mínimo elástico: memecoins exigen >= 0.55% desde el mínimo para filtrar micro-rebotes falsos ("Dead Cat Bounce")
-        const reqBounce = isMemeCoin ? Math.max(0.55, baseBounce) : Math.max(0.38, baseBounce);
+        // Rebote mínimo auto-calibrado por volatilidad de la moneda y estrés macro de BTC (filtra micro-rebotes falsos en caídas fuertes)
+        const stressAddon = macro.btcStressIndex * 0.25;
+        const volAddon = Math.min(0.25, Math.max(0, ((w.coinRange24hPct || 3.0) - 4.0) * 0.03));
+        const reqBounce = (isMemeCoin ? Math.max(0.55, baseBounce) : Math.max(0.38, baseBounce)) + stressAddon + volAddon;
         const strat = w.strategy || "trailing_rebound";
         // Si es Cazador Weekend en ventana de fin de semana, desbloquea el presupuesto de fin de semana (usdt pasado)
         const effectiveSpendable = (strat === "cazador_weekend" && this.isWeekendWindow())
