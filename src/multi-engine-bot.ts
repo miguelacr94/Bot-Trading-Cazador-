@@ -1856,7 +1856,9 @@ export class TrailingMasterBot {
             const stopPrice = curPrice * (1 - callback / 100);
             const minLockedGain = ((stopPrice - pos.buyPrice) / pos.buyPrice) * 100;
             const cleanSym = symbol.replace("USDT", "");
-            const suggestedFloor = Math.max(0.30, Math.floor(gainPct * 100) / 100);
+            // El piso a sugerir debe estar POR DEBAJO del precio actual (con el margen de callback)
+            // para que no venda de inmediato si el precio sigue subiendo, sino solo si se regresa.
+            const suggestedFloor = Math.max(0.30, Math.floor(minLockedGain * 100) / 100);
             const cmdPiso = `/piso_${cleanSym}_${Math.round(suggestedFloor * 100)}`;
             const floorNote = pos.lockedFloorGainPct ? `\n🔒 <b>Piso Manual Ya Amarrado:</b> +${pos.lockedFloorGainPct.toFixed(2)}% NETO\n` : "";
 
@@ -1865,13 +1867,13 @@ export class TrailingMasterBot {
               `• <b>Pico alcanzado:</b> ${fmtPrice(curPrice)} (<b>+${gainPct.toFixed(2)}%</b>)\n` +
               `• 🛡️ <b>Piso Trailing dinámico:</b> ${fmtPrice(stopPrice)} (+${minLockedGain.toFixed(2)}% neto)\n` +
               floorNote +
-              `\n🔒 <b>¿Deseas asegurar este pico ahora mismo?</b>\n` +
+              `\n🔒 <b>¿Deseas amarrar un piso de ganancia fija (+${suggestedFloor.toFixed(2)}%)?</b>\n` +
               `👉 Presiona el botón abajo o escribe: ${cmdPiso}\n` +
-              `<i>(O amárralo en el Dashboard web)</i>`;
+              `<i>(Si sube más, ¡seguirá subiendo! Solo venderá si retrocede a este piso)</i>`;
 
             const buttons = [
               [
-                { text: `🔒 Asegurar Piso (+${minLockedGain.toFixed(1)}%)`, callback_data: cmdPiso },
+                { text: `🔒 Amarrar Piso (+${suggestedFloor.toFixed(2)}%)`, callback_data: cmdPiso },
                 { text: "🚀 Seguir Persiguiendo Pico", callback_data: "/trailing" }
               ]
             ];
@@ -1927,8 +1929,10 @@ export class TrailingMasterBot {
           let hitLockedFloor = false;
           if (pos.lockedFloorGainPct && pos.lockedFloorGainPct > 0) {
             const peakGain = ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100;
-            // Si el pico alcanzó o superó el piso fijado (ej: +0.40%), y el precio retrocede tocándolo, Y SIEMPRE gainPct >= 0.30% (Cubre comisiones y asegura ganancia neta)
-            if (peakGain >= pos.lockedFloorGainPct && gainPct <= pos.lockedFloorGainPct && gainPct >= 0.30) {
+            // Solo se activa si el precio estuvo POR ENCIMA del piso asegurado (con un margen de respiro de 0.08%)
+            // y luego retrocede y cruza hacia abajo tocando el piso. Así NUNCA vende inmediatamente al presionar el botón.
+            const hasBufferAboveFloor = peakGain >= pos.lockedFloorGainPct + 0.08;
+            if (hasBufferAboveFloor && gainPct <= pos.lockedFloorGainPct && gainPct >= 0.30) {
               hitLockedFloor = true;
               console.log(`🔒 [PISO ASEGURADO TOCADO] ${symbol}: Ganancia actual +${gainPct.toFixed(2)}% retrocedió al piso asegurado de +${pos.lockedFloorGainPct.toFixed(2)}%. Ejecutando venta asegurada.`);
             }
