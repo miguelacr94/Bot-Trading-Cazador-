@@ -740,6 +740,57 @@ export class DashboardServer {
                 winRate: futWinRate
             }
         };
+        // TELEMETRÍA DE DERIV SINTÉTICOS (ÍNDICES DE VOLATILIDAD)
+        let derivState = {
+            enabled: true,
+            isSimulated: true,
+            accountId: process.env.DERIV_ACCOUNT_ID || "DOT95084693",
+            balanceUsdt: 10000.0,
+            startingBalanceUsdt: 10000.0,
+            totalProfitUsdt: 0.0,
+            winsCount: 0,
+            lossesCount: 0,
+            winRatePct: 0.0,
+            defaultStake: 10.0,
+            defaultDurationTicks: 5,
+            dailyRealizedPnl: 0.0,
+            dailyProfitTarget: 50.0,
+            activeSymbols: ["R_75", "R_100", "1HZ75V"]
+        };
+        try {
+            const f = path.resolve(process.cwd(), ".deriv-state.json");
+            if (fs.existsSync(f))
+                derivState = { ...derivState, ...JSON.parse(fs.readFileSync(f, "utf-8")) };
+        }
+        catch { }
+        let derivPositions = [];
+        try {
+            const f = path.resolve(process.cwd(), ".deriv-positions.json");
+            if (fs.existsSync(f))
+                derivPositions = JSON.parse(fs.readFileSync(f, "utf-8"));
+        }
+        catch { }
+        let derivTrades = [];
+        try {
+            const f = path.resolve(process.cwd(), ".deriv-trades.json");
+            if (fs.existsSync(f))
+                derivTrades = JSON.parse(fs.readFileSync(f, "utf-8"));
+        }
+        catch { }
+        const derivTelemetry = {
+            state: derivState,
+            positions: derivPositions,
+            trades: derivTrades.slice(0, 15),
+            stats: {
+                balanceUsdt: derivState.balanceUsdt,
+                totalProfitUsdt: derivState.totalProfitUsdt,
+                dailyProfitUsdt: derivState.dailyRealizedPnl,
+                wins: derivState.winsCount,
+                losses: derivState.lossesCount,
+                winRate: derivState.winRatePct,
+                activePositionsCount: derivPositions.length
+            }
+        };
         const cash = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
         const total = positionsValue + cash;
         const p = this.pnl;
@@ -901,6 +952,7 @@ export class DashboardServer {
                 : null,
             recentCycles: allMergedCycles.slice(-70).reverse(),
             futuresTelemetry,
+            derivTelemetry,
             recoveryTracker: (() => {
                 const baseTracker = this.cachedRecoveryTracker || this.getRecoveryTracker() || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
                 const debtTarget = baseTracker.targetUsdt || 100.00;

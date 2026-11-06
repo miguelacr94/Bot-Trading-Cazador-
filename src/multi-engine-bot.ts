@@ -1,6 +1,7 @@
 import { supabaseDb } from "./supabase-db.js";
 import crypto from "crypto";
 import { FuturesEngine } from "./futures-engine.js";
+import { derivEngine, DerivEngine } from "./deriv-engine.js";
 import { DashboardServer } from "./dashboard-server.js";
 import { Spot } from "@binance/connector";
 import { AiCopilot, BotContextSnapshot } from "./ai-copilot.js";
@@ -342,6 +343,7 @@ export class TrailingMasterBot {
   private notifier: TelegramNotifier;
   private telegramCommands: TelegramCommands;
   private futuresEngine: FuturesEngine;
+  private derivEngine: DerivEngine;
   private isProcessing = false;
   private autoPilot = true;
   private minUsdtToTrade = 10;
@@ -655,6 +657,7 @@ export class TrailingMasterBot {
     this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
     this.notifier = new TelegramNotifier();
     this.futuresEngine = new FuturesEngine();
+    this.derivEngine = derivEngine;
     this.telegramCommands = new TelegramCommands((cmd) => this.handleTelegramCommand(cmd));
     this.loadTrailingPositions();
     this.loadBuyWatches();
@@ -3346,6 +3349,64 @@ export class TrailingMasterBot {
           `• Apalancamiento Dinámico: 2x a 4x (Aislado)\n\n` +
           `👉 Activar Real: /futuros_real\n` +
           `👉 Activar Simulación: /futuros_sim`;
+      }
+
+      if (cmd === "/deriv" || cmd === "deriv" || cmd === "/deriv_status" || cmd === "deriv_status") {
+        const tel = this.derivEngine.getTelemetry();
+        const st = tel.state;
+        const icon = tel.connected ? "🟢 CONECTADO" : "🔴 RECONECTANDO";
+        const pnlSign = st.totalProfitUsdt >= 0 ? "+" : "";
+        let msg = `🎰 <b>ESTADO DEL MOTOR DERIV SINTÉTICOS</b> 📊\n\n` +
+          `• <b>Conexión WebSocket:</b> ${icon}\n` +
+          `• <b>Cuenta Demo:</b> <code>${st.accountId}</code> (${st.isSimulated ? "Demo Oficial" : "Real"})\n` +
+          `• <b>Balance Demo Deriv:</b> $${st.balanceUsdt.toFixed(2)} USD\n` +
+          `• <b>Stake por Operación:</b> $${st.defaultStake.toFixed(2)} USD\n` +
+          `• <b>Duración Contrato:</b> ${st.defaultDurationTicks} ticks (~10 seg)\n` +
+          `• <b>Operaciones Abiertas:</b> ${tel.openPositions.length} / ${st.maxConcurrentTrades}\n` +
+          `• <b>Efectividad (Win Rate):</b> ${st.winRatePct.toFixed(1)}% (${st.winsCount}W / ${st.lossesCount}L)\n` +
+          `• <b>Ganancia Neta Hoy:</b> ${st.dailyRealizedPnl >= 0 ? "+" : ""}$${st.dailyRealizedPnl.toFixed(2)} USD (Meta: +$${st.dailyProfitTarget})\n` +
+          `• <b>PnL Histórico Acumulado:</b> <b>${pnlSign}$${st.totalProfitUsdt.toFixed(2)} USD</b>\n` +
+          `• <b>Índices en Radar:</b> ${st.activeSymbols.join(", ")}\n\n` +
+          `👉 Ver historial: /deriv_trades\n` +
+          `👉 Cambiar monto: <code>/deriv_stake 15</code>\n` +
+          `👉 Pausar: /deriv_pausa | Reanudar: /deriv_reanudar`;
+        return msg;
+      }
+
+      if (cmd === "/deriv_trades" || cmd === "deriv_trades") {
+        const tel = this.derivEngine.getTelemetry();
+        if (tel.recentTrades.length === 0) {
+          return `📜 <b>HISTORIAL DERIV SINTÉTICOS</b>\n\nNo hay operaciones registradas aún. El bot está vigilando ticks de Volatility para la primera oportunidad.`;
+        }
+        let msg = `📜 <b>ÚLTIMAS ${Math.min(5, tel.recentTrades.length)} OPERACIONES EN DERIV:</b>\n\n`;
+        for (const t of tel.recentTrades.slice(0, 5)) {
+          const icon = t.status === "won" ? "🟢 GANADA" : "🔴 PERDIDA";
+          const sign = t.profit >= 0 ? "+" : "";
+          const dur = t.durationSec ? `${t.durationSec}s` : "5t";
+          msg += `• <b>${t.symbol}</b> (${t.contractType}) | ${icon}\n` +
+                 `  PnL: <b>${sign}$${t.profit.toFixed(2)} USD</b> | Stake: $${t.stake.toFixed(2)} | Duración: ${dur}\n` +
+                 `  <i>${t.rationale.slice(0, 60)}</i>\n\n`;
+        }
+        return msg;
+      }
+
+      if (cmd === "/deriv_stake" || cmd === "deriv_stake") {
+        const amount = parseFloat(arg1);
+        if (isNaN(amount) || amount < 0.35 || amount > 100) {
+          return `⚠️ Monto inválido. El stake debe ser entre $0.35 y $100 USD.\nEjemplo: <code>/deriv_stake 10</code>`;
+        }
+        this.derivEngine.setStake(amount);
+        return `✅ <b>Monto por operación en Deriv actualizado a: $${amount.toFixed(2)} USD</b>`;
+      }
+
+      if (cmd === "/deriv_pausa" || cmd === "deriv_pausa") {
+        this.derivEngine.setEnabled(false);
+        return `⏸️ <b>Motor Deriv Sintéticos pausado.</b> No se ejecutarán nuevos contratos.`;
+      }
+
+      if (cmd === "/deriv_reanudar" || cmd === "deriv_reanudar") {
+        this.derivEngine.setEnabled(true);
+        return `▶️ <b>Motor Deriv Sintéticos reanudado.</b> Buscando señales cuantitativas activas.`;
       }
 
       if (cmd === "/liquidez" || cmd === "liquidez") {
@@ -6040,6 +6101,9 @@ export class TrailingMasterBot {
 
     await this.telegramCommands.start();
     this.futuresEngine.start(4000);
+    if (process.env.DERIV_KEY && process.env.DERIV_APP_ID) {
+      this.derivEngine.start().catch((e) => console.error("[DERIV] Error iniciando DerivEngine:", e));
+    }
     console.log(`📱 Telegram listo para recibir órdenes por chat.`);
 
     await this.syncOrphanPositions();
