@@ -114,9 +114,12 @@ export class DerivEngine {
     this.appId = process.env.DERIV_APP_ID || "";
     this.demoAccountId = process.env.DERIV_DEMO_ACCOUNT_ID || "DOT95084693";
     this.realAccountId = process.env.DERIV_REAL_ACCOUNT_ID || "ROT92884781";
-    this.accountId = process.env.DERIV_ACCOUNT_ID || this.demoAccountId;
 
     this.state = this.loadState();
+    // Sincronización estricta: accountId siempre coincide con el entorno (Real vs Demo)
+    this.accountId = this.state.isSimulated ? this.demoAccountId : this.realAccountId;
+    this.state.accountId = this.accountId;
+
     this.positions = this.loadPositions();
     this.trades = this.loadTrades();
   }
@@ -212,14 +215,15 @@ export class DerivEngine {
   public async start(): Promise<void> {
     if (!this.apiKey) this.apiKey = process.env.DERIV_KEY || "";
     if (!this.appId) this.appId = process.env.DERIV_APP_ID || "";
-    if (!this.accountId) this.accountId = process.env.DERIV_ACCOUNT_ID || "";
+    this.accountId = this.state.isSimulated ? this.demoAccountId : this.realAccountId;
+    this.state.accountId = this.accountId;
 
     if (!this.apiKey || !this.appId || !this.accountId) {
       console.warn("[DERIV] Credenciales de Deriv incompletas en .env. Motor pausado.");
       return;
     }
 
-    console.log(`[DERIV] Iniciando motor Deriv Sintéticos (Cuenta: ${this.accountId})...`);
+    console.log(`[DERIV] Iniciando motor Deriv Sintéticos (Cuenta: ${this.accountId} | ${this.state.isSimulated ? "DEMO" : "REAL"})...`);
     await this.connectWebSocket();
 
     // Loop de análisis cuantitativo cada 2.5 segundos
@@ -343,8 +347,14 @@ export class DerivEngine {
 
       if (msgType === "balance") {
         const bal = data.balance?.balance;
+        const loginid = data.balance?.loginid;
         if (typeof bal === "number") {
           this.state.balanceUsdt = bal;
+          if (loginid) {
+            this.state.accountId = loginid;
+            this.accountId = loginid;
+            this.state.isSimulated = loginid.startsWith("DOT");
+          }
           if (!this.state.startingBalanceUsdt || this.state.startingBalanceUsdt <= 0) {
             this.state.startingBalanceUsdt = bal; // Línea base del entorno actual
           }
