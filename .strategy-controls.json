@@ -1,6 +1,6 @@
 {
   "strategies": {
-    "deriv": true,
+    "deriv": false,
     "futures": true,
     "smart_dca": true,
     "micro_grid": true,
@@ -30,7 +30,7 @@
       "stake": 0.5,
       "dailyProfitTarget": 3,
       "dailyStopLoss": 2,
-      "enabled": true
+      "enabled": false
     },
     "futures": {
       "leverage": 7,
