@@ -1647,41 +1647,42 @@
 
   if (labResetBtn) {
     labResetBtn.addEventListener("click", async () => {
-      const ok = confirm("¿Deseas reiniciar la simulación con $100.00 USDT limpios y margen estándar de $15 USDT?");
+      const curCap = parseFloat(labCapital?.value || "100");
+      const curMarg = parseFloat(labMargin?.value || "30");
+      const ok = confirm(`¿Deseas reiniciar la simulación con $${curCap.toFixed(2)} USDT limpios y margen de $${curMarg.toFixed(2)} USDT?`);
       if (ok) {
         try {
           await fetch("/api/futures/config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reset: true, startingBalance: 100, marginPerTrade: 15, leverageMode: "dynamic" })
+            body: JSON.stringify({ reset: true, startingBalance: curCap, marginPerTrade: curMarg, leverageMode: labLev?.value || "dynamic" })
           });
-          if (labCapital) labCapital.value = "100";
-          if (labMargin) labMargin.value = "15";
           const initEl = document.getElementById("fut-dev-init-capital");
           const curEl = document.getElementById("fut-dev-cur-balance");
-          if (initEl) initEl.textContent = "$100.00 USDT";
-          if (curEl) curEl.textContent = "$100.00 USDT";
-          labResetBtn.textContent = "✅ ¡Iniciado en $100!";
-          setTimeout(() => labResetBtn.textContent = "🔄 Iniciar con $100 USDT", 2000);
+          if (initEl) initEl.textContent = "$" + curCap.toFixed(2) + " USDT";
+          if (curEl) curEl.textContent = "$" + curCap.toFixed(2) + " USDT";
+          labResetBtn.textContent = `✅ ¡Iniciado en $${curCap}!`;
+          setTimeout(() => labResetBtn.textContent = "🔄 Reiniciar Simulación", 2000);
         } catch(e) {}
       }
     });
   }
 
-
   const btnReset100 = document.getElementById("btn-reset-fut-100");
   if (btnReset100) {
     btnReset100.addEventListener("click", async () => {
-      const ok = confirm("¿Deseas reiniciar la simulación de Futuros con $100.00 USDT limpios y margen estándar de $15 USDT?");
+      const curCap = parseFloat(inputFutCapital?.value || labCapital?.value || "100");
+      const curMarg = parseFloat(inputFutMargin?.value || labMargin?.value || "30");
+      const ok = confirm(`¿Deseas reiniciar la simulación de Futuros con $${curCap.toFixed(2)} USDT limpios y margen de $${curMarg.toFixed(2)} USDT?`);
       if (ok) {
         try {
           await fetch("/api/futures/config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reset: true, startingBalance: 100, marginPerTrade: 15, leverageMode: "dynamic" })
+            body: JSON.stringify({ reset: true, startingBalance: curCap, marginPerTrade: curMarg, leverageMode: "dynamic" })
           });
-          btnReset100.textContent = "✅ ¡Iniciado en $100!";
-          setTimeout(() => btnReset100.textContent = "🔄 Iniciar con $100 USDT", 2000);
+          btnReset100.textContent = `✅ ¡Iniciado en $${curCap}!`;
+          setTimeout(() => btnReset100.textContent = "🔄 Reiniciar Simulación", 2000);
         } catch(e) {}
       }
     });

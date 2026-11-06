@@ -1493,6 +1493,9 @@ export class DashboardServer {
                             const m = parseFloat(data.marginPerTrade);
                             if (!isNaN(m) && m > 0) {
                                 futSt.defaultMarginPerTrade = m;
+                                if (!controls.strategySettings.futures)
+                                    controls.strategySettings.futures = {};
+                                controls.strategySettings.futures.marginPerTrade = m;
                             }
                         }
                         if (data.startingBalance !== undefined) {
@@ -1501,10 +1504,25 @@ export class DashboardServer {
                                 futSt.startingBalanceUsdt = b;
                                 if (data.reset)
                                     futSt.virtualBalanceUsdt = b;
+                                if (!controls.strategySettings.futures)
+                                    controls.strategySettings.futures = {};
+                                controls.strategySettings.futures.startingBalance = b;
                             }
+                        }
+                        if (data.reset) {
+                            futSt.virtualBalanceUsdt = futSt.startingBalanceUsdt || 100;
+                            // Limpiar posiciones simuladas abiertas al reiniciar
+                            const futPosF = path.resolve(process.cwd(), ".futures-sim-positions.json");
+                            try {
+                                fs.writeFileSync(futPosF, "[]", "utf-8");
+                            }
+                            catch { }
                         }
                         if (data.leverageMode) {
                             futSt.leverageMode = data.leverageMode;
+                            if (!controls.strategySettings.futures)
+                                controls.strategySettings.futures = {};
+                            controls.strategySettings.futures.leverageMode = data.leverageMode;
                         }
                         controls.updatedAt = Date.now();
                         fs.writeFileSync(futStateF, JSON.stringify(futSt, null, 2), "utf-8");
