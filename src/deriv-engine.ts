@@ -478,6 +478,11 @@ export class DerivEngine {
       return;
     }
 
+    // Cooldown global anti-sobreoperativa: mínimo 90 segundos de descanso entre operaciones
+    if (Date.now() - this.state.lastTradeTime < 90000) {
+      return;
+    }
+
     // Analizar cada símbolo
     for (const symbol of this.state.activeSymbols) {
       if (this.positions.length >= this.state.maxConcurrentTrades) break;
@@ -491,8 +496,9 @@ export class DerivEngine {
       const signal = this.calculateSignal(symbol, ticks);
       if (signal) {
         console.log(`[DERIV] 🎯 Señal detectada en ${symbol}: ${signal.type} | Razón: ${signal.rationale}`);
-        this.symbolCooldowns.set(symbol, Date.now() + 45000); // 45s de descanso entre entradas del mismo símbolo
+        this.symbolCooldowns.set(symbol, Date.now() + 180000); // 3 min de descanso en el mismo símbolo
         await this.executeTrade(symbol, signal.type, signal.rationale);
+        break; // Una operación a la vez
       }
     }
   }
@@ -505,42 +511,42 @@ export class DerivEngine {
     // Cálculo de RSI (período 9 ticks)
     const rsi = this.calculateRSI(quotes, 9);
 
-    // Cálculo de EMAs rápidas (5 ticks) y lentas (15 ticks)
-    const emaFast = this.calculateEMA(quotes, 5);
-    const emaSlow = this.calculateEMA(quotes, 15);
+    // Cálculo de EMAs para cruces institucionales (8 vs 20 ticks)
+    const emaFast = this.calculateEMA(quotes, 8);
+    const emaSlow = this.calculateEMA(quotes, 20);
 
-    // Estrategia 1: Momentum Pullback Extremo
-    // Si RSI está en sobreventa (< 22) y el precio supera la EMA rápida -> Rebote inminente (CALL)
-    if (rsi < 24 && currentPrice > emaFast && emaFast > emaSlow) {
+    // Estrategia 1: Sniper de Reversión Extrema (Alta Efectividad)
+    // Sobreventa extrema (< 22) + giro alcista
+    if (rsi < 22 && currentPrice > emaFast) {
       return {
         type: "CALL",
-        rationale: `RSI Oversold Extremo (${rsi.toFixed(1)}) + Rebote alcista sobre EMA(5) en ${symbol}`
+        rationale: `Sniper Sobreventa Extrema (RSI ${rsi.toFixed(1)} < 22) + Giro alcista en ${symbol}`
       };
     }
 
-    // Si RSI está en sobrecompra (> 76) y el precio quiebra por debajo de la EMA rápida -> Corrección inminente (PUT)
-    if (rsi > 76 && currentPrice < emaFast && emaFast < emaSlow) {
+    // Sobrecompra extrema (> 78) + giro bajista
+    if (rsi > 78 && currentPrice < emaFast) {
       return {
         type: "PUT",
-        rationale: `RSI Overbought Extremo (${rsi.toFixed(1)}) + Quiebre bajista bajo EMA(5) en ${symbol}`
+        rationale: `Sniper Sobrecompra Extrema (RSI ${rsi.toFixed(1)} > 78) + Giro bajista en ${symbol}`
       };
     }
 
-    // Estrategia 2: Golden Cross en Ticks Rápidos (Cruces limpios)
-    const prevFast = this.calculateEMA(quotes.slice(0, n - 1), 5);
-    const prevSlow = this.calculateEMA(quotes.slice(0, n - 1), 15);
+    // Estrategia 2: Golden / Death Cross con Filtro de Tendencia Fuerte
+    const prevFast = this.calculateEMA(quotes.slice(0, n - 1), 8);
+    const prevSlow = this.calculateEMA(quotes.slice(0, n - 1), 20);
 
-    if (prevFast <= prevSlow && emaFast > emaSlow && rsi > 45 && rsi < 65) {
+    if (prevFast <= prevSlow && emaFast > emaSlow && rsi >= 48 && rsi <= 60) {
       return {
         type: "CALL",
-        rationale: `Tick Golden Cross (EMA 5 cruzó EMA 15 hacia arriba) con RSI neutral (${rsi.toFixed(1)})`
+        rationale: `Golden Cross Confirmado (EMA 8 cruzó EMA 20 al alza) con RSI en aceleración (${rsi.toFixed(1)})`
       };
     }
 
-    if (prevFast >= prevSlow && emaFast < emaSlow && rsi > 35 && rsi < 55) {
+    if (prevFast >= prevSlow && emaFast < emaSlow && rsi >= 40 && rsi <= 52) {
       return {
         type: "PUT",
-        rationale: `Tick Death Cross (EMA 5 cruzó EMA 15 hacia abajo) con RSI neutral (${rsi.toFixed(1)})`
+        rationale: `Death Cross Confirmado (EMA 8 cruzó EMA 20 a la baja) con RSI en aceleración (${rsi.toFixed(1)})`
       };
     }
 
@@ -657,15 +663,18 @@ export class DerivEngine {
     this.saveState();
 
     // Notificar apertura a Telegram
+    const netDayPnl = this.state.dailyRealizedPnl;
+    const pnlText = netDayPnl >= 0 ? `🟢 GANANDO +$${netDayPnl.toFixed(2)} USD` : `🔴 -$${Math.abs(netDayPnl).toFixed(2)} USD`;
+
     const msg =
-      `🎰 <b>DERIV SINTÉTICOS: OPERACIÓN EJECUTADA</b>\n\n` +
+      `🎰 <b>DERIV SINTÉTICOS: OPERACIÓN EN EJECUCIÓN (~10s)</b>\n\n` +
       `• <b>Contrato:</b> ${pos.contractType === "CALL" ? "🟢 ALZA (CALL)" : "🔴 BAJA (PUT)"}\n` +
       `• <b>Índice:</b> <code>${pos.symbol}</code>\n` +
-      `• <b>Monto Arriesgado (Stake):</b> $${pos.stake.toFixed(2)} USD\n` +
-      `• <b>Duración:</b> ${pos.duration} ticks (~10 seg)\n` +
-      `• <b>Ganancia Estimada:</b> +$${(pos.payoutExpected - pos.stake).toFixed(2)} USD\n` +
-      `• <b>Motivo Cuantitativo:</b> ${pos.rationale}\n\n` +
-      `🛡️ <b>Modo Demo Oficial:</b> Cuenta <code>${this.accountId}</code> con $${this.state.balanceUsdt.toFixed(2)} USD`;
+      `• <b>Monto Arriesgado:</b> $${pos.stake.toFixed(2)} USD\n` +
+      `• <b>Ganancia si acierta:</b> +$${(pos.payoutExpected - pos.stake).toFixed(2)} USD\n` +
+      `• <b>Estrategia:</b> ${pos.rationale}\n\n` +
+      `📊 <b>Estado de tu Cuenta:</b> ${pnlText}\n` +
+      `💼 <b>Balance Demo Oficial:</b> $${this.state.balanceUsdt.toFixed(2)} USD (${this.state.winsCount}W / ${this.state.lossesCount}L)`;
 
     this.notifier.send(msg).catch(() => {});
 
@@ -690,14 +699,15 @@ export class DerivEngine {
     if (poc.is_sold === 1) {
       // Contrato finalizado
       const isWon = poc.status === "won";
-      const netProfit = poc.profit;
+      const netProfit = parseFloat(String(poc.profit || 0));
+      const payout = parseFloat(String(poc.payout || 0));
 
       const trade: DerivTrade = {
         contractId: pos.contractId,
         symbol: pos.symbol,
         contractType: pos.contractType,
         stake: pos.stake,
-        payout: poc.payout || 0,
+        payout,
         profit: netProfit,
         entrySpot: poc.entry_tick || poc.barrier || 0,
         exitSpot: poc.exit_tick || 0,
@@ -734,15 +744,16 @@ export class DerivEngine {
       const profitFormatted = isWon
         ? `+$${netProfit.toFixed(2)} USD`
         : `-$${Math.abs(netProfit).toFixed(2)} USD`;
+      const netDayPnl = this.state.dailyRealizedPnl;
+      const pnlText = netDayPnl >= 0 ? `🟢 GANANDO +$${netDayPnl.toFixed(2)} USD` : `🔴 -$${Math.abs(netDayPnl).toFixed(2)} USD`;
 
       const closeMsg =
         `${icon} <b>DERIV SINTÉTICOS: ${outcomeText}</b>\n\n` +
         `• <b>Índice:</b> <code>${trade.symbol}</code> (${trade.contractType})\n` +
-        `• <b>Resultado Neto:</b> <b>${profitFormatted}</b>\n` +
-        `• <b>Duración:</b> ${trade.durationSec}s\n` +
-        `• <b>Balance Demo Actual:</b> $${this.state.balanceUsdt.toFixed(2)} USD\n` +
-        `• <b>Win Rate Global:</b> ${this.state.winRatePct.toFixed(1)}% (${this.state.winsCount}W / ${this.state.lossesCount}L)\n` +
-        `• <b>PnL Acumulado:</b> ${this.state.totalProfitUsdt >= 0 ? "+" : ""}$${this.state.totalProfitUsdt.toFixed(2)} USD`;
+        `• <b>Resultado del Trade:</b> <b>${profitFormatted}</b> (Duración: ${trade.durationSec}s)\n` +
+        `• <b>Balance Demo Oficial:</b> <b>$${this.state.balanceUsdt.toFixed(2)} USD</b> (Inició en $${this.state.startingBalanceUsdt.toFixed(2)})\n` +
+        `• <b>Estado General:</b> <b>${pnlText}</b>\n` +
+        `• <b>Récord Global:</b> ${this.state.winRatePct.toFixed(1)}% (${this.state.winsCount} Ganadas / ${this.state.lossesCount} Perdidas)`;
 
       this.notifier.send(closeMsg).catch(() => {});
     } else {

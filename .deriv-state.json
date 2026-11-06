@@ -1,0 +1,26 @@
+{
+  "enabled": true,
+  "isSimulated": true,
+  "accountId": "DOT95084693",
+  "appId": "34SYxCtiDvBW9lnMHcb4f",
+  "balanceUsdt": 10016.38,
+  "startingBalanceUsdt": 10000,
+  "totalProfitUsdt": 16.38,
+  "winsCount": 4,
+  "lossesCount": 2,
+  "winRatePct": 66.7,
+  "defaultStake": 10,
+  "defaultDurationTicks": 5,
+  "maxConcurrentTrades": 1,
+  "dailyProfitTarget": 50,
+  "dailyStopLoss": 30,
+  "dailyRealizedPnl": 16.38,
+  "lastDailyReset": "2026-11-06",
+  "activeSymbols": [
+    "1HZ75V",
+    "1HZ100V",
+    "1HZ50V",
+    "R_75"
+  ],
+  "lastTradeTime": 1793993528465
+}
