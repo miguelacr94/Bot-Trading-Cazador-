@@ -2907,11 +2907,12 @@ export class TrailingMasterBot {
                         `☑️ <b>Permitir Transferencia Universal</b>\n\n` +
                         `Luego vuelve a presionar: 👉 /futuros_real`;
                 }
-                // Auto-transferir el margen acordado ($15 USDT) a la billetera de Futuros si es necesario
-                const agreedMargin = 15.0;
+                // Margen dinámico para la billetera de Futuros según la configuración del motor (default 30 USDT)
+                const futState = this.futuresEngine.getState();
+                const agreedMargin = futState.defaultMarginPerTrade || 30.0;
                 const futBal = await this.getFuturesBalance();
                 let transferNote = "";
-                if (futBal.available < 10.0) {
+                if (futBal.available < agreedMargin * 0.8) {
                     const acc = await this.client.account({ recvWindow: 60000 });
                     const spotUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
                     if (spotUsdt >= agreedMargin) {
@@ -2936,8 +2937,8 @@ export class TrailingMasterBot {
                 }
                 this.futuresEngine.setConfig({ isSimulated: false });
                 return `🚀 <b>MODO FUTUROS CAMBIADO A: REAL</b> ⚠️\n\n` +
-                    `• El motor ahora ejecutará órdenes reales en Binance USD-M con margen aislado ($10-$15 USDT por operación).\n` +
-                    `• Stop Loss activo: -1.2% | Trailing TP: +1.2%${transferNote}\n\n` +
+                    `• El motor ahora ejecutará órdenes reales en Binance USD-M con margen aislado ($${agreedMargin.toFixed(0)} USDT por operación).\n` +
+                    `• Stop Loss activo: -1.5% | Trailing TP: +1.5%${transferNote}\n\n` +
                     `🛡️ <i>Al finalizar o cambiar a simulación, el bot regresará automáticamente el saldo y ganancias a Spot.</i>\n\n` +
                     `👉 Para pasar a simulación y regresar saldo a Spot: /futuros_sim\n` +
                     `👉 O para regresar fondos a Spot manualmente: /pasar_a_spot`;
