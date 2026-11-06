@@ -1732,6 +1732,82 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
         return;
       }
 
+      if (
+        parsedUrl.pathname === "/api/deriv/config" &&
+        req.method === "POST"
+      ) {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", async () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const derivStateF = path.resolve(process.cwd(), ".deriv-state.json");
+            const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+
+            let derivSt: any = {
+              enabled: true,
+              isSimulated: true,
+              accountId: process.env.DERIV_ACCOUNT_ID || "DOT95084693",
+              appId: process.env.DERIV_APP_ID || "",
+              balanceUsdt: 10000,
+              startingBalanceUsdt: 10000,
+              totalProfitUsdt: 0,
+              winsCount: 0,
+              lossesCount: 0,
+              winRatePct: 0,
+              defaultStake: 10,
+              defaultDurationTicks: 5,
+              maxConcurrentTrades: 1,
+              dailyProfitTarget: 50,
+              dailyStopLoss: 30,
+              dailyRealizedPnl: 0,
+              lastDailyReset: new Date().toISOString().split("T")[0],
+              activeSymbols: ["R_75", "R_100", "1HZ75V"],
+              lastTradeTime: 0
+            };
+            if (fs.existsSync(derivStateF)) {
+              try { derivSt = JSON.parse(fs.readFileSync(derivStateF, "utf-8")); } catch {}
+            }
+
+            let controls: any = {};
+            if (fs.existsSync(ctrlFile)) {
+              try { controls = JSON.parse(fs.readFileSync(ctrlFile, "utf-8")); } catch {}
+            }
+            if (!controls.strategies) controls.strategies = {};
+
+            if (data.enabled !== undefined) {
+              derivSt.enabled = !!data.enabled;
+              controls.strategies.deriv = !!data.enabled;
+            }
+            if (data.stake !== undefined) {
+              const s = parseFloat(data.stake);
+              if (!isNaN(s) && s >= 0.35 && s <= 100) {
+                derivSt.defaultStake = s;
+              }
+            }
+            if (data.reset) {
+              derivSt.totalProfitUsdt = 0;
+              derivSt.winsCount = 0;
+              derivSt.lossesCount = 0;
+              derivSt.winRatePct = 0;
+              derivSt.dailyRealizedPnl = 0;
+            }
+
+            controls.updatedAt = Date.now();
+            fs.writeFileSync(derivStateF, JSON.stringify(derivSt, null, 2), "utf-8");
+            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
+            supabaseDb.saveStrategyControls(controls).catch(() => {});
+
+            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ success: true, state: derivSt, controls: controls.strategies }));
+          } catch (e: any) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+        return;
+      }
+
       if (parsedUrl.pathname === "/api/strategies/toggle" &&
         req.method === "POST"
       ) {
@@ -1811,6 +1887,17 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
                     const futSt = JSON.parse(fs.readFileSync(futStateF, "utf-8"));
                     futSt.enabled = newVal;
                     fs.writeFileSync(futStateF, JSON.stringify(futSt, null, 2), "utf-8");
+                  }
+                } catch {}
+              }
+
+              if (data.strategy === "deriv") {
+                try {
+                  const derivStateF = path.resolve(process.cwd(), ".deriv-state.json");
+                  if (fs.existsSync(derivStateF)) {
+                    const derivSt = JSON.parse(fs.readFileSync(derivStateF, "utf-8"));
+                    derivSt.enabled = newVal;
+                    fs.writeFileSync(derivStateF, JSON.stringify(derivSt, null, 2), "utf-8");
                   }
                 } catch {}
               }

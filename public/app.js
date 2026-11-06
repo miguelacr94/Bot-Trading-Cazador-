@@ -1239,6 +1239,8 @@
       const cardWeekend = document.getElementById("card-strat-weekend");
       const cardWideGap = document.getElementById("card-strat-widegap");
       const cardFutures = document.getElementById("card-strat-futures");
+      const tDeriv = document.getElementById("toggle-deriv");
+      const cardDeriv = document.getElementById("card-strat-deriv");
 
       if (tTrailing && !tTrailing.matches(":focus")) tTrailing.checked = !!s.trailing_rebound;
       if (tDca && !tDca.matches(":focus")) tDca.checked = !!s.smart_dca;
@@ -1246,6 +1248,7 @@
       if (tWeekend && !tWeekend.matches(":focus")) tWeekend.checked = !!s.cazador_weekend;
       if (tFutures && !tFutures.matches(":focus")) tFutures.checked = !!s.futures;
       if (tWideGap && !tWideGap.matches(":focus")) tWideGap.checked = s.wide_gap_sniper !== false;
+      if (tDeriv && !tDeriv.matches(":focus")) tDeriv.checked = s.deriv !== false;
 
       if (cardTrailing) cardTrailing.classList.toggle("active-strat", !!s.trailing_rebound);
       if (cardDca) cardDca.classList.toggle("active-strat", !!s.smart_dca);
@@ -1253,6 +1256,7 @@
       if (cardWeekend) cardWeekend.classList.toggle("active-strat", !!s.cazador_weekend);
       if (cardWideGap) cardWideGap.classList.toggle("active-strat", s.wide_gap_sniper !== false);
       if (cardFutures) cardFutures.classList.toggle("active-strat", !!s.futures);
+      if (cardDeriv) cardDeriv.classList.toggle("active-strat", s.deriv !== false);
 
       const wideAmountInput = document.getElementById("input-widegap-amount");
       if (wideAmountInput && !wideAmountInput.matches(":focus")) {
@@ -1470,6 +1474,25 @@
     document.getElementById("toggle-wide-gap")?.addEventListener("change", (e) => toggleStrategy("wide_gap_sniper", false, e.target.checked));
     document.getElementById("toggle-widegap")?.addEventListener("change", (e) => toggleStrategy("wide_gap_sniper", false, e.target.checked));
     document.getElementById("toggle-futures")?.addEventListener("change", (e) => toggleStrategy("futures", false, e.target.checked));
+    document.getElementById("toggle-deriv")?.addEventListener("change", (e) => toggleStrategy("deriv", false, e.target.checked));
+
+    document.getElementById("btn-save-deriv-config")?.addEventListener("click", async () => {
+      const stake = parseFloat(document.getElementById("input-deriv-stake")?.value || "10");
+      const enabled = document.getElementById("toggle-deriv")?.checked ?? true;
+      try {
+        const res = await fetch("/api/deriv/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stake, enabled })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`✅ Configuración de Deriv guardada: $${stake} USD por operación | Estado: ${enabled ? 'ACTIVO' : 'PAUSADO'}`);
+        }
+      } catch (err) {
+        alert("Error guardando ajustes de Deriv: " + err.message);
+      }
+    });
 
     document.getElementById("btn-save-widegap-amount")?.addEventListener("click", async () => {
       const val = parseInt(document.getElementById("input-widegap-amount")?.value || "50", 10);
@@ -2514,6 +2537,29 @@
       renderHistory(d.recentCycles);
       if (d.futuresTelemetry) {
         renderFuturesTelemetry(d.futuresTelemetry);
+      }
+      if (d.derivTelemetry) {
+        const dt = d.derivTelemetry;
+        const st = dt.state || {};
+        const stats = dt.stats || {};
+        const derivLive = document.getElementById("deriv-live-status");
+        const derivTag = document.getElementById("deriv-tag-status");
+        const stakeInput = document.getElementById("input-deriv-stake");
+        if (stakeInput && !stakeInput.matches(":focus") && st.defaultStake) {
+          stakeInput.value = st.defaultStake;
+        }
+        if (derivTag) {
+          derivTag.textContent = st.enabled ? "DEMO ACTIVO" : "PAUSADO";
+          derivTag.style.color = st.enabled ? "#34d399" : "#f87171";
+          derivTag.style.background = st.enabled ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+        }
+        if (derivLive) {
+          const pnlSign = (stats.totalProfitUsdt || 0) >= 0 ? "+" : "";
+          derivLive.innerHTML = `💼 Balance Demo: <b>$${(stats.balanceUsdt || 10000).toFixed(2)} USD</b> | ` +
+            `Trades: <b>${stats.wins || 0}W / ${stats.losses || 0}L</b> (${stats.winRate || 0}%) | ` +
+            `PnL Hoy: <b>${(stats.dailyProfitUsdt || 0) >= 0 ? "+" : ""}$${(stats.dailyProfitUsdt || 0).toFixed(2)}</b> | ` +
+            `PnL Acumulado: <b>${pnlSign}$${(stats.totalProfitUsdt || 0).toFixed(2)} USD</b>`;
+        }
       }
       setConnection(true, d.pricesFresh);
     } catch {

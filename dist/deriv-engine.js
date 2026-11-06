@@ -273,6 +273,20 @@ export class DerivEngine {
     }
     // --- STRATEGY ENGINE & QUANTITATIVE SIGNALS ---
     async runStrategyAnalysis() {
+        // Sincronización dinámica inmediata con .strategy-controls.json (UI y DB)
+        try {
+            const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
+            if (fs.existsSync(ctrlFile)) {
+                const ctrls = JSON.parse(fs.readFileSync(ctrlFile, "utf8"));
+                if (ctrls?.strategies && typeof ctrls.strategies.deriv === "boolean") {
+                    if (this.state.enabled !== ctrls.strategies.deriv) {
+                        this.state.enabled = ctrls.strategies.deriv;
+                        this.saveState();
+                    }
+                }
+            }
+        }
+        catch { }
         if (!this.state.enabled || !this.isConnected)
             return;
         // Reset diario de PnL
@@ -552,6 +566,12 @@ export class DerivEngine {
                 openPositionsCount: this.positions.length
             }
         };
+    }
+    isEnabled() {
+        return this.state.enabled;
+    }
+    getState() {
+        return { ...this.state };
     }
     setEnabled(enabled) {
         this.state.enabled = enabled;

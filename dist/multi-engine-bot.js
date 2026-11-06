@@ -3071,11 +3071,31 @@ export class TrailingMasterBot {
             }
             if (cmd === "/deriv_pausa" || cmd === "deriv_pausa") {
                 this.derivEngine.setEnabled(false);
-                return `⏸️ <b>Motor Deriv Sintéticos pausado.</b> No se ejecutarán nuevos contratos.`;
+                if (!this.controls.strategies)
+                    this.controls.strategies = {};
+                this.controls.strategies.deriv = false;
+                this.saveStrategyControls();
+                return `⏸️ <b>Motor Deriv Sintéticos pausado.</b> No se ejecutarán nuevos contratos. (Sincronizado con DB y panel web)`;
             }
             if (cmd === "/deriv_reanudar" || cmd === "deriv_reanudar") {
                 this.derivEngine.setEnabled(true);
-                return `▶️ <b>Motor Deriv Sintéticos reanudado.</b> Buscando señales cuantitativas activas.`;
+                if (!this.controls.strategies)
+                    this.controls.strategies = {};
+                this.controls.strategies.deriv = true;
+                this.saveStrategyControls();
+                return `▶️ <b>Motor Deriv Sintéticos reanudado.</b> Buscando señales cuantitativas activas. (Sincronizado con DB y panel web)`;
+            }
+            if (cmd === "/toggle_deriv" || cmd === "toggle_deriv") {
+                const cur = this.controls.strategies?.deriv !== false && this.derivEngine.isEnabled();
+                const next = !cur;
+                this.derivEngine.setEnabled(next);
+                if (!this.controls.strategies)
+                    this.controls.strategies = {};
+                this.controls.strategies.deriv = next;
+                this.saveStrategyControls();
+                return `🎰 <b>Deriv Índices Sintéticos:</b> ${next ? "🟢 <b>ACTIVADO</b>" : "🔴 <b>PAUSADO</b>"}.\n\n` +
+                    `• Sincronizado dinámicamente con DB (Supabase) y panel de control web.\n` +
+                    `👉 Consulta estado: /deriv`;
             }
             if (cmd === "/liquidez" || cmd === "liquidez") {
                 const acc = await this.client.account({ recvWindow: 60000 });
@@ -3275,7 +3295,11 @@ export class TrailingMasterBot {
                 msg += `• <b>4. 🏖️ Cazador Weekend (Efecto CME):</b> ${weekendBadge}\n`;
                 msg += `  <i>Opera de Viernes 17:00 a Domingo 18:00 COT cazando descuentos de fin de semana (Bollinger + Mecha) para vender en la apertura institucional de futuros CME.</i>\n`;
                 msg += `  👉 /toggle_weekend | /weekend\n\n`;
-                msg += `• <b>5. ⏱️ Brújula Multitemporal:</b> <b>${tfVal}</b> ${tfVal === "1H" ? "(Base Institucional)" : ""}\n`;
+                const isDerivActive = c.deriv !== false && this.derivEngine.isEnabled();
+                msg += `• <b>5. 🎰 Deriv Índices Sintéticos (24/7):</b> ${isDerivActive ? "🟢 <b>ACTIVO (Demo DOT)</b>" : "🔴 <i>PAUSADO</i>"}\n`;
+                msg += `  <i>Opera Volatility 75 / 100 con micro-momentum y RSI en contratos de 5 ticks. Saldo 100% independiente de Binance Spot y Futuros.</i>\n`;
+                msg += `  👉 /toggle_deriv | /deriv\n\n`;
+                msg += `• <b>6. ⏱️ Brújula Multitemporal:</b> <b>${tfVal}</b> ${tfVal === "1H" ? "(Base Institucional)" : ""}\n`;
                 msg += `  <i>Sincronizada con el horario de bolsas (Londres 03:00, NY 08:30, Cosecha 17:00, Noche 20:00 COT).</i>\n`;
                 msg += `  👉 /timeframe\n\n`;
                 msg += `• 🤖 <b>Modo Centinela:</b> ${this.controls.autoPilot ? "🟢 Autónomo (Auto-ejecuta a los " + mins + " min)" : "🟡 Manual Estricto"}\n`;
@@ -5517,6 +5541,9 @@ export class TrailingMasterBot {
             if (dbCtrl && dbCtrl.strategies) {
                 this.controls = dbCtrl;
                 this.autoPilot = this.controls.autoPilot !== false;
+                if (typeof this.controls.strategies?.deriv === "boolean") {
+                    this.derivEngine.setEnabled(this.controls.strategies.deriv);
+                }
                 console.log(`☁️ [SUPABASE DB] Controles cargados exitosamente desde la nube.`);
                 console.log(`🎯 [SUPABASE DB] Meta de Deuda: ${(this.controls.recoveryTracker?.targetUsdt || 100).toFixed(2)} USDT | Recuperado: +${(this.controls.recoveryTracker?.recoveredUsdt || 0).toFixed(2)} USDT`);
                 console.log(`🛡️ [SUPABASE DB] Stop-Loss Spot: ${this.controls.stopLossEnabled ? "Activo" : "DESACTIVADO (Blindaje Seguro)"}`);
