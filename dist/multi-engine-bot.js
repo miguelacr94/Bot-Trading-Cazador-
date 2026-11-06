@@ -605,6 +605,17 @@ export class TrailingMasterBot {
                 this.controls.strategySettings = {};
             this.controls.strategySettings.coreWatchlist = this.controls.coreWatchlist;
             this.controls.strategySettings.memeWatchlist = this.controls.memeWatchlist;
+            if (this.derivEngine) {
+                const tel = this.derivEngine.getTelemetry();
+                if (tel?.state) {
+                    this.controls.strategySettings.deriv = {
+                        stake: tel.state.defaultStake,
+                        dailyProfitTarget: tel.state.dailyProfitTarget,
+                        dailyStopLoss: tel.state.dailyStopLoss,
+                        enabled: tel.state.enabled
+                    };
+                }
+            }
             fs.writeFileSync(path.resolve(process.cwd(), ".strategy-controls.json"), JSON.stringify(this.controls, null, 2));
             // Sincronización en la nube Supabase
             supabaseDb.saveStrategyControls(this.controls).catch(() => { });
@@ -3070,7 +3081,8 @@ export class TrailingMasterBot {
                     return `⚠️ Monto inválido. El stake debe ser entre $0.35 y $100 USD.\nEjemplo: <code>/deriv_stake 1</code>`;
                 }
                 this.derivEngine.setStake(amount);
-                return `✅ <b>Monto por operación en Deriv actualizado a: $${amount.toFixed(2)} USD</b>`;
+                this.saveStrategyControls();
+                return `✅ <b>Monto por operación en Deriv actualizado a: $${amount.toFixed(2)} USD</b>\nSincronizado con Supabase Cloud DB y panel de control web.`;
             }
             if (cmd === "/deriv_meta" || cmd === "deriv_meta" || cmd === "/deriv_target" || cmd === "deriv_target") {
                 const amount = parseFloat(arg1);
@@ -3078,7 +3090,8 @@ export class TrailingMasterBot {
                     return `⚠️ Monto inválido. Ingresa un valor en USD.\nEjemplo: <code>/deriv_meta 4</code>`;
                 }
                 this.derivEngine.setDailyProfitTarget(amount);
-                return `🎯 <b>Meta diaria de ganancias Deriv actualizada a: +$${amount.toFixed(2)} USD</b>\nAl alcanzarla, el bot asegurará ganancias y pausará hasta el día siguiente.`;
+                this.saveStrategyControls();
+                return `🎯 <b>Meta diaria de ganancias Deriv actualizada a: +$${amount.toFixed(2)} USD</b>\nSincronizado con Supabase Cloud DB. Al alcanzarla, el bot asegurará ganancias y pausará hasta el día siguiente.`;
             }
             if (cmd === "/deriv_stop" || cmd === "deriv_stop" || cmd === "/deriv_stoploss" || cmd === "deriv_stoploss") {
                 const amount = parseFloat(arg1);
@@ -3086,7 +3099,8 @@ export class TrailingMasterBot {
                     return `⚠️ Monto inválido. Ingresa un valor positivo en USD.\nEjemplo: <code>/deriv_stop 3</code>`;
                 }
                 this.derivEngine.setDailyStopLoss(amount);
-                return `🛑 <b>Stop-Loss diario Deriv actualizado a: -$${amount.toFixed(2)} USD</b>\nSi las pérdidas del día alcanzan este límite, el motor se pausará automáticamente para proteger tu capital.`;
+                this.saveStrategyControls();
+                return `🛑 <b>Stop-Loss diario Deriv actualizado a: -$${amount.toFixed(2)} USD</b>\nSincronizado con Supabase Cloud DB. Si las pérdidas del día alcanzan este límite, el motor se pausará automáticamente para proteger tu capital.`;
             }
             if (cmd === "/deriv_pausa" || cmd === "deriv_pausa") {
                 this.derivEngine.setEnabled(false);
@@ -5562,6 +5576,15 @@ export class TrailingMasterBot {
                 this.autoPilot = this.controls.autoPilot !== false;
                 if (typeof this.controls.strategies?.deriv === "boolean") {
                     this.derivEngine.setEnabled(this.controls.strategies.deriv);
+                }
+                const derivSettings = this.controls.strategySettings?.deriv;
+                if (derivSettings) {
+                    if (typeof derivSettings.stake === "number")
+                        this.derivEngine.setStake(derivSettings.stake);
+                    if (typeof derivSettings.dailyProfitTarget === "number")
+                        this.derivEngine.setDailyProfitTarget(derivSettings.dailyProfitTarget);
+                    if (typeof derivSettings.dailyStopLoss === "number")
+                        this.derivEngine.setDailyStopLoss(derivSettings.dailyStopLoss);
                 }
                 console.log(`☁️ [SUPABASE DB] Controles cargados exitosamente desde la nube.`);
                 console.log(`🎯 [SUPABASE DB] Meta de Deuda: ${(this.controls.recoveryTracker?.targetUsdt || 100).toFixed(2)} USDT | Recuperado: +${(this.controls.recoveryTracker?.recoveredUsdt || 0).toFixed(2)} USDT`);

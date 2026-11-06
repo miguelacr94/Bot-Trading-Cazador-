@@ -1477,17 +1477,19 @@
     document.getElementById("toggle-deriv")?.addEventListener("change", (e) => toggleStrategy("deriv", false, e.target.checked));
 
     document.getElementById("btn-save-deriv-config")?.addEventListener("click", async () => {
-      const stake = parseFloat(document.getElementById("input-deriv-stake")?.value || "10");
+      const stake = parseFloat(document.getElementById("input-deriv-stake")?.value || "1");
+      const dailyProfitTarget = parseFloat(document.getElementById("input-deriv-target")?.value || "4");
+      const dailyStopLoss = parseFloat(document.getElementById("input-deriv-stop")?.value || "3");
       const enabled = document.getElementById("toggle-deriv")?.checked ?? true;
       try {
         const res = await fetch("/api/deriv/config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stake, enabled })
+          body: JSON.stringify({ stake, dailyProfitTarget, dailyStopLoss, enabled })
         });
         const data = await res.json();
         if (data.success) {
-          alert(`✅ Configuración de Deriv guardada: $${stake} USD por operación | Estado: ${enabled ? 'ACTIVO' : 'PAUSADO'}`);
+          alert(`✅ Configuración guardada en DB:\n• Stake: $${stake.toFixed(2)} USD\n• Meta Diaria: +$${dailyProfitTarget.toFixed(2)} USD\n• Stop Diario: -$${dailyStopLoss.toFixed(2)} USD\n• Estado: ${enabled ? 'ACTIVO' : 'PAUSADO'}`);
         }
       } catch (err) {
         alert("Error guardando ajustes de Deriv: " + err.message);
@@ -1501,7 +1503,7 @@
     });
 
     document.getElementById("input-deriv-stake-tab")?.addEventListener("change", async (e) => {
-      const stake = parseFloat(e.target.value || "10");
+      const stake = parseFloat(e.target.value || "1");
       const enabled = document.getElementById("toggle-deriv")?.checked ?? true;
       await fetch("/api/deriv/config", {
         method: "POST",
@@ -2727,6 +2729,21 @@
         if (stakeInput && !stakeInput.matches(":focus") && st.defaultStake) {
           stakeInput.value = st.defaultStake;
         }
+        const targetInput = document.getElementById("input-deriv-target");
+        if (targetInput && !targetInput.matches(":focus") && st.dailyProfitTarget) {
+          targetInput.value = st.dailyProfitTarget;
+        }
+        const stopInput = document.getElementById("input-deriv-stop");
+        if (stopInput && !stopInput.matches(":focus") && st.dailyStopLoss) {
+          stopInput.value = st.dailyStopLoss;
+        }
+
+        const pillStake = document.getElementById("pill-deriv-stake");
+        if (pillStake && st.defaultStake) pillStake.textContent = `💵 Stake: $${st.defaultStake.toFixed(2)} USD`;
+        const pillTarget = document.getElementById("pill-deriv-target");
+        if (pillTarget && st.dailyProfitTarget) pillTarget.textContent = `🎯 Meta: +$${st.dailyProfitTarget.toFixed(2)} USD/día`;
+        const pillStop = document.getElementById("pill-deriv-stop");
+        if (pillStop && st.dailyStopLoss) pillStop.textContent = `🛑 SL Máx: -$${st.dailyStopLoss.toFixed(2)} USD/día`;
         if (derivTag) {
           derivTag.textContent = st.enabled ? "DEMO ACTIVO" : "PAUSADO";
           derivTag.style.color = st.enabled ? "#34d399" : "#f87171";

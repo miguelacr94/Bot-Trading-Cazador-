@@ -1808,6 +1808,14 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
               derivSt.dailyRealizedPnl = 0;
             }
 
+            if (!controls.strategySettings) controls.strategySettings = {};
+            controls.strategySettings.deriv = {
+              stake: derivSt.defaultStake,
+              dailyProfitTarget: derivSt.dailyProfitTarget,
+              dailyStopLoss: derivSt.dailyStopLoss,
+              enabled: derivSt.enabled
+            };
+
             controls.updatedAt = Date.now();
             fs.writeFileSync(derivStateF, JSON.stringify(derivSt, null, 2), "utf-8");
             fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
