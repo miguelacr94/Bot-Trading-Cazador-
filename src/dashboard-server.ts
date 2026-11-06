@@ -850,7 +850,12 @@ export class DashboardServer {
             activePositionsCount: tel.metrics.openPositionsCount
           },
           operationalStatus: tel.operationalStatus,
-          connected: tel.connected
+          connected: tel.connected,
+          lastTickReceived: (tel as any).lastTickReceived,
+          secondsSinceLastTick: (tel as any).secondsSinceLastTick,
+          cooldownRemainingSec: (tel as any).cooldownRemainingSec,
+          isReal: (tel as any).isReal,
+          environmentLabel: (tel as any).environmentLabel
         };
       }
     } catch {}
@@ -1871,6 +1876,18 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
             res.end(JSON.stringify({ success: false, error: e.message }));
           }
         });
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/deriv/clear-trades" && req.method === "POST") {
+        try {
+          const result = derivEngine ? derivEngine.clearTrades() : { success: true, message: "Trades limpiados." };
+          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify(result));
+        } catch (e: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: e.message }));
+        }
         return;
       }
 

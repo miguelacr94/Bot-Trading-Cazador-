@@ -45,6 +45,7 @@ export class DerivEngine {
     pendingProposals = new Map();
     reqIdCounter = 500;
     isSellingContract = false;
+    lastTickReceived = 0;
     constructor() {
         this.notifier = new TelegramNotifier();
         const cwd = process.cwd();
@@ -326,6 +327,7 @@ export class DerivEngine {
     }
     lastRadarSave = 0;
     storeTick(symbol, quote, epoch) {
+        this.lastTickReceived = Date.now();
         if (!this.tickHistory.has(symbol)) {
             this.tickHistory.set(symbol, []);
         }
@@ -355,20 +357,59 @@ export class DerivEngine {
             const rsi = quotes.length >= 14 ? this.calculateRSI(quotes, 14) : 50;
             const emaFast = quotes.length >= 10 ? this.calculateEMA(quotes, 10) : curPrice;
             const emaSlow = quotes.length >= 25 ? this.calculateEMA(quotes, 25) : curPrice;
-            const trend = emaFast > emaSlow ? "ALCISTA (UP)" : emaFast < emaSlow ? "BAJISTA (DOWN)" : "LATERAL";
+            const isUptrend = emaFast > emaSlow;
+            const isDowntrend = emaFast < emaSlow;
+            const trend = isUptrend ? "ALCISTA (UP)" : isDowntrend ? "BAJISTA (DOWN)" : "LATERAL";
             const changeTick = curPrice - prevPrice;
             let status = "Esperando señal";
             let statusBadge = "VIGILANDO";
             let statusColor = "#94a3b8";
-            if (emaFast > emaSlow && rsi >= 50 && rsi <= 72) {
+            if (isUptrend && rsi >= 50 && rsi <= 72) {
                 status = "Fuerte impulso alcista (MULTUP potencial)";
                 statusBadge = "BULLISH";
                 statusColor = "#10b981";
             }
-            else if (emaFast < emaSlow && rsi >= 28 && rsi <= 50) {
+            else if (isDowntrend && rsi >= 28 && rsi <= 50) {
                 status = "Fuerte impulso bajista (MULTDOWN potencial)";
                 statusBadge = "BEARISH";
                 statusColor = "#ef4444";
+            }
+            // 📊 BARRA DE PROGRESO DE CONVERGENCIA HACIA EL DISPARO (0% a 100%)
+            let readinessScore = 0;
+            let readinessReason = "Acumulando ticks...";
+            if (quotes.length < 25) {
+                readinessScore = Math.min(60, Math.round((quotes.length / 25) * 60));
+                readinessReason = `Acumulando buffer (${quotes.length}/25 ticks)`;
+            }
+            else {
+                let score = 25; // Base buffer cumplido (25%)
+                if (isUptrend || isDowntrend)
+                    score += 30; // Tendencia definida (+30%)
+                // Alineación de RSI (+25%)
+                if ((isUptrend && rsi >= 44 && rsi <= 72) || (isDowntrend && rsi >= 28 && rsi <= 56)) {
+                    score += 25;
+                }
+                else if (rsi >= 35 && rsi <= 65) {
+                    score += 15;
+                }
+                // Proximidad al gatillo (+20%)
+                if (isUptrend && curPrice > prevPrice)
+                    score += 20;
+                else if (isDowntrend && curPrice < prevPrice)
+                    score += 20;
+                readinessScore = Math.min(100, Math.max(20, score));
+                if (readinessScore >= 90) {
+                    readinessReason = `🔥 ¡Convergencia casi total! Esperando gatillo (${readinessScore}%)`;
+                }
+                else if (readinessScore >= 70) {
+                    readinessReason = `📈 Tendencia y RSI alineados (${readinessScore}%)`;
+                }
+                else if (readinessScore >= 50) {
+                    readinessReason = `🔍 En formación, vigilando RSI (${readinessScore}%)`;
+                }
+                else {
+                    readinessReason = `⏳ Mercado lateral o consolidando (${readinessScore}%)`;
+                }
             }
             return {
                 symbol: sym,
@@ -384,6 +425,8 @@ export class DerivEngine {
                 status,
                 statusBadge,
                 statusColor,
+                readinessScore,
+                readinessReason,
                 lastUpdate: Date.now()
             };
         });
@@ -787,6 +830,9 @@ export class DerivEngine {
     }
     getTelemetry() {
         const op = this.getOperationalStatus();
+        const now = Date.now();
+        const secSinceLastTick = this.lastTickReceived > 0 ? Math.round((now - this.lastTickReceived) / 1000) : null;
+        const cooldownRemainingSec = Math.max(0, Math.round((45000 - (now - this.state.lastTradeTime)) / 1000));
         return {
             connected: this.isConnected,
             state: this.state,
@@ -794,6 +840,11 @@ export class DerivEngine {
             radar: this.getRadar(),
             openPositions: this.positions,
             recentTrades: this.trades.slice(0, 20),
+            lastTickReceived: this.lastTickReceived,
+            secondsSinceLastTick: secSinceLastTick,
+            cooldownRemainingSec,
+            isReal: !this.state.isSimulated,
+            environmentLabel: !this.state.isSimulated ? "REAL" : "DEMO",
             metrics: {
                 balance: this.state.balanceUsdt,
                 totalProfit: this.state.totalProfitUsdt,
@@ -805,6 +856,20 @@ export class DerivEngine {
                 openPositionsCount: this.positions.length
             }
         };
+    }
+    clearTrades() {
+        this.trades = [];
+        this.state.winsCount = 0;
+        this.state.lossesCount = 0;
+        this.state.winRatePct = 0;
+        this.state.totalProfitUsdt = 0;
+        this.state.dailyRealizedPnl = 0;
+        this.state.consecutiveLosses = 0;
+        this.state.pauseUntil = 0;
+        this.saveTrades();
+        this.saveState();
+        console.log("[DERIV MULTIPLIER] 🧹 Historial de trades y estadísticas reiniciados a cero.");
+        return { success: true, message: "Historial de Deriv reiniciado correctamente a 0." };
     }
     isEnabled() {
         return this.state.enabled;

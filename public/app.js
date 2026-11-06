@@ -1523,6 +1523,28 @@
     document.getElementById("btn-toggle-deriv-env")?.addEventListener("click", toggleDerivEnvironment);
     document.getElementById("btn-toggle-deriv-env-tab")?.addEventListener("click", toggleDerivEnvironment);
 
+    async function clearDerivHistory() {
+      const ok = confirm("¿Deseas reiniciar y limpiar el historial de operaciones de Deriv?\n\n• Se borrarán las operaciones cerradas viejas.\n• Se restablecerán las estadísticas a 0 (0 Ganadas / 0 Perdidas).\n• El saldo actual y configuración se mantendrán intactos.");
+      if (!ok) return;
+      try {
+        const res = await fetch("/api/deriv/clear-trades", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+          alert("✅ " + (data.message || "Historial limpiado correctamente."));
+          const activeTb = document.getElementById("deriv-active-tbody");
+          const tradesTb = document.getElementById("deriv-trades-tbody");
+          if (tradesTb) tradesTb.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:16px; color:#64748b;">Aún no hay operaciones cerradas.</td></tr>`;
+        } else {
+          alert("❌ Error al limpiar historial: " + (data.error || "Error desconocido"));
+        }
+      } catch (err) {
+        alert("❌ Error de conexión al limpiar historial: " + err.message);
+      }
+    }
+
+    document.getElementById("btn-deriv-clear-card")?.addEventListener("click", clearDerivHistory);
+    document.getElementById("btn-deriv-clear-tab")?.addEventListener("click", clearDerivHistory);
+
     document.getElementById("btn-toggle-deriv-panel")?.addEventListener("click", async () => {
       const curChecked = document.getElementById("toggle-deriv")?.checked ?? true;
       const next = !curChecked;
@@ -1946,44 +1968,106 @@
     const positions = deriv.positions || [];
     const trades = deriv.trades || [];
 
-    // 1. Badge y Conexión
+    // 1. Badge, Entorno y Conexión (ROJO para DEMO, VERDE para REAL)
     window.__derivIsSimulated = st.isSimulated !== false;
     const isReal = !window.__derivIsSimulated;
+    const accId = st.accountId || (isReal ? "ROT92884781" : "DOT95084693");
 
+    // Banner de Entorno en Tab 4
+    const bannerEl = document.getElementById("deriv-env-banner");
+    const bannerIcon = document.getElementById("deriv-env-banner-icon");
+    const bannerTitle = document.getElementById("deriv-env-banner-title");
+    const bannerSub = document.getElementById("deriv-env-banner-sub");
+    const panelEl = document.getElementById("deriv-dev-panel");
+
+    if (isReal) {
+      if (bannerEl) {
+        bannerEl.style.background = "rgba(16, 185, 129, 0.15)";
+        bannerEl.style.borderColor = "#10b981";
+      }
+      if (bannerIcon) bannerIcon.textContent = "🟢";
+      if (bannerTitle) {
+        bannerTitle.textContent = `MODO REAL: OPERANDO CON DINERO REAL EN ${accId}`;
+        bannerTitle.style.color = "#34d399";
+      }
+      if (bannerSub) bannerSub.textContent = `⚠️ ATENCIÓN: Operaciones con dinero real protegidas con Stop-Loss garantizado (-$${(st.defaultStopLoss || 0.3).toFixed(2)} USD).`;
+      if (panelEl) panelEl.style.borderColor = "#10b981";
+    } else {
+      if (bannerEl) {
+        bannerEl.style.background = "rgba(239, 68, 68, 0.15)";
+        bannerEl.style.borderColor = "#ef4444";
+      }
+      if (bannerIcon) bannerIcon.textContent = "🔴";
+      if (bannerTitle) {
+        bannerTitle.textContent = `MODO DEMO: PRUEBAS EN CUENTA VIRTUAL (${accId})`;
+        bannerTitle.style.color = "#ef4444";
+      }
+      if (bannerSub) bannerSub.textContent = `Operaciones simuladas sin riesgo para tu capital real. Saldo virtual protegido.`;
+      if (panelEl) panelEl.style.borderColor = "#ef4444";
+    }
+
+    // Botones de Entorno
     const envBtnCard = document.getElementById("btn-toggle-deriv-env");
     if (envBtnCard) {
-      envBtnCard.textContent = isReal ? "🔥 MODO REAL (" + (st.accountId || "ROT92884781") + ")" : "🧪 MODO DEMO (" + (st.accountId || "DOT95084693") + ")";
-      envBtnCard.style.color = isReal ? "#fbbf24" : "#34d399";
-      envBtnCard.style.borderColor = isReal ? "rgba(245, 158, 11, 0.5)" : "rgba(16, 185, 129, 0.4)";
-      envBtnCard.style.background = isReal ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)";
+      envBtnCard.textContent = isReal ? `🟢 MODO REAL (${accId})` : `🔴 MODO DEMO (${accId})`;
+      envBtnCard.style.color = isReal ? "#34d399" : "#f87171";
+      envBtnCard.style.borderColor = isReal ? "#10b981" : "#ef4444";
+      envBtnCard.style.background = isReal ? "rgba(16, 185, 129, 0.25)" : "rgba(239, 68, 68, 0.2)";
     }
 
     const envBtnTab = document.getElementById("btn-toggle-deriv-env-tab");
     if (envBtnTab) {
-      envBtnTab.textContent = isReal ? "🔥 MODO REAL (" + (st.accountId || "ROT92884781") + ")" : "🧪 MODO DEMO (" + (st.accountId || "DOT95084693") + ")";
-      envBtnTab.style.color = isReal ? "#fbbf24" : "#34d399";
-      envBtnTab.style.borderColor = isReal ? "rgba(245, 158, 11, 0.5)" : "rgba(16, 185, 129, 0.4)";
-      envBtnTab.style.background = isReal ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)";
+      envBtnTab.textContent = isReal ? `🟢 MODO REAL ACTIVO (Click para pasar a DEMO)` : `🔴 MODO DEMO ACTIVO (Click para pasar a REAL)`;
+      envBtnTab.style.color = isReal ? "#34d399" : "#f87171";
+      envBtnTab.style.borderColor = isReal ? "#10b981" : "#ef4444";
+      envBtnTab.style.background = isReal ? "rgba(16, 185, 129, 0.25)" : "rgba(239, 68, 68, 0.2)";
     }
 
     const accIdEl = document.getElementById("deriv-acc-id");
-    if (accIdEl) accIdEl.textContent = st.accountId || (isReal ? "ROT92884781" : "DOT95084693");
+    if (accIdEl) accIdEl.textContent = accId;
 
     const wsBadge = document.getElementById("deriv-ws-badge");
     if (wsBadge) {
-      const isConn = st.enabled !== false;
+      const isConn = deriv.connected !== false && st.enabled !== false;
       const modeStr = isReal ? "REAL" : "DEMO";
-      wsBadge.textContent = isConn ? `🟢 CONECTADO (${modeStr})` : "🔴 PAUSADO";
-      wsBadge.style.color = isConn ? (isReal ? "#fbbf24" : "#34d399") : "#f87171";
-      wsBadge.style.background = isConn ? (isReal ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)") : "rgba(239, 68, 68, 0.2)";
-      wsBadge.style.borderColor = isConn ? (isReal ? "rgba(245, 158, 11, 0.4)" : "rgba(16, 185, 129, 0.4)") : "rgba(239, 68, 68, 0.4)";
+      const modeIcon = isReal ? "🟢" : "🔴";
+      wsBadge.textContent = isConn ? `${modeIcon} ${modeStr} CONECTADO` : "🔴 PAUSADO";
+      wsBadge.style.color = isReal ? "#34d399" : "#f87171";
+      wsBadge.style.borderColor = isReal ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)";
+      wsBadge.style.background = isReal ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
     }
 
     const tabBadge = document.getElementById("tab-deriv-badge");
     if (tabBadge) {
-      tabBadge.textContent = isReal ? "🔥 REAL" : "🧪 DEMO";
-      tabBadge.style.color = isReal ? "#fbbf24" : "#f87171";
-      tabBadge.style.borderColor = isReal ? "rgba(245, 158, 11, 0.4)" : "rgba(239, 68, 68, 0.4)";
+      tabBadge.textContent = isReal ? "🟢 REAL" : "🔴 DEMO";
+      tabBadge.style.color = isReal ? "#34d399" : "#f87171";
+      tabBadge.style.borderColor = isReal ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.5)";
+      tabBadge.style.background = isReal ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+    }
+
+    // Heartbeat & Telemetría en Vivo
+    const lastTickTimeEl = document.getElementById("deriv-last-tick-time");
+    if (lastTickTimeEl) {
+      const sec = typeof deriv.secondsSinceLastTick === "number" ? deriv.secondsSinceLastTick : 0;
+      lastTickTimeEl.textContent = `hace ${sec}s`;
+      lastTickTimeEl.style.color = sec <= 3 ? "#34d399" : sec <= 10 ? "#facc15" : "#f87171";
+    }
+
+    const opTextEl = document.getElementById("deriv-operational-text");
+    if (opTextEl) {
+      opTextEl.textContent = deriv.operationalStatus?.message || "Vigilando 5 índices sintéticos";
+    }
+
+    const cdTextEl = document.getElementById("deriv-cooldown-text");
+    if (cdTextEl) {
+      const cd = typeof deriv.cooldownRemainingSec === "number" ? deriv.cooldownRemainingSec : 0;
+      if (cd > 0) {
+        cdTextEl.textContent = `⏳ Descanso (${cd}s restantes)`;
+        cdTextEl.style.color = "#facc15";
+      } else {
+        cdTextEl.textContent = "Listo para operar (0s)";
+        cdTextEl.style.color = "#34d399";
+      }
     }
 
     const btnToggle = document.getElementById("btn-toggle-deriv-panel");
@@ -2012,7 +2096,7 @@
 
     const dailySubEl = document.getElementById("kpi-deriv-daily-sub");
     if (dailySubEl) {
-      dailySubEl.textContent = `Meta diaria: +$${(st.dailyProfitTarget || 4).toFixed(2)} | Stop: -$${(st.dailyStopLoss || 3).toFixed(2)}`;
+      dailySubEl.textContent = `Meta diaria: +$${(st.dailyProfitTarget || 5).toFixed(2)} | Stop: -$${(st.dailyStopLoss || 2).toFixed(2)}`;
     }
 
     const wrEl = document.getElementById("kpi-deriv-winrate");
@@ -2024,7 +2108,7 @@
     const actCountEl = document.getElementById("kpi-deriv-active-count");
     if (actCountEl) actCountEl.textContent = `${positions.length} / ${st.maxConcurrentTrades || 1}`;
 
-    // 3. Radar de Multiplicadores en Vivo
+    // 3. Radar de Multiplicadores en Vivo con Barra de Progreso de Disparo
     const radarGrid = document.getElementById("deriv-radar-grid");
     if (radarGrid && radar.length > 0) {
       radarGrid.innerHTML = radar.map((r) => {
@@ -2032,8 +2116,30 @@
         const rsiColor = r.rsi < 35 ? "#34d399" : r.rsi > 65 ? "#f87171" : "#38bdf8";
         const rsiPct = Math.min(100, Math.max(0, r.rsi));
         const multVal = r.multiplier || 100;
+
+        const score = typeof r.readinessScore === "number" ? Math.min(100, Math.max(0, r.readinessScore)) : 20;
+        let scoreColor = "#94a3b8";
+        let scoreGradient = "linear-gradient(90deg, #475569, #94a3b8)";
+        let scoreGlow = "none";
+        let scoreBadge = "EN ESPERA";
+
+        if (score >= 90) {
+          scoreColor = "#34d399";
+          scoreGradient = "linear-gradient(90deg, #10b981, #34d399)";
+          scoreGlow = "0 0 10px rgba(16, 185, 129, 0.7)";
+          scoreBadge = "🔥 ¡GATILLO INMINENTE!";
+        } else if (score >= 70) {
+          scoreColor = "#38bdf8";
+          scoreGradient = "linear-gradient(90deg, #0284c7, #38bdf8)";
+          scoreBadge = "📈 ALINEADO";
+        } else if (score >= 50) {
+          scoreColor = "#facc15";
+          scoreGradient = "linear-gradient(90deg, #ca8a04, #facc15)";
+          scoreBadge = "🔍 EN FORMACIÓN";
+        }
+
         return `
-          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 16px; position: relative;">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid ${score >= 90 ? 'rgba(16,185,129,0.5)' : 'rgba(255,255,255,0.08)'}; border-radius: 12px; padding: 14px 16px; position: relative; box-shadow: ${score >= 90 ? '0 0 16px rgba(16,185,129,0.15)' : 'none'};">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px;">
               <div>
                 <div style="font-size: 14px; font-weight: 800; color: #f1f5f9; display:flex; align-items:center; gap:6px;">
@@ -2049,23 +2155,35 @@
             </div>
 
             <!-- RSI Bar & Gauge -->
-            <div style="margin-top: 10px;">
+            <div style="margin-top: 8px;">
               <div style="display:flex; justify-content:space-between; font-size: 11px; margin-bottom: 3px;">
                 <span style="color: #94a3b8;">RSI (14 ticks): <b style="color: ${rsiColor};">${r.rsi}</b></span>
                 <span style="font-size: 10px; color: ${r.statusColor || '#94a3b8'}; font-weight: 700;">${r.statusBadge || 'NEUTRAL'}</span>
               </div>
-              <div style="background: rgba(0,0,0,0.4); height: 6px; border-radius: 4px; overflow: hidden; position: relative;">
+              <div style="background: rgba(0,0,0,0.4); height: 5px; border-radius: 4px; overflow: hidden; position: relative;">
                 <div style="background: ${rsiColor}; height: 100%; width: ${rsiPct}%; transition: width 0.3s ease;"></div>
               </div>
-              <div style="display:flex; justify-content:space-between; font-size: 9px; color: #64748b; margin-top: 2px;">
-                <span>0 (Sobreventa)</span>
-                <span>50</span>
-                <span>100 (Sobrecompra)</span>
+            </div>
+
+            <!-- 📊 BARRA DE CONVERGENCIA / PROGRESO HACIA EL DISPARO -->
+            <div style="margin-top: 10px; background: rgba(0,0,0,0.35); border-radius: 8px; padding: 9px 12px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 11px; margin-bottom: 5px;">
+                <span style="font-weight: 700; color: #cbd5e1; display:flex; align-items:center; gap:5px;">
+                  🎯 Preparación para Disparo:
+                </span>
+                <span style="font-weight: 800; font-size: 12px; color: ${scoreColor};">${score}% (${scoreBadge})</span>
+              </div>
+              <div style="background: rgba(15,23,42,0.9); height: 8px; border-radius: 4px; overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="background: ${scoreGradient}; height: 100%; width: ${score}%; transition: width 0.4s ease; box-shadow: ${scoreGlow};"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 10px; color: ${scoreColor}; margin-top: 5px;">
+                <span>${r.readinessReason || 'Analizando ticks...'}</span>
+                <span style="color: #64748b; font-family: monospace;">${r.ticksBuffered || 0}/25 min</span>
               </div>
             </div>
 
             <!-- Live Status Text -->
-            <div style="margin-top: 10px; font-size: 11px; color: ${r.statusColor || '#cbd5e1'}; font-weight: 600; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            <div style="margin-top: 8px; font-size: 11px; color: ${r.statusColor || '#cbd5e1'}; font-weight: 600; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">
               ${r.status || '🔍 Vigilando breakouts y rebotes'}
             </div>
           </div>
@@ -2811,17 +2929,36 @@
         if (pillTarget && st.dailyProfitTarget) pillTarget.textContent = `🎯 Meta: +$${st.dailyProfitTarget.toFixed(2)} USD/día`;
         const pillStop = document.getElementById("pill-deriv-stop");
         if (pillStop && st.dailyStopLoss) pillStop.textContent = `🛑 SL Máx: -$${st.dailyStopLoss.toFixed(2)} USD/día`;
+        const isDerivReal = st.isSimulated === false;
+        const pillEnv = document.getElementById("pill-deriv-env");
+        if (pillEnv) {
+          pillEnv.textContent = isDerivReal ? `🟢 Real (${st.accountId || 'ROT92884781'})` : `🔴 Demo (${st.accountId || 'DOT95084693'})`;
+          pillEnv.style.color = isDerivReal ? "#34d399" : "#f87171";
+          pillEnv.style.borderColor = isDerivReal ? "rgba(16, 185, 129, 0.5)" : "rgba(239, 68, 68, 0.4)";
+          pillEnv.style.background = isDerivReal ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)";
+        }
+        const statusBoxDeriv = document.getElementById("status-box-deriv");
+        if (statusBoxDeriv) {
+          statusBoxDeriv.style.borderLeftColor = isDerivReal ? "#10b981" : "#ef4444";
+        }
         if (derivTag) {
-          derivTag.textContent = st.enabled ? "DEMO ACTIVO" : "PAUSADO";
-          derivTag.style.color = st.enabled ? "#34d399" : "#f87171";
-          derivTag.style.background = st.enabled ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+          if (isDerivReal) {
+            derivTag.textContent = st.enabled ? "🟢 REAL ACTIVO" : "🟡 REAL PAUSADO";
+            derivTag.style.color = "#34d399";
+            derivTag.style.background = "rgba(16, 185, 129, 0.25)";
+          } else {
+            derivTag.textContent = st.enabled ? "🔴 DEMO ACTIVO" : "🔴 DEMO PAUSADO";
+            derivTag.style.color = "#f87171";
+            derivTag.style.background = "rgba(239, 68, 68, 0.2)";
+          }
         }
         if (derivLive) {
           const pnlSign = (stats.totalProfitUsdt || 0) >= 0 ? "+" : "";
-          derivLive.innerHTML = `💼 Balance Demo: <b>$${(stats.balanceUsdt || 10000).toFixed(2)} USD</b> | ` +
-            `Trades: <b>${stats.wins || 0}W / ${stats.losses || 0}L</b> (${stats.winRate || 0}%) | ` +
-            `PnL Hoy: <b>${(stats.dailyProfitUsdt || 0) >= 0 ? "+" : ""}$${(stats.dailyProfitUsdt || 0).toFixed(2)}</b> | ` +
-            `PnL Acumulado: <b>${pnlSign}$${(stats.totalProfitUsdt || 0).toFixed(2)} USD</b>`;
+          const balLabel = isDerivReal ? "Balance Real" : "Balance Demo";
+          derivLive.innerHTML = `💼 ${balLabel}: <b>$${(stats.balanceUsdt || 10000).toFixed(2)} USD</b> | ` +
+            `Trades: <b>${stats.wins || 0}W / ${stats.losses || 0}L</b> (${(stats.winRate || 0).toFixed(1)}%) | ` +
+            `PnL Hoy: <b>${(stats.dailyProfitUsdt || 0) >= 0 ? "+" : ""}$${(stats.dailyProfitUsdt || 0).toFixed(2)} USD</b> | ` +
+            `Acumulado: <b>${pnlSign}$${(stats.totalProfitUsdt || 0).toFixed(2)} USD</b>`;
         }
       }
       setConnection(true, d.pricesFresh);

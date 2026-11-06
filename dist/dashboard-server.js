@@ -804,7 +804,12 @@ export class DashboardServer {
                         activePositionsCount: tel.metrics.openPositionsCount
                     },
                     operationalStatus: tel.operationalStatus,
-                    connected: tel.connected
+                    connected: tel.connected,
+                    lastTickReceived: tel.lastTickReceived,
+                    secondsSinceLastTick: tel.secondsSinceLastTick,
+                    cooldownRemainingSec: tel.cooldownRemainingSec,
+                    isReal: tel.isReal,
+                    environmentLabel: tel.environmentLabel
                 };
             }
         }
@@ -1731,6 +1736,18 @@ export class DashboardServer {
                         res.end(JSON.stringify({ success: false, error: e.message }));
                     }
                 });
+                return;
+            }
+            if (parsedUrl.pathname === "/api/deriv/clear-trades" && req.method === "POST") {
+                try {
+                    const result = derivEngine ? derivEngine.clearTrades() : { success: true, message: "Trades limpiados." };
+                    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+                    res.end(JSON.stringify(result));
+                }
+                catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: false, error: e.message }));
+                }
                 return;
             }
             if (parsedUrl.pathname === "/api/strategies/toggle" &&
