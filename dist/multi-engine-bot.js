@@ -3110,6 +3110,25 @@ export class TrailingMasterBot {
                 this.saveStrategyControls();
                 return `⏸️ <b>Motor Deriv Sintéticos pausado.</b> No se ejecutarán nuevos contratos. (Sincronizado con DB y panel web)`;
             }
+            if (cmd === "/deriv_real" || cmd === "deriv_real") {
+                await this.derivEngine.setEnvironment(true);
+                this.saveStrategyControls();
+                return `🔥 <b>Deriv cambiado a ENTORNO REAL</b> 💸\n\n` +
+                    `• Cuenta: <code>ROT92884781</code>\n` +
+                    `• Saldo Real: $${this.derivEngine.getTelemetry().state.balanceUsdt.toFixed(2)} USD\n` +
+                    `• Stake por Trade: $${this.derivEngine.getTelemetry().state.defaultStake.toFixed(2)} USD\n` +
+                    `• Meta Diaria: +$${this.derivEngine.getTelemetry().state.dailyProfitTarget.toFixed(2)} USD\n` +
+                    `• Stop Diario: -$${this.derivEngine.getTelemetry().state.dailyStopLoss.toFixed(2)} USD\n\n` +
+                    `⚠️ <i>Operando en mercado real. Para regresar a demo escribe: /deriv_demo</i>`;
+            }
+            if (cmd === "/deriv_demo" || cmd === "deriv_demo" || cmd === "/deriv_sim" || cmd === "deriv_sim") {
+                await this.derivEngine.setEnvironment(false);
+                this.saveStrategyControls();
+                return `🧪 <b>Deriv cambiado a ENTORNO DEMO</b> 🛡️\n\n` +
+                    `• Cuenta: <code>DOT95084693</code>\n` +
+                    `• Saldo Demo: $${this.derivEngine.getTelemetry().state.balanceUsdt.toFixed(2)} USD\n\n` +
+                    `👉 Para volver a real escribe: /deriv_real`;
+            }
             if (cmd === "/deriv_reanudar" || cmd === "deriv_reanudar") {
                 this.derivEngine.setEnabled(true);
                 if (!this.controls.strategies)

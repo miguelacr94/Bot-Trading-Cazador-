@@ -82,6 +82,8 @@ export class DerivEngine {
   private apiKey: string;
   private appId: string;
   private accountId: string;
+  private demoAccountId: string;
+  private realAccountId: string;
 
   private ws: WebSocket | null = null;
   private isConnected = false;
@@ -103,7 +105,9 @@ export class DerivEngine {
 
     this.apiKey = process.env.DERIV_KEY || "";
     this.appId = process.env.DERIV_APP_ID || "";
-    this.accountId = process.env.DERIV_ACCOUNT_ID || "";
+    this.demoAccountId = process.env.DERIV_DEMO_ACCOUNT_ID || "DOT95084693";
+    this.realAccountId = process.env.DERIV_REAL_ACCOUNT_ID || "ROT92884781";
+    this.accountId = process.env.DERIV_ACCOUNT_ID || this.demoAccountId;
 
     this.state = this.loadState();
     this.positions = this.loadPositions();
@@ -814,6 +818,47 @@ export class DerivEngine {
       this.state.dailyStopLoss = stopLoss;
       this.saveState();
     }
+  }
+
+  public isRealEnvironment(): boolean {
+    return !this.state.isSimulated;
+  }
+
+  public async setEnvironment(isReal: boolean): Promise<{ success: boolean; isSimulated: boolean; accountId: string }> {
+    this.state.isSimulated = !isReal;
+    this.accountId = isReal ? this.realAccountId : this.demoAccountId;
+    this.state.accountId = this.accountId;
+    this.saveState();
+
+    console.log(`[DERIV] Entorno cambiado a: ${isReal ? "🔥 REAL (" + this.accountId + ")" : "🧪 DEMO (" + this.accountId + ")"}`);
+
+    // Reconectar WebSocket al nuevo entorno
+    if (this.ws) {
+      try {
+        this.ws.removeAllListeners();
+        this.ws.close();
+      } catch (_) {}
+      this.ws = null;
+    }
+    this.isConnected = false;
+    this.isConnecting = false;
+    await this.connectWebSocket();
+
+    await this.notifier.send(
+      `🎰 <b>DERIV ENTORNO CAMBIADO</b> 🔄\n\n` +
+      `• <b>Nuevo Modo:</b> ${isReal ? "🔥 <b>CUENTA REAL (DINERO REAL)</b>" : "🧪 <b>CUENTA DEMO OFICIAL</b>"}\n` +
+      `• <b>Account ID:</b> <code>${this.accountId}</code>\n` +
+      `• <b>Stake Actual:</b> $${this.state.defaultStake.toFixed(2)} USD\n` +
+      `• <b>Meta Diaria:</b> +$${this.state.dailyProfitTarget.toFixed(2)} USD\n` +
+      `• <b>Stop-Loss Diario:</b> -$${this.state.dailyStopLoss.toFixed(2)} USD\n\n` +
+      `👉 Consulta estado: /deriv`
+    );
+
+    return {
+      success: true,
+      isSimulated: this.state.isSimulated,
+      accountId: this.state.accountId
+    };
   }
 }
 

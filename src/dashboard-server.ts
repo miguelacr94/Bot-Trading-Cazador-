@@ -1,4 +1,5 @@
 import { supabaseDb } from "./supabase-db.js";
+import { derivEngine } from "./deriv-engine.js";
 import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
@@ -1782,23 +1783,39 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
             }
             if (!controls.strategies) controls.strategies = {};
 
+            if (data.isSimulated !== undefined) {
+              const isSim = !!data.isSimulated;
+              derivSt.isSimulated = isSim;
+              const demoAcc = process.env.DERIV_DEMO_ACCOUNT_ID || "DOT95084693";
+              const realAcc = process.env.DERIV_REAL_ACCOUNT_ID || "ROT92884781";
+              derivSt.accountId = isSim ? demoAcc : realAcc;
+              derivEngine.setEnvironment(!isSim).catch(() => {});
+            }
             if (data.enabled !== undefined) {
               derivSt.enabled = !!data.enabled;
               controls.strategies.deriv = !!data.enabled;
+              derivEngine.setEnabled(!!data.enabled);
             }
             if (data.stake !== undefined) {
               const s = parseFloat(data.stake);
               if (!isNaN(s) && s >= 0.35 && s <= 100) {
                 derivSt.defaultStake = s;
+                derivEngine.setStake(s);
               }
             }
             if (data.dailyProfitTarget !== undefined) {
               const dpt = parseFloat(data.dailyProfitTarget);
-              if (!isNaN(dpt) && dpt > 0) derivSt.dailyProfitTarget = dpt;
+              if (!isNaN(dpt) && dpt > 0) {
+                derivSt.dailyProfitTarget = dpt;
+                derivEngine.setDailyProfitTarget(dpt);
+              }
             }
             if (data.dailyStopLoss !== undefined) {
               const dsl = parseFloat(data.dailyStopLoss);
-              if (!isNaN(dsl) && dsl > 0) derivSt.dailyStopLoss = dsl;
+              if (!isNaN(dsl) && dsl > 0) {
+                derivSt.dailyStopLoss = dsl;
+                derivEngine.setDailyStopLoss(dsl);
+              }
             }
             if (data.reset) {
               derivSt.totalProfitUsdt = 0;

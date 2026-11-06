@@ -1496,6 +1496,33 @@
       }
     });
 
+    async function toggleDerivEnvironment() {
+      const isSim = window.__derivIsSimulated !== false;
+      const targetReal = isSim;
+      const confirmMsg = targetReal 
+        ? "⚠️ ¿Deseas activar el ENTORNO REAL en Deriv?\n\n• Operará con dinero REAL en la cuenta ROT92884781.\n• Stake: $" + (document.getElementById("input-deriv-stake")?.value || 1) + " USD\n• Meta Diaria: +$" + (document.getElementById("input-deriv-target")?.value || 4) + " USD\n• Stop-Loss: -$" + (document.getElementById("input-deriv-stop")?.value || 3) + " USD\n\n¿Estás seguro de continuar?"
+        : "ℹ️ ¿Deseas volver al modo DEMO oficial (DOT95084693)?";
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch("/api/deriv/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isSimulated: !targetReal })
+        });
+        const d = await res.json();
+        if (d.success) {
+          window.__derivIsSimulated = !targetReal;
+          alert("✅ Entorno Deriv cambiado a: " + (targetReal ? "🔥 REAL (ROT92884781)" : "🧪 DEMO (DOT95084693)"));
+        }
+      } catch (err) {
+        alert("Error cambiando entorno: " + err.message);
+      }
+    }
+
+    document.getElementById("btn-toggle-deriv-env")?.addEventListener("click", toggleDerivEnvironment);
+    document.getElementById("btn-toggle-deriv-env-tab")?.addEventListener("click", toggleDerivEnvironment);
+
     document.getElementById("btn-toggle-deriv-panel")?.addEventListener("click", async () => {
       const curChecked = document.getElementById("toggle-deriv")?.checked ?? true;
       const next = !curChecked;
@@ -1920,19 +1947,43 @@
     const trades = deriv.trades || [];
 
     // 1. Badge y Conexión
+    window.__derivIsSimulated = st.isSimulated !== false;
+    const isReal = !window.__derivIsSimulated;
+
+    const envBtnCard = document.getElementById("btn-toggle-deriv-env");
+    if (envBtnCard) {
+      envBtnCard.textContent = isReal ? "🔥 MODO REAL (" + (st.accountId || "ROT92884781") + ")" : "🧪 MODO DEMO (" + (st.accountId || "DOT95084693") + ")";
+      envBtnCard.style.color = isReal ? "#fbbf24" : "#34d399";
+      envBtnCard.style.borderColor = isReal ? "rgba(245, 158, 11, 0.5)" : "rgba(16, 185, 129, 0.4)";
+      envBtnCard.style.background = isReal ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)";
+    }
+
+    const envBtnTab = document.getElementById("btn-toggle-deriv-env-tab");
+    if (envBtnTab) {
+      envBtnTab.textContent = isReal ? "🔥 MODO REAL (" + (st.accountId || "ROT92884781") + ")" : "🧪 MODO DEMO (" + (st.accountId || "DOT95084693") + ")";
+      envBtnTab.style.color = isReal ? "#fbbf24" : "#34d399";
+      envBtnTab.style.borderColor = isReal ? "rgba(245, 158, 11, 0.5)" : "rgba(16, 185, 129, 0.4)";
+      envBtnTab.style.background = isReal ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)";
+    }
+
+    const accIdEl = document.getElementById("deriv-acc-id");
+    if (accIdEl) accIdEl.textContent = st.accountId || (isReal ? "ROT92884781" : "DOT95084693");
+
     const wsBadge = document.getElementById("deriv-ws-badge");
     if (wsBadge) {
       const isConn = st.enabled !== false;
-      wsBadge.textContent = isConn ? "🟢 CONECTADO (DEMO)" : "🔴 PAUSADO";
-      wsBadge.style.color = isConn ? "#34d399" : "#f87171";
-      wsBadge.style.background = isConn ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
-      wsBadge.style.borderColor = isConn ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)";
+      const modeStr = isReal ? "REAL" : "DEMO";
+      wsBadge.textContent = isConn ? `🟢 CONECTADO (${modeStr})` : "🔴 PAUSADO";
+      wsBadge.style.color = isConn ? (isReal ? "#fbbf24" : "#34d399") : "#f87171";
+      wsBadge.style.background = isConn ? (isReal ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)") : "rgba(239, 68, 68, 0.2)";
+      wsBadge.style.borderColor = isConn ? (isReal ? "rgba(245, 158, 11, 0.4)" : "rgba(16, 185, 129, 0.4)") : "rgba(239, 68, 68, 0.4)";
     }
 
     const tabBadge = document.getElementById("tab-deriv-badge");
     if (tabBadge) {
-      tabBadge.textContent = positions.length > 0 ? `⚡ ${positions.length} ACTIVO` : (st.enabled ? "🟢 EN VIVO" : "⏸️ PAUSA");
-      tabBadge.style.color = st.enabled ? (positions.length > 0 ? "#38bdf8" : "#f87171") : "#94a3b8";
+      tabBadge.textContent = isReal ? "🔥 REAL" : "🧪 DEMO";
+      tabBadge.style.color = isReal ? "#fbbf24" : "#f87171";
+      tabBadge.style.borderColor = isReal ? "rgba(245, 158, 11, 0.4)" : "rgba(239, 68, 68, 0.4)";
     }
 
     const btnToggle = document.getElementById("btn-toggle-deriv-panel");
