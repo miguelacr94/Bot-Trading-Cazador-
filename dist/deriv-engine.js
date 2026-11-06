@@ -10,6 +10,16 @@ try {
         dotenv.config({ path: envPath });
 }
 catch { }
+export const SYMBOL_MULTIPLIERS = {
+    "1HZ100V": 100,
+    "1HZ75V": 100,
+    "1HZ50V": 200,
+    "1HZ25V": 400,
+    "1HZ10V": 1000,
+    "R_100": 100,
+    "R_75": 100,
+    "R_50": 200
+};
 export class DerivEngine {
     notifier;
     stateFile;
@@ -32,6 +42,9 @@ export class DerivEngine {
     // Real-time market tick buffers per symbol
     tickHistory = new Map();
     symbolCooldowns = new Map();
+    pendingProposals = new Map();
+    reqIdCounter = 500;
+    isSellingContract = false;
     constructor() {
         this.notifier = new TelegramNotifier();
         const cwd = process.cwd();
@@ -44,7 +57,7 @@ export class DerivEngine {
         this.demoAccountId = process.env.DERIV_DEMO_ACCOUNT_ID || "DOT95084693";
         this.realAccountId = process.env.DERIV_REAL_ACCOUNT_ID || "ROT92884781";
         this.state = this.loadState();
-        // Sincronización estricta: accountId siempre coincide con el entorno (Real vs Demo)
+        // Protección absoluta: arranca en DEMO si no se especifica
         this.accountId = this.state.isSimulated ? this.demoAccountId : this.realAccountId;
         this.state.accountId = this.accountId;
         this.positions = this.loadPositions();
@@ -54,8 +67,8 @@ export class DerivEngine {
     loadState() {
         const defaultState = {
             enabled: true,
-            isSimulated: true, // Operating on official Deriv Demo DOT account
-            accountId: this.accountId,
+            isSimulated: true, // 100% DEMO OFICIAL PARA PRUEBAS SIN RIESGO
+            accountId: this.demoAccountId,
             appId: this.appId,
             balanceUsdt: 10000.0,
             startingBalanceUsdt: 10000.0,
@@ -63,21 +76,25 @@ export class DerivEngine {
             winsCount: 0,
             lossesCount: 0,
             winRatePct: 0.0,
-            defaultStake: 0.5, // $0.50 USD por trade (Ultraconservador: 25+ vidas para balance de $12.78 USD)
-            defaultDurationTicks: 10, // 10 ticks (~12-15 seg) para capturar el impulso ágilmente
-            maxConcurrentTrades: 1, // Ultra-disciplined execution
-            dailyProfitTarget: 3.0, // Meta diaria +$3 USD (recupera cuenta a $15.78 USD)
-            dailyStopLoss: 2.0, // Stop-loss diario -$2 USD (blindaje estricto de capital)
+            defaultStake: 1.0, // $1.00 USD (mínimo permitido para Multiplicadores)
+            defaultStopLoss: 0.30, // -$0.30 USD (Stop loss garantizado sin deslizamiento)
+            defaultTakeProfit: 0.80, // +$0.80 USD (Take profit inicial)
+            trailingTriggerProfit: 0.35, // +$0.35 USD (Activa Trailing Take Profit)
+            trailingCallback: 0.15, // $0.15 USD (Cierra si retrocede 0.15 desde el pico)
+            defaultDurationTicks: 0, // No aplica duración fija en Multiplicadores
+            maxConcurrentTrades: 1, // Disciplina estricta
+            dailyProfitTarget: 5.0, // Meta diaria +$5.00 USD
+            dailyStopLoss: 2.0, // Stop-loss diario -$2.00 USD
             dailyRealizedPnl: 0.0,
             lastDailyReset: new Date().toISOString().split("T")[0],
-            activeSymbols: ["1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V", "R_75", "R_100"],
+            activeSymbols: ["1HZ100V", "1HZ75V", "1HZ50V", "R_100", "R_75"],
             lastTradeTime: 0,
             consecutiveLosses: 0,
             maxConsecutiveLosses: 3,
-            cooldownMinutes: 30,
+            cooldownMinutes: 20,
             pauseUntil: 0,
             capitalFloorUsdt: 10.0,
-            maxStakePctOfBalance: 10
+            maxStakePctOfBalance: 15
         };
         try {
             if (fs.existsSync(this.stateFile)) {
@@ -86,7 +103,7 @@ export class DerivEngine {
             }
         }
         catch (e) {
-            console.error("[DERIV] Error loading state:", e);
+            console.error("[DERIV MULTIPLIER] Error loading state:", e);
         }
         return defaultState;
     }
@@ -95,7 +112,7 @@ export class DerivEngine {
             fs.writeFileSync(this.stateFile, JSON.stringify(this.state, null, 2), "utf8");
         }
         catch (e) {
-            console.error("[DERIV] Error saving state:", e);
+            console.error("[DERIV MULTIPLIER] Error saving state:", e);
         }
     }
     loadPositions() {
@@ -105,7 +122,7 @@ export class DerivEngine {
             }
         }
         catch (e) {
-            console.error("[DERIV] Error loading positions:", e);
+            console.error("[DERIV MULTIPLIER] Error loading positions:", e);
         }
         return [];
     }
@@ -114,7 +131,7 @@ export class DerivEngine {
             fs.writeFileSync(this.positionsFile, JSON.stringify(this.positions, null, 2), "utf8");
         }
         catch (e) {
-            console.error("[DERIV] Error saving positions:", e);
+            console.error("[DERIV MULTIPLIER] Error saving positions:", e);
         }
     }
     loadTrades() {
@@ -124,7 +141,7 @@ export class DerivEngine {
             }
         }
         catch (e) {
-            console.error("[DERIV] Error loading trades:", e);
+            console.error("[DERIV MULTIPLIER] Error loading trades:", e);
         }
         return [];
     }
@@ -133,7 +150,7 @@ export class DerivEngine {
             fs.writeFileSync(this.tradesFile, JSON.stringify(this.trades, null, 2), "utf8");
         }
         catch (e) {
-            console.error("[DERIV] Error saving trades:", e);
+            console.error("[DERIV MULTIPLIER] Error saving trades:", e);
         }
     }
     // --- ENGINE LIFECYCLE ---
@@ -145,16 +162,16 @@ export class DerivEngine {
         this.accountId = this.state.isSimulated ? this.demoAccountId : this.realAccountId;
         this.state.accountId = this.accountId;
         if (!this.apiKey || !this.appId || !this.accountId) {
-            console.warn("[DERIV] Credenciales de Deriv incompletas en .env. Motor pausado.");
+            console.warn("[DERIV MULTIPLIER] Credenciales de Deriv incompletas en .env. Motor pausado.");
             return;
         }
-        console.log(`[DERIV] Iniciando motor Deriv Sintéticos (Cuenta: ${this.accountId} | ${this.state.isSimulated ? "DEMO" : "REAL"})...`);
+        console.log(`[DERIV MULTIPLIER] Iniciando motor de Multiplicadores con Trailing TP (Cuenta: ${this.accountId} | ${this.state.isSimulated ? "DEMO" : "REAL"})...`);
         await this.connectWebSocket();
         // Loop de análisis cuantitativo cada 2.5 segundos
         if (!this.analysisInterval) {
             this.analysisInterval = setInterval(() => {
                 this.runStrategyAnalysis().catch((err) => {
-                    console.error("[DERIV] Error en ciclo de análisis:", err);
+                    console.error("[DERIV MULTIPLIER] Error en ciclo de análisis:", err);
                 });
             }, 2500);
         }
@@ -171,7 +188,7 @@ export class DerivEngine {
             catch (_) { }
         }
         this.isConnected = false;
-        console.log("[DERIV] Motor Deriv detenido.");
+        console.log("[DERIV MULTIPLIER] Motor detenido.");
     }
     // --- DERIV WEBSOCKET CONNECTION & OTP ---
     async getOtpUrl() {
@@ -186,14 +203,14 @@ export class DerivEngine {
             });
             if (!res.ok) {
                 const txt = await res.text();
-                console.error(`[DERIV] Error solicitando OTP (${res.status}): ${txt}`);
+                console.error(`[DERIV MULTIPLIER] Error solicitando OTP (${res.status}): ${txt}`);
                 return null;
             }
             const json = await res.json();
             return json?.data?.url || null;
         }
         catch (e) {
-            console.error("[DERIV] Fallo de red obteniendo OTP:", e);
+            console.error("[DERIV MULTIPLIER] Fallo de red obteniendo OTP:", e);
             return null;
         }
     }
@@ -204,14 +221,14 @@ export class DerivEngine {
         try {
             const wsUrl = await this.getOtpUrl();
             if (!wsUrl) {
-                console.error("[DERIV] No se pudo obtener URL de WebSocket con OTP. Reintentando en 15s...");
+                console.error("[DERIV MULTIPLIER] No se pudo obtener URL de WebSocket con OTP. Reintentando en 15s...");
                 this.isConnecting = false;
                 setTimeout(() => this.connectWebSocket(), 15000);
                 return;
             }
             this.ws = new WebSocket(wsUrl);
             this.ws.on("open", () => {
-                console.log("[DERIV] WebSocket conectado y autenticado exitosamente.");
+                console.log(`[DERIV MULTIPLIER] WebSocket conectado exitosamente a ${this.state.isSimulated ? "DEMO" : "REAL"} (${this.accountId}).`);
                 this.isConnected = true;
                 this.isConnecting = false;
                 // Suscribirse a balance
@@ -219,9 +236,15 @@ export class DerivEngine {
                 // Suscribirse a los símbolos activos con streaming continuo
                 for (const sym of this.state.activeSymbols) {
                     this.send({ ticks: sym, subscribe: 1 });
-                    console.log(`[DERIV] Suscrito a streaming continuo de ticks de ${sym}`);
+                    console.log(`[DERIV MULTIPLIER] Suscrito a streaming de ${sym}`);
                 }
-                // Mantener vivo con ping cada 30s
+                // Si había una posición abierta, resuscribirse a su contrato
+                if (this.positions.length > 0) {
+                    const pos = this.positions[0];
+                    console.log(`[DERIV MULTIPLIER] Reconectando a posición abierta ${pos.contractId}...`);
+                    this.send({ proposal_open_contract: 1, contract_id: pos.contractId, subscribe: 1 });
+                }
+                // Keepalive ping cada 30s
                 if (this.pingInterval)
                     clearInterval(this.pingInterval);
                 this.pingInterval = setInterval(() => {
@@ -234,17 +257,17 @@ export class DerivEngine {
                 this.handleMessage(raw);
             });
             this.ws.on("close", (code, reason) => {
-                console.warn(`[DERIV] WebSocket desconectado (${code}): ${reason.toString()}. Reanudando en 5s...`);
+                console.warn(`[DERIV MULTIPLIER] WebSocket desconectado (${code}): ${reason.toString()}. Reanudando en 5s...`);
                 this.isConnected = false;
                 this.isConnecting = false;
                 setTimeout(() => this.connectWebSocket(), 5000);
             });
             this.ws.on("error", (err) => {
-                console.error("[DERIV] Error en WebSocket:", err.message);
+                console.error("[DERIV MULTIPLIER] Error en WebSocket:", err.message);
             });
         }
         catch (e) {
-            console.error("[DERIV] Excepción al conectar WebSocket:", e);
+            console.error("[DERIV MULTIPLIER] Excepción al conectar WebSocket:", e);
             this.isConnecting = false;
             setTimeout(() => this.connectWebSocket(), 10000);
         }
@@ -270,7 +293,7 @@ export class DerivEngine {
                         this.state.isSimulated = loginid.startsWith("DOT");
                     }
                     if (!this.state.startingBalanceUsdt || this.state.startingBalanceUsdt <= 0) {
-                        this.state.startingBalanceUsdt = bal; // Línea base del entorno actual
+                        this.state.startingBalanceUsdt = bal;
                     }
                     this.saveState();
                 }
@@ -282,7 +305,6 @@ export class DerivEngine {
                 }
             }
             else if (msgType === "proposal") {
-                // Respuesta de cotización para una orden
                 if (data.proposal && data.echo_req?.req_id) {
                     this.handleProposalResponse(data);
                 }
@@ -293,9 +315,13 @@ export class DerivEngine {
             else if (msgType === "proposal_open_contract") {
                 this.handleContractUpdate(data.proposal_open_contract);
             }
+            else if (msgType === "sell") {
+                this.isSellingContract = false;
+                console.log(`[DERIV MULTIPLIER] Venta confirmada por Deriv. Sold for: ${data.sell?.sold_for}`);
+            }
         }
         catch (e) {
-            console.error("[DERIV] Error procesando mensaje WS:", e);
+            console.error("[DERIV MULTIPLIER] Error procesando mensaje WS:", e);
         }
     }
     lastRadarSave = 0;
@@ -306,15 +332,14 @@ export class DerivEngine {
         const list = this.tickHistory.get(symbol);
         list.push({ quote, epoch });
         if (list.length > 100) {
-            list.shift(); // Guardar los últimos 100 ticks
+            list.shift();
         }
-        const now = Date.now();
-        if (now - this.lastRadarSave > 1500) {
-            this.lastRadarSave = now;
-            this.saveRadar();
+        if (Date.now() - this.lastRadarSave > 4000) {
+            this.lastRadarSave = Date.now();
+            this.saveRadarSnapshot();
         }
     }
-    saveRadar() {
+    saveRadarSnapshot() {
         try {
             const radar = this.getRadar();
             fs.writeFileSync(this.radarFile, JSON.stringify(radar, null, 2), "utf8");
@@ -327,49 +352,30 @@ export class DerivEngine {
             const quotes = ticks.map((t) => t.quote);
             const curPrice = quotes.length > 0 ? quotes[quotes.length - 1] : 0;
             const prevPrice = quotes.length > 1 ? quotes[quotes.length - 2] : curPrice;
-            const rsi = quotes.length >= 10 ? this.calculateRSI(quotes, 9) : 50;
-            const emaFast = quotes.length >= 5 ? this.calculateEMA(quotes, 5) : curPrice;
-            const emaSlow = quotes.length >= 15 ? this.calculateEMA(quotes, 15) : curPrice;
-            const trend = emaFast >= emaSlow ? "BULLISH" : "BEARISH";
-            const changeTickPct = prevPrice > 0 ? ((curPrice - prevPrice) / prevPrice) * 100 : 0;
-            let status = "🔍 Analizando Ticks en Vivo";
-            let statusBadge = "NEUTRAL";
+            const rsi = quotes.length >= 14 ? this.calculateRSI(quotes, 14) : 50;
+            const emaFast = quotes.length >= 10 ? this.calculateEMA(quotes, 10) : curPrice;
+            const emaSlow = quotes.length >= 25 ? this.calculateEMA(quotes, 25) : curPrice;
+            const trend = emaFast > emaSlow ? "ALCISTA (UP)" : emaFast < emaSlow ? "BAJISTA (DOWN)" : "LATERAL";
+            const changeTick = curPrice - prevPrice;
+            let status = "Esperando señal";
+            let statusBadge = "VIGILANDO";
             let statusColor = "#94a3b8";
-            if (rsi < 24) {
-                status = "🟢 Sobreventa Extrema: Preparando CALL (Alza)";
-                statusBadge = "CALL READY";
-                statusColor = "#34d399";
+            if (emaFast > emaSlow && rsi >= 50 && rsi <= 72) {
+                status = "Fuerte impulso alcista (MULTUP potencial)";
+                statusBadge = "BULLISH";
+                statusColor = "#10b981";
             }
-            else if (rsi > 76) {
-                status = "🔴 Sobrecompra Extrema: Preparando PUT (Baja)";
-                statusBadge = "PUT READY";
-                statusColor = "#f87171";
+            else if (emaFast < emaSlow && rsi >= 28 && rsi <= 50) {
+                status = "Fuerte impulso bajista (MULTDOWN potencial)";
+                statusBadge = "BEARISH";
+                statusColor = "#ef4444";
             }
-            else if (trend === "BULLISH") {
-                status = "Tendencia Micro-Alcista (EMA 5 > EMA 15)";
-                statusBadge = "MOMENTUM UP";
-                statusColor = "#38bdf8";
-            }
-            else {
-                status = "Tendencia Micro-Bajista (EMA 5 < EMA 15)";
-                statusBadge = "MOMENTUM DOWN";
-                statusColor = "#fbbf24";
-            }
-            const friendlyName = sym === "1HZ75V"
-                ? "Volatility 75 (1s)"
-                : sym === "1HZ100V"
-                    ? "Volatility 100 (1s)"
-                    : sym === "1HZ50V"
-                        ? "Volatility 50 (1s)"
-                        : sym === "R_75"
-                            ? "Volatility 75 Index"
-                            : sym;
             return {
                 symbol: sym,
-                name: friendlyName,
+                multiplier: SYMBOL_MULTIPLIERS[sym] || 100,
                 price: curPrice,
                 prevPrice,
-                changeTickPct: parseFloat(changeTickPct.toFixed(4)),
+                changeTick: parseFloat(changeTick.toFixed(4)),
                 rsi: parseFloat(rsi.toFixed(1)),
                 emaFast: parseFloat(emaFast.toFixed(2)),
                 emaSlow: parseFloat(emaSlow.toFixed(2)),
@@ -384,7 +390,7 @@ export class DerivEngine {
     }
     // --- STRATEGY ENGINE & QUANTITATIVE SIGNALS ---
     async runStrategyAnalysis() {
-        // Sincronización dinámica inmediata con .strategy-controls.json (UI y DB)
+        // Sincronización con .strategy-controls.json
         try {
             const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
             if (fs.existsSync(ctrlFile)) {
@@ -408,41 +414,19 @@ export class DerivEngine {
             this.saveState();
         }
         // Circuit breakers diarios
-        if (this.state.dailyRealizedPnl >= this.state.dailyProfitTarget) {
-            return; // Meta diaria alcanzada
-        }
-        if (this.state.dailyRealizedPnl <= -this.state.dailyStopLoss) {
-            return; // Stop loss diario alcanzado
-        }
-        // BLINDAJE 1: Pausa de enfriamiento tras racha de pérdidas seguidas
-        if (Date.now() < (this.state.pauseUntil || 0)) {
+        if (this.state.dailyRealizedPnl >= this.state.dailyProfitTarget)
             return;
-        }
-        // En REAL no se opera hasta conocer el balance verdadero de la cuenta
-        if (!this.state.isSimulated && this.state.balanceUsdt <= 0) {
+        if (this.state.dailyRealizedPnl <= -this.state.dailyStopLoss)
             return;
-        }
-        // BLINDAJE 2: Piso de capital absoluto (solo aplica en cuenta REAL)
-        if (!this.state.isSimulated && this.state.balanceUsdt > 0 &&
-            this.state.balanceUsdt - this.state.defaultStake < this.state.capitalFloorUsdt) {
-            this.triggerCapitalFloor();
+        // BLINDAJE 1: Pausa de enfriamiento tras racha de pérdidas
+        if (Date.now() < (this.state.pauseUntil || 0))
             return;
-        }
-        // BLINDAJE 3: El stake nunca puede superar el % máximo del balance actual
-        if (this.state.balanceUsdt > 0) {
-            const maxStake = (this.state.balanceUsdt * this.state.maxStakePctOfBalance) / 100;
-            if (this.state.defaultStake > maxStake) {
-                return; // Stake demasiado grande para el balance actual → no opera
-            }
-        }
-        // Máximo de trades concurrentes (disciplina estricta)
-        if (this.positions.length >= this.state.maxConcurrentTrades) {
+        // Máximo de trades concurrentes (1 posición a la vez)
+        if (this.positions.length >= this.state.maxConcurrentTrades)
             return;
-        }
-        // Cooldown global anti-sobreoperativa: 30 segundos de descanso entre operaciones
-        if (Date.now() - this.state.lastTradeTime < 30000) {
+        // Cooldown anti-sobreoperativa: mínimo 45 segundos de descanso entre operaciones
+        if (Date.now() - this.state.lastTradeTime < 45000)
             return;
-        }
         // Analizar cada símbolo
         for (const symbol of this.state.activeSymbols) {
             if (this.positions.length >= this.state.maxConcurrentTrades)
@@ -451,71 +435,64 @@ export class DerivEngine {
             if (Date.now() < cooldown)
                 continue;
             const ticks = this.tickHistory.get(symbol);
-            if (!ticks || ticks.length < 20)
-                continue; // Con 20 ticks ya podemos evaluar con precisión
+            if (!ticks || ticks.length < 25)
+                continue;
             const signal = this.calculateSignal(symbol, ticks);
             if (signal) {
-                console.log(`[DERIV] 🎯 Señal detectada en ${symbol}: ${signal.type} | Razón: ${signal.rationale}`);
-                this.symbolCooldowns.set(symbol, Date.now() + 60000); // 60s de descanso en el mismo símbolo
-                await this.executeTrade(symbol, signal.type, signal.rationale);
-                break; // Una operación a la vez
+                console.log(`[DERIV MULTIPLIER] 🎯 Señal confirmada en ${symbol}: ${signal.type} | ${signal.rationale}`);
+                this.symbolCooldowns.set(symbol, Date.now() + 90000); // 90s de descanso en el mismo símbolo
+                await this.executeMultiplierTrade(symbol, signal.type, signal.rationale);
+                break;
             }
         }
     }
     calculateSignal(symbol, ticks) {
         const quotes = ticks.map((t) => t.quote);
         const n = quotes.length;
-        if (n < 22)
+        if (n < 25)
             return null;
         const currentPrice = quotes[n - 1];
         const prevPrice = quotes[n - 2];
         const prev2Price = quotes[n - 3];
-        // Oscilador de Momentum RSI (período 10 ticks para rápida reacción)
-        const rsi = this.calculateRSI(quotes, 10);
-        // Medias Móviles Institucionales: Rápida (EMA 8) vs Estructura de Tendencia (EMA 20)
-        const emaFast = this.calculateEMA(quotes, 8);
-        const emaSlow = this.calculateEMA(quotes, 20);
-        const isUptrend = emaFast > emaSlow;
-        const isDowntrend = emaFast < emaSlow;
-        // === ESTRATEGIA 1: RACHA DE IMPULSO ALCISTA (2 ticks verdes sobre EMA8 en tendencia alcista) ===
-        if (isUptrend && currentPrice > prevPrice && prevPrice > prev2Price && currentPrice > emaFast && rsi >= 50 && rsi <= 76) {
-            return {
-                type: "CALL",
-                rationale: `🚀 Racha Alcista: Impulso de 2 ticks verdes sobre EMA(8) con RSI saludable (${rsi.toFixed(1)}) en ${symbol}`
-            };
-        }
-        // === ESTRATEGIA 2: REBOTE PULLBACK EN SOPORTE (Retroceso a EMA8 en tendencia alcista) ===
-        if (isUptrend && rsi >= 40 && rsi <= 64) {
-            const touchedFast = quotes.slice(n - 3, n).some((p) => p <= emaFast * 1.0003);
+        // Momentum RSI (período 14 ticks)
+        const rsi = this.calculateRSI(quotes, 14);
+        // Medias Móviles Institucionales: Rápida (EMA 10) vs Lenta (EMA 25)
+        const emaFast = this.calculateEMA(quotes, 10);
+        const emaSlow = this.calculateEMA(quotes, 25);
+        const isUptrend = emaFast > emaSlow && currentPrice >= emaSlow;
+        const isDowntrend = emaFast < emaSlow && currentPrice <= emaSlow;
+        // === ESTRATEGIA 1: MULTUP (REBOTE EN SOPORTE EN TENDENCIA ALCISTA) ===
+        if (isUptrend && rsi >= 44 && rsi <= 64) {
+            const touchedFast = quotes.slice(n - 4, n).some((p) => p <= emaFast * 1.0003);
             if (touchedFast && currentPrice > prevPrice) {
                 return {
-                    type: "CALL",
-                    rationale: `🎯 Pullback Alcista: Rebote confirmado en soporte EMA(8) con RSI (${rsi.toFixed(1)}) en ${symbol}`
+                    type: "MULTUP",
+                    rationale: `🚀 Rebote en Soporte EMA(10) en tendencia alcista con RSI saludable (${rsi.toFixed(1)})`
                 };
             }
         }
-        // === ESTRATEGIA 3: RACHA CASCADA BAJISTA (2 ticks rojos bajo EMA8 en tendencia bajista) ===
-        if (isDowntrend && currentPrice < prevPrice && prevPrice < prev2Price && currentPrice < emaFast && rsi >= 24 && rsi <= 50) {
+        // === ESTRATEGIA 2: MULTUP (IMPULSO BREAKOUT ALCISTA) ===
+        if (isUptrend && currentPrice > prevPrice && prevPrice > prev2Price && currentPrice > emaFast && rsi >= 52 && rsi <= 72) {
             return {
-                type: "PUT",
-                rationale: `📉 Cascada Bajista: Impulso de 2 ticks rojos bajo EMA(8) con RSI saludable (${rsi.toFixed(1)}) en ${symbol}`
+                type: "MULTUP",
+                rationale: `🔥 Impulso Breakout: Aceleración de 2 ticks verdes sobre EMA 10/25 con RSI en expansión (${rsi.toFixed(1)})`
             };
         }
-        // === ESTRATEGIA 4: REBOTE RESISTENCIA BAJISTA (Retroceso al alza rechazado en EMA8) ===
-        if (isDowntrend && rsi >= 36 && rsi <= 60) {
-            const touchedFast = quotes.slice(n - 3, n).some((p) => p >= emaFast * 0.9997);
+        // === ESTRATEGIA 3: MULTDOWN (RECHAZO EN RESISTENCIA EN TENDENCIA BAJISTA) ===
+        if (isDowntrend && rsi >= 36 && rsi <= 56) {
+            const touchedFast = quotes.slice(n - 4, n).some((p) => p >= emaFast * 0.9997);
             if (touchedFast && currentPrice < prevPrice) {
                 return {
-                    type: "PUT",
-                    rationale: `🔻 Rechazo Bajista: Rebote a resistencia EMA(8) rechazado a la baja con RSI (${rsi.toFixed(1)}) en ${symbol}`
+                    type: "MULTDOWN",
+                    rationale: `🔻 Rechazo en Resistencia EMA(10) en tendencia bajista con RSI (${rsi.toFixed(1)})`
                 };
             }
         }
-        // === ESTRATEGIA 5: PISO EXTREMO DE SOBREVENTA (Reversión rápida desde el fondo) ===
-        if (rsi < 20 && currentPrice > prevPrice) {
+        // === ESTRATEGIA 4: MULTDOWN (CASCADA BAJISTA CONFIRMADA) ===
+        if (isDowntrend && currentPrice < prevPrice && prevPrice < prev2Price && currentPrice < emaFast && rsi >= 28 && rsi <= 48) {
             return {
-                type: "CALL",
-                rationale: `💎 Piso Extremo: Rebote desde sobreventa crítica (RSI ${rsi.toFixed(1)} < 20) en ${symbol}`
+                type: "MULTDOWN",
+                rationale: `📉 Cascada Bajista: Aceleración de 2 ticks rojos bajo EMA 10/25 con RSI (${rsi.toFixed(1)})`
             };
         }
         return null;
@@ -547,25 +524,27 @@ export class DerivEngine {
         }
         return ema;
     }
-    // --- TRADE EXECUTION ---
-    pendingProposals = new Map();
-    reqIdCounter = 100;
-    async executeTrade(symbol, contractType, rationale) {
+    // --- MULTIPLIER EXECUTION ---
+    async executeMultiplierTrade(symbol, contractType, rationale) {
         if (!this.isConnected || !this.ws)
             return;
+        const multiplier = SYMBOL_MULTIPLIERS[symbol] || 100;
         const reqId = ++this.reqIdCounter;
-        this.pendingProposals.set(reqId, { symbol, contractType, rationale });
-        // Solicitar propuesta oficial a Deriv
+        this.pendingProposals.set(reqId, { symbol, contractType, multiplier, rationale });
+        console.log(`[DERIV MULTIPLIER] Solicitando cotización para ${symbol} (${contractType} x${multiplier}, SL: -$${this.state.defaultStopLoss}, TP: +$${this.state.defaultTakeProfit})...`);
         this.send({
             proposal: 1,
+            req_id: reqId,
             amount: this.state.defaultStake,
             basis: "stake",
             contract_type: contractType,
             currency: "USD",
-            duration: this.state.defaultDurationTicks,
-            duration_unit: "t",
             underlying_symbol: symbol,
-            req_id: reqId
+            multiplier,
+            limit_order: {
+                stop_loss: this.state.defaultStopLoss,
+                take_profit: this.state.defaultTakeProfit
+            }
         });
     }
     handleProposalResponse(data) {
@@ -576,143 +555,185 @@ export class DerivEngine {
         this.pendingProposals.delete(reqId);
         const proposal = data.proposal;
         if (!proposal || !proposal.id) {
-            console.warn(`[DERIV] No se pudo obtener propuesta válida para ${meta.symbol}:`, data.error?.message);
+            console.error("[DERIV MULTIPLIER] Propuesta inválida:", data.error || data);
             return;
         }
-        console.log(`[DERIV] Comprando contrato ${meta.contractType} en ${meta.symbol} (Stake: $${proposal.ask_price}, Payout: $${proposal.payout})...`);
-        // Ejecutar compra del contrato
+        console.log(`[DERIV MULTIPLIER] Cotización recibida (ID: ${proposal.id}). Ejecutando compra...`);
         this.send({
             buy: proposal.id,
-            price: proposal.ask_price,
-            subscribe: 1,
-            passthrough: {
-                symbol: meta.symbol,
-                contractType: meta.contractType,
-                rationale: meta.rationale,
-                expectedPayout: proposal.payout
-            }
+            price: proposal.ask_price || this.state.defaultStake,
+            req_id: reqId
         });
+        // Guardar temporalmente en pendingProposals para handleBuyResponse
+        this.pendingProposals.set(reqId, meta);
     }
     handleBuyResponse(data) {
+        const reqId = data.echo_req?.req_id;
+        const meta = this.pendingProposals.get(reqId);
+        if (meta)
+            this.pendingProposals.delete(reqId);
         const buy = data.buy;
         if (!buy || !buy.contract_id) {
-            console.error("[DERIV] Error al comprar contrato:", data.error?.message);
+            console.error("[DERIV MULTIPLIER] Error comprando contrato:", data.error || data);
             return;
         }
-        const pt = data.echo_req?.passthrough || {};
         const contractId = String(buy.contract_id);
-        const pos = {
+        const symbol = meta?.symbol || "UNKNOWN";
+        const contractType = meta?.contractType || "MULTUP";
+        const multiplier = meta?.multiplier || 100;
+        const rationale = meta?.rationale || "Señal de tendencia cuantitativa";
+        const newPos = {
             contractId,
-            symbol: pt.symbol || "R_75",
-            contractType: pt.contractType || "CALL",
-            stake: buy.buy_price || this.state.defaultStake,
-            entrySpot: buy.start_time || 0,
+            symbol,
+            contractType,
+            stake: this.state.defaultStake,
+            multiplier,
+            entrySpot: buy.start_time ? parseFloat(buy.start_time) : 0,
+            currentSpot: 0,
             entryTime: Date.now(),
-            duration: this.state.defaultDurationTicks,
-            durationUnit: "ticks",
-            payoutExpected: pt.expectedPayout || buy.payout || 0,
-            status: "open",
             currentProfit: 0,
-            rationale: pt.rationale || "Algoritmo Cuantitativo de Momentum"
+            peakProfit: 0,
+            stopLossAmount: this.state.defaultStopLoss,
+            takeProfitAmount: this.state.defaultTakeProfit,
+            trailingActivated: false,
+            status: "open",
+            rationale
         };
-        this.positions.push(pos);
+        this.positions = [newPos]; // Solo 1 contrato a la vez
         this.savePositions();
         this.state.lastTradeTime = Date.now();
         this.saveState();
-        // Notificar apertura a Telegram
-        const netDayPnl = this.state.dailyRealizedPnl;
-        const pnlText = netDayPnl >= 0 ? `🟢 GANANDO +$${netDayPnl.toFixed(2)} USD` : `🔴 -$${Math.abs(netDayPnl).toFixed(2)} USD`;
-        const msg = `🎰 <b>DERIV SINTÉTICOS: OPERACIÓN EN EJECUCIÓN (~10s)</b>\n\n` +
-            `• <b>Contrato:</b> ${pos.contractType === "CALL" ? "🟢 ALZA (CALL)" : "🔴 BAJA (PUT)"}\n` +
-            `• <b>Índice:</b> <code>${pos.symbol}</code>\n` +
-            `• <b>Monto Arriesgado:</b> $${pos.stake.toFixed(2)} USD\n` +
-            `• <b>Ganancia si acierta:</b> +$${(pos.payoutExpected - pos.stake).toFixed(2)} USD\n` +
-            `• <b>Estrategia:</b> ${pos.rationale}\n\n` +
-            `📊 <b>Estado de tu Cuenta:</b> ${pnlText}\n` +
-            `💼 <b>Balance ${this.state.isSimulated ? "Demo" : "🔥 REAL"}:</b> $${this.state.balanceUsdt.toFixed(2)} USD (${this.state.winsCount}W / ${this.state.lossesCount}L)`;
-        this.notifier.send(msg).catch(() => { });
-        // Suscribir a actualizaciones del contrato
+        // Suscribirse a actualizaciones en tiempo real del contrato
         this.send({
             proposal_open_contract: 1,
             contract_id: buy.contract_id,
             subscribe: 1
         });
+        console.log(`[DERIV MULTIPLIER] 🚀 Contrato abierto exitosamente: ${symbol} (${contractType} x${multiplier}) ID: ${contractId}`);
+        const dirIcon = contractType === "MULTUP" ? "🟢 ALZA (MULTUP)" : "🔴 BAJA (MULTDOWN)";
+        this.notifier.send(`🎯 <b>DERIV MULTIPLICADOR: OPERACIÓN ABIERTA</b> 🚀\n\n` +
+            `• <b>Índice:</b> <code>${symbol}</code>\n` +
+            `• <b>Dirección:</b> ${dirIcon}\n` +
+            `• <b>Multiplicador:</b> <b>x${multiplier}</b>\n` +
+            `• <b>Monto Arriesgado:</b> $${this.state.defaultStake.toFixed(2)} USD\n` +
+            `• <b>Stop-Loss Garantizado:</b> -$${this.state.defaultStopLoss.toFixed(2)} USD\n` +
+            `• <b>Take-Profit Objetivo:</b> +$${this.state.defaultTakeProfit.toFixed(2)} USD\n` +
+            `• <b>Trailing TP:</b> Activa en +$${this.state.trailingTriggerProfit.toFixed(2)} USD (callback: $${this.state.trailingCallback.toFixed(2)})\n\n` +
+            `• <b>Estrategia:</b> <i>${rationale}</i>\n` +
+            `💼 <b>Entorno:</b> ${this.state.isSimulated ? "🧪 DEMO OFICIAL" : "🔥 REAL"}`).catch(() => { });
     }
     handleContractUpdate(poc) {
         if (!poc || !poc.contract_id)
             return;
         const contractId = String(poc.contract_id);
-        const posIdx = this.positions.findIndex((p) => p.contractId === contractId);
-        if (posIdx === -1)
-            return;
-        const pos = this.positions[posIdx];
-        pos.currentProfit = poc.profit || 0;
-        if (poc.is_sold === 1) {
-            // Contrato finalizado
-            const isWon = poc.status === "won";
-            const netProfit = parseFloat(String(poc.profit || 0));
-            const payout = parseFloat(String(poc.payout || 0));
+        const posIndex = this.positions.findIndex((p) => p.contractId === contractId);
+        const isSold = poc.is_sold === 1 || poc.status === "sold" || poc.status === "won" || poc.status === "lost";
+        const profit = typeof poc.profit === "number" ? poc.profit : parseFloat(poc.profit || "0");
+        const currentSpot = typeof poc.current_spot === "number" ? poc.current_spot : parseFloat(poc.current_spot || "0");
+        const entrySpot = typeof poc.entry_spot === "number" ? poc.entry_spot : parseFloat(poc.entry_spot || "0");
+        // CASO 1: CONTRATO CERRADO (Por Deriv SL/TP o por nuestro Trailing Sell)
+        if (isSold) {
+            console.log(`[DERIV MULTIPLIER] Contrato ${contractId} FINALIZADO. PnL: ${profit >= 0 ? "+" : ""}$${profit.toFixed(2)} USD`);
+            const pos = posIndex >= 0 ? this.positions[posIndex] : null;
+            const won = profit > 0;
+            let exitReason = "MANUAL";
+            if (pos?.trailingActivated && profit > 0) {
+                exitReason = "TRAILING_TP";
+            }
+            else if (profit >= (this.state.defaultTakeProfit * 0.90)) {
+                exitReason = "TAKE_PROFIT";
+            }
+            else if (profit <= (-this.state.defaultStopLoss * 0.90)) {
+                exitReason = "STOP_LOSS";
+            }
             const trade = {
-                contractId: pos.contractId,
-                symbol: pos.symbol,
-                contractType: pos.contractType,
-                stake: pos.stake,
-                payout,
-                profit: netProfit,
-                entrySpot: poc.entry_tick || poc.barrier || 0,
-                exitSpot: poc.exit_tick || 0,
-                entryTime: pos.entryTime,
+                contractId,
+                symbol: pos?.symbol || poc.underlying_symbol || "UNKNOWN",
+                contractType: pos?.contractType || (poc.contract_type === "MULTDOWN" ? "MULTDOWN" : "MULTUP"),
+                stake: pos?.stake || this.state.defaultStake,
+                multiplier: pos?.multiplier || 100,
+                profit,
+                entrySpot: entrySpot || pos?.entrySpot || 0,
+                exitSpot: currentSpot,
+                entryTime: pos?.entryTime || (poc.date_start ? poc.date_start * 1000 : Date.now()),
                 exitTime: Date.now(),
-                durationSec: Math.round((Date.now() - pos.entryTime) / 1000),
-                status: isWon ? "won" : "lost",
-                rationale: pos.rationale
+                durationSec: pos?.entryTime ? Math.max(1, Math.round((Date.now() - pos.entryTime) / 1000)) : 10,
+                status: won ? "won" : "lost",
+                exitReason,
+                rationale: pos?.rationale || "Estrategia Multiplicadores"
             };
-            // Remover posición abierta y guardar trade histórico
-            this.positions.splice(posIdx, 1);
             this.trades.unshift(trade);
-            if (this.trades.length > 200)
+            if (this.trades.length > 50)
                 this.trades.pop();
-            // Actualizar métricas acumuladas
-            if (isWon) {
+            this.saveTrades();
+            // Actualizar métricas del motor
+            if (won) {
                 this.state.winsCount++;
                 this.state.consecutiveLosses = 0;
             }
             else {
                 this.state.lossesCount++;
-                this.state.consecutiveLosses = (this.state.consecutiveLosses || 0) + 1;
+                this.state.consecutiveLosses++;
                 if (this.state.consecutiveLosses >= this.state.maxConsecutiveLosses) {
                     this.state.pauseUntil = Date.now() + this.state.cooldownMinutes * 60000;
-                    this.state.consecutiveLosses = 0;
-                    this.notifier.send(`🧊 <b>DERIV: PAUSA DE ENFRIAMIENTO ACTIVADA</b>\n\n` +
-                        `• Se registraron <b>${this.state.maxConsecutiveLosses} pérdidas seguidas</b>.\n` +
-                        `• El mercado está errático: el bot descansa <b>${this.state.cooldownMinutes} minutos</b> para no perseguir pérdidas.\n` +
-                        `• Reanuda automáticamente a las ${new Date(this.state.pauseUntil).toLocaleTimeString("es-CO")}.`).catch(() => { });
+                    console.warn(`[DERIV MULTIPLIER] ⚠️ ${this.state.consecutiveLosses} pérdidas consecutivas. Pausa de ${this.state.cooldownMinutes} min activada.`);
                 }
             }
-            this.state.totalProfitUsdt += netProfit;
-            this.state.dailyRealizedPnl += netProfit;
+            this.state.totalProfitUsdt += profit;
+            this.state.dailyRealizedPnl += profit;
             const totalTrades = this.state.winsCount + this.state.lossesCount;
             this.state.winRatePct = totalTrades > 0 ? (this.state.winsCount / totalTrades) * 100 : 0;
+            this.state.lastTradeTime = Date.now();
+            // Limpiar posición
+            this.positions = [];
             this.savePositions();
-            this.saveTrades();
             this.saveState();
-            // Notificación inmediata a Telegram del resultado
-            const icon = isWon ? "🏆" : "⚠️";
-            const outcomeText = isWon ? "¡OPERACIÓN GANADA!" : "OPERACIÓN CERRADA EN PÉRDIDA";
-            const profitFormatted = isWon
-                ? `+$${netProfit.toFixed(2)} USD`
-                : `-$${Math.abs(netProfit).toFixed(2)} USD`;
-            const netDayPnl = this.state.dailyRealizedPnl;
-            const pnlText = netDayPnl >= 0 ? `🟢 GANANDO +$${netDayPnl.toFixed(2)} USD` : `🔴 -$${Math.abs(netDayPnl).toFixed(2)} USD`;
-            const closeMsg = `${icon} <b>DERIV SINTÉTICOS: ${outcomeText}</b>\n\n` +
-                `• <b>Índice:</b> <code>${trade.symbol}</code> (${trade.contractType})\n` +
-                `• <b>Resultado del Trade:</b> <b>${profitFormatted}</b> (Duración: ${trade.durationSec}s)\n` +
-                `• <b>Balance ${this.state.isSimulated ? "Demo" : "🔥 REAL"}:</b> <b>$${this.state.balanceUsdt.toFixed(2)} USD</b> (Inició en $${this.state.startingBalanceUsdt.toFixed(2)})\n` +
-                `• <b>Estado General:</b> <b>${pnlText}</b>\n` +
-                `• <b>Récord Global:</b> ${this.state.winRatePct.toFixed(1)}% (${this.state.winsCount} Ganadas / ${this.state.lossesCount} Perdidas)`;
-            this.notifier.send(closeMsg).catch(() => { });
+            // Notificación enriquecida a Telegram
+            const resultIcon = won ? "🏆 ¡OPERACIÓN GANADA!" : "🛑 OPERACIÓN CERRADA (STOP-LOSS)";
+            const reasonText = exitReason === "TRAILING_TP"
+                ? "🏹 Trailing Take Profit (Capturado en el pico)"
+                : exitReason === "TAKE_PROFIT"
+                    ? "🎯 Take-Profit Alcanzado (+80%)"
+                    : exitReason === "STOP_LOSS"
+                        ? "🛡️ Stop-Loss Ejecutado (Pérdida Cortada)"
+                        : "Salida de mercado";
+            this.notifier.send(`${won ? "🎉" : "⚠️"} <b>DERIV MULTIPLICADOR: ${resultIcon}</b>\n\n` +
+                `• <b>Índice:</b> <code>${trade.symbol}</code> (${trade.contractType} x${trade.multiplier})\n` +
+                `• <b>Resultado:</b> <b>${profit >= 0 ? "+" : ""}$${profit.toFixed(2)} USD</b> (${trade.durationSec}s)\n` +
+                `• <b>Tipo de Salida:</b> <i>${reasonText}</i>\n` +
+                `• <b>PnL del Día:</b> <b>${this.state.dailyRealizedPnl >= 0 ? "+" : ""}$${this.state.dailyRealizedPnl.toFixed(2)} USD</b>\n` +
+                `• <b>Récord:</b> <b>${this.state.winRatePct.toFixed(1)}%</b> (${this.state.winsCount}W / ${this.state.lossesCount}L)\n` +
+                `💼 <b>Entorno:</b> ${this.state.isSimulated ? "🧪 DEMO OFICIAL" : "🔥 REAL"}`).catch(() => { });
+            return;
         }
-        else {
+        // CASO 2: CONTRATO ABIERTO → RASTREO Y TRAILING TAKE PROFIT
+        if (posIndex >= 0) {
+            const pos = this.positions[posIndex];
+            pos.currentProfit = profit;
+            pos.currentSpot = currentSpot;
+            if (entrySpot > 0 && pos.entrySpot === 0)
+                pos.entrySpot = entrySpot;
+            // Actualizar pico máximo de ganancia
+            if (profit > pos.peakProfit) {
+                pos.peakProfit = profit;
+            }
+            // 🏹 LÓGICA DE TRAILING TAKE PROFIT INTELIGENTE
+            if (pos.peakProfit >= this.state.trailingTriggerProfit) {
+                if (!pos.trailingActivated) {
+                    pos.trailingActivated = true;
+                    console.log(`[DERIV MULTIPLIER] 🏹 Trailing Take Profit ACTIVADO en ${pos.symbol} (Ganancia: +$${profit.toFixed(2)} USD)`);
+                }
+                // Si la ganancia retrocede el callback desde su punto máximo, cobramos en el pico
+                const retrace = pos.peakProfit - profit;
+                if (poc.is_valid_to_sell && retrace >= this.state.trailingCallback && !this.isSellingContract) {
+                    this.isSellingContract = true;
+                    console.log(`[DERIV MULTIPLIER] 🏹 ¡DISPARO DE TRAILING SELL! Pico: +$${pos.peakProfit.toFixed(2)} | Actual: +$${profit.toFixed(2)} | Vendiendo...`);
+                    this.send({
+                        sell: poc.contract_id,
+                        price: 0
+                    });
+                }
+            }
             this.savePositions();
         }
     }
@@ -725,22 +746,22 @@ export class DerivEngine {
             return { status: "PAUSED", message: "⏸️ Pausado manualmente. Envía /deriv_reanudar para activar." };
         }
         if (this.state.dailyRealizedPnl >= this.state.dailyProfitTarget) {
-            return { status: "PROFIT_TARGET", message: `🎉 Meta diaria alcanzada (+$${this.state.dailyRealizedPnl.toFixed(2)} USD). Modo reposo de protección.` };
+            return { status: "PROFIT_TARGET", message: `🎉 Meta diaria alcanzada (+$${this.state.dailyRealizedPnl.toFixed(2)} USD). Modo reposo seguro.` };
         }
         if (this.state.dailyRealizedPnl <= -this.state.dailyStopLoss) {
             return { status: "STOP_LOSS", message: `🛑 Stop loss diario alcanzado (-$${Math.abs(this.state.dailyRealizedPnl).toFixed(2)} USD vs límite -$${this.state.dailyStopLoss.toFixed(2)} USD). Envía /deriv_reanudar para desbloquear nueva sesión.` };
         }
         if (Date.now() < (this.state.pauseUntil || 0)) {
             const restMin = Math.max(1, Math.ceil(((this.state.pauseUntil || 0) - Date.now()) / 60000));
-            return { status: "COOLDOWN", message: `⏳ Enfriamiento por 3 pérdidas consecutivas (restan ~${restMin} min). Envía /deriv_reanudar para reanudar de inmediato.` };
+            return { status: "COOLDOWN", message: `⏳ Enfriamiento por 3 pérdidas consecutivas (restan ~${restMin} min). Envía /deriv_reanudar para saltar.` };
         }
-        if (!this.state.isSimulated && this.state.balanceUsdt > 0 && this.state.balanceUsdt - this.state.defaultStake < this.state.capitalFloorUsdt) {
-            return { status: "CAPITAL_FLOOR", message: `🛡️ Piso de capital activo ($${this.state.balanceUsdt.toFixed(2)} USD <= $${this.state.capitalFloorUsdt.toFixed(2)} USD).` };
+        if (this.positions.length > 0) {
+            const p = this.positions[0];
+            const sign = p.currentProfit >= 0 ? "+" : "";
+            const trailTag = p.trailingActivated ? " | 🏹 Trailing Activo" : "";
+            return { status: "ACTIVE", message: `📊 Trade en curso: ${p.symbol} (${p.contractType} x${p.multiplier}) PnL: ${sign}$${p.currentProfit.toFixed(2)} USD${trailTag}` };
         }
-        if (this.positions.length >= this.state.maxConcurrentTrades) {
-            return { status: "ACTIVE", message: `📊 Trade en ejecución (${this.positions[0]?.symbol} ${this.positions[0]?.contractType}). Esperando resultado.` };
-        }
-        return { status: "ACTIVE", message: `🟢 Vigilando ticks 24/7 (Estrategia: Rebote Pullback EMA10 & Racha Impulso 15t)` };
+        return { status: "ACTIVE", message: `🟢 Vigilando Volatilidad 24/7 (Multiplicadores con Trailing TP & SL Garantizado)` };
     }
     getTelemetry() {
         const op = this.getOperationalStatus();
@@ -787,7 +808,7 @@ export class DerivEngine {
         this.saveState();
     }
     setStake(stake) {
-        if (stake >= 0.35 && stake <= 100) {
+        if (stake >= 1.0 && stake <= 100) {
             this.state.defaultStake = stake;
             this.saveState();
         }
@@ -807,25 +828,13 @@ export class DerivEngine {
     isRealEnvironment() {
         return !this.state.isSimulated;
     }
-    triggerCapitalFloor() {
-        if (!this.state.enabled)
-            return;
-        this.state.enabled = false;
-        this.saveState();
-        console.warn(`[DERIV] 🛑 PISO DE CAPITAL alcanzado ($${this.state.balanceUsdt.toFixed(2)}). Motor APAGADO.`);
-        this.notifier.send(`🛑 <b>DERIV: PISO DE CAPITAL ALCANZADO — BOT APAGADO</b>\n\n` +
-            `• Balance real: <b>$${this.state.balanceUsdt.toFixed(2)} USD</b>\n` +
-            `• Piso protegido: <b>$${this.state.capitalFloorUsdt.toFixed(2)} USD</b>\n\n` +
-            `El bot NO volverá a operar solo. Revisa la situación y reactívalo manualmente con /deriv_reanudar si lo deseas.`).catch(() => { });
-    }
     async setEnvironment(isReal) {
         if (this.positions.length > 0) {
-            console.warn("[DERIV] No se puede cambiar de entorno con contratos abiertos.");
+            console.warn("[DERIV MULTIPLIER] No se puede cambiar de entorno con contratos abiertos.");
             return { success: false, isSimulated: this.state.isSimulated, accountId: this.state.accountId };
         }
         const changed = this.state.isSimulated !== !isReal;
         if (changed) {
-            // Estadísticas separadas por entorno: lo de la demo NO contamina la cuenta real
             this.state.dailyRealizedPnl = 0;
             this.state.totalProfitUsdt = 0;
             this.state.winsCount = 0;
@@ -833,15 +842,14 @@ export class DerivEngine {
             this.state.winRatePct = 0;
             this.state.consecutiveLosses = 0;
             this.state.pauseUntil = 0;
-            this.state.startingBalanceUsdt = 0; // se fija con el primer balance recibido
+            this.state.startingBalanceUsdt = 0;
             this.state.balanceUsdt = 0;
         }
         this.state.isSimulated = !isReal;
         this.accountId = isReal ? this.realAccountId : this.demoAccountId;
         this.state.accountId = this.accountId;
         this.saveState();
-        console.log(`[DERIV] Entorno cambiado a: ${isReal ? "🔥 REAL (" + this.accountId + ")" : "🧪 DEMO (" + this.accountId + ")"}`);
-        // Reconectar WebSocket al nuevo entorno
+        console.log(`[DERIV MULTIPLIER] Entorno cambiado a: ${isReal ? "🔥 REAL (" + this.accountId + ")" : "🧪 DEMO (" + this.accountId + ")"}`);
         if (this.ws) {
             try {
                 this.ws.removeAllListeners();
@@ -853,19 +861,13 @@ export class DerivEngine {
         this.isConnected = false;
         this.isConnecting = false;
         await this.connectWebSocket();
-        await this.notifier.send(`🎰 <b>DERIV ENTORNO CAMBIADO</b> 🔄\n\n` +
+        await this.notifier.send(`🎰 <b>DERIV MULTIPLICADORES: ENTORNO CAMBIADO</b> 🔄\n\n` +
             `• <b>Nuevo Modo:</b> ${isReal ? "🔥 <b>CUENTA REAL (DINERO REAL)</b>" : "🧪 <b>CUENTA DEMO OFICIAL</b>"}\n` +
             `• <b>Account ID:</b> <code>${this.accountId}</code>\n` +
-            `• <b>Stake Actual:</b> $${this.state.defaultStake.toFixed(2)} USD\n` +
-            `• <b>Meta Diaria:</b> +$${this.state.dailyProfitTarget.toFixed(2)} USD\n` +
-            `• <b>Stop-Loss Diario:</b> -$${this.state.dailyStopLoss.toFixed(2)} USD\n\n` +
-            `👉 Consulta estado: /deriv`);
-        return {
-            success: true,
-            isSimulated: this.state.isSimulated,
-            accountId: this.state.accountId
-        };
+            `• <b>Stake por Trade:</b> $${this.state.defaultStake.toFixed(2)} USD\n` +
+            `• <b>Stop-Loss Garantizado:</b> -$${this.state.defaultStopLoss.toFixed(2)} USD\n` +
+            `• <b>Take-Profit Inicial:</b> +$${this.state.defaultTakeProfit.toFixed(2)} USD`).catch(() => { });
+        return { success: true, isSimulated: this.state.isSimulated, accountId: this.accountId };
     }
 }
-// Instancia singleton compartida
 export const derivEngine = new DerivEngine();

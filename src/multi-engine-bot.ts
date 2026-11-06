@@ -3367,26 +3367,37 @@ export class TrailingMasterBot {
         const st = tel.state;
         const icon = tel.connected ? "🟢 CONECTADO" : "🔴 RECONECTANDO";
         const pnlSign = st.totalProfitUsdt >= 0 ? "+" : "";
-        const envLabel = st.isSimulated ? "🧪 DEMO OFICIAL" : "🔥 REAL (DINERO REAL)";
-        let msg = `🎰 <b>ESTADO DEL MOTOR DERIV SINTÉTICOS</b> 📊\n\n` +
+        const envLabel = st.isSimulated ? "🧪 DEMO OFICIAL (PROTECCIÓN TOTAL)" : "🔥 REAL";
+        const pos = tel.openPositions.length > 0 ? (tel.openPositions[0] as any) : null;
+
+        let msg = `🎰 <b>ESTADO MOTOR DERIV MULTIPLICADORES</b> 🚀\n\n` +
           `• <b>Conexión WebSocket:</b> ${icon}\n` +
           `• <b>Entorno Activo:</b> <b>${envLabel}</b>\n` +
           `• <b>Cuenta ID:</b> <code>${st.accountId}</code>\n` +
           `• <b>Balance Actual:</b> <b>$${st.balanceUsdt.toFixed(2)} USD</b>\n` +
           `• <b>Estado Operativo:</b> ${tel.operationalStatus.message}\n` +
-          `• <b>Stake por Operación:</b> $${st.defaultStake.toFixed(2)} USD\n` +
-          `• <b>Duración Contrato:</b> ${st.defaultDurationTicks} ticks (~20-25 seg)\n` +
-          `• <b>Operaciones Abiertas:</b> ${tel.openPositions.length} / ${st.maxConcurrentTrades}\n` +
-          `• <b>Efectividad (Win Rate):</b> ${st.winRatePct.toFixed(1)}% (${st.winsCount}W / ${st.lossesCount}L)\n` +
-          `• <b>Ganancia Neta Hoy:</b> ${st.dailyRealizedPnl >= 0 ? "+" : ""}$${st.dailyRealizedPnl.toFixed(2)} USD (Meta: +$${st.dailyProfitTarget.toFixed(2)} USD)\n` +
-          `• <b>Stop-Loss Diario:</b> -$${st.dailyStopLoss.toFixed(2)} USD (Blindaje de Capital)\n` +
+          `• <b>Stake por Trade:</b> $${st.defaultStake.toFixed(2)} USD\n` +
+          `• <b>Gestión de Riesgo:</b> SL: -$${(st as any).defaultStopLoss || 0.30} | TP: +$${(st as any).defaultTakeProfit || 0.80} USD\n` +
+          `• <b>Trailing Take Profit:</b> Activa en +$${(st as any).trailingTriggerProfit || 0.35} (callback: $${(st as any).trailingCallback || 0.15})\n` +
+          `• <b>Posiciones Abiertas:</b> ${tel.openPositions.length} / ${st.maxConcurrentTrades}\n`;
+
+        if (pos) {
+          const posSign = pos.currentProfit >= 0 ? "+" : "";
+          const trailTag = pos.trailingActivated ? " | 🏹 <b>Trailing Activo</b>" : "";
+          msg += `\n🎯 <b>POSICIÓN VIVA:</b>\n` +
+            `  • <code>${pos.symbol}</code> (${pos.contractType} x${pos.multiplier})\n` +
+            `  • PnL en Vivo: <b>${posSign}$${pos.currentProfit.toFixed(2)} USD</b> (Pico: +$${pos.peakProfit.toFixed(2)})${trailTag}\n` +
+            `  • <i>${pos.rationale}</i>\n`;
+        }
+
+        msg += `\n• <b>Efectividad (Win Rate):</b> ${st.winRatePct.toFixed(1)}% (${st.winsCount}W / ${st.lossesCount}L)\n` +
+          `• <b>PnL Neto Hoy:</b> ${st.dailyRealizedPnl >= 0 ? "+" : ""}$${st.dailyRealizedPnl.toFixed(2)} USD (Meta: +$${st.dailyProfitTarget.toFixed(2)} USD)\n` +
+          `• <b>Stop-Loss Diario:</b> -$${st.dailyStopLoss.toFixed(2)} USD\n` +
           `• <b>PnL Histórico Acumulado:</b> <b>${pnlSign}$${st.totalProfitUsdt.toFixed(2)} USD</b>\n` +
           `• <b>Índices en Radar:</b> ${st.activeSymbols.join(", ")}\n\n` +
           `👉 Ver historial: /deriv_trades\n` +
-          `👉 Cambiar entorno: /deriv_real o /deriv_demo\n` +
-          `👉 Cambiar monto: <code>/deriv_stake 0.50</code>\n` +
-          `👉 Reanudar / Desbloquear: /deriv_reanudar\n` +
-          `👉 Resetear PnL diario: /deriv_reset_pnl\n` +
+          `👉 Cambiar entorno: /deriv_demo o /deriv_real\n` +
+          `👉 Reanudar motor: /deriv_reanudar\n` +
           `👉 Pausar: /deriv_pausa`;
         return msg;
       }
@@ -3394,28 +3405,36 @@ export class TrailingMasterBot {
       if (cmd === "/deriv_trades" || cmd === "deriv_trades") {
         const tel = this.derivEngine.getTelemetry();
         if (tel.recentTrades.length === 0) {
-          return `📜 <b>HISTORIAL DERIV SINTÉTICOS</b>\n\nNo hay operaciones registradas aún. El bot está vigilando ticks de Volatility para la primera oportunidad.`;
+          return `📜 <b>HISTORIAL DERIV MULTIPLICADORES</b>\n\nNo hay operaciones registradas aún. El motor está vigilando breakouts y rebotes en soportes.`;
         }
-        let msg = `📜 <b>ÚLTIMAS ${Math.min(5, tel.recentTrades.length)} OPERACIONES EN DERIV:</b>\n\n`;
-        for (const t of tel.recentTrades.slice(0, 5)) {
+        let msg = `📜 <b>ÚLTIMAS ${Math.min(5, tel.recentTrades.length)} OPERACIONES EN MULTIPLICADORES:</b>\n\n`;
+        for (const t of tel.recentTrades.slice(0, 5) as any[]) {
           const icon = t.status === "won" ? "🟢 GANADA" : "🔴 PERDIDA";
           const sign = t.profit >= 0 ? "+" : "";
-          const dur = t.durationSec ? `${t.durationSec}s` : "5t";
-          msg += `• <b>${t.symbol}</b> (${t.contractType}) | ${icon}\n` +
-                 `  PnL: <b>${sign}$${t.profit.toFixed(2)} USD</b> | Stake: $${t.stake.toFixed(2)} | Duración: ${dur}\n` +
-                 `  <i>${t.rationale.slice(0, 60)}</i>\n\n`;
+          const dur = t.durationSec ? `${t.durationSec}s` : "";
+          const reasonTag = t.exitReason === "TRAILING_TP"
+            ? "🏹 Trailing TP"
+            : t.exitReason === "TAKE_PROFIT"
+            ? "🎯 Take Profit"
+            : t.exitReason === "STOP_LOSS"
+            ? "🛡️ Stop Loss"
+            : "Mercado";
+
+          msg += `• <b>${t.symbol}</b> (${t.contractType} x${t.multiplier}) | ${icon}\n` +
+                 `  PnL: <b>${sign}$${t.profit.toFixed(2)} USD</b> (${reasonTag} en ${dur})\n` +
+                 `  <i>${(t.rationale || "").slice(0, 60)}</i>\n\n`;
         }
         return msg;
       }
 
       if (cmd === "/deriv_stake" || cmd === "deriv_stake") {
         const amount = parseFloat(arg1);
-        if (isNaN(amount) || amount < 0.35 || amount > 100) {
-          return `⚠️ Monto inválido. El stake debe ser entre $0.35 y $100 USD.\nEjemplo: <code>/deriv_stake 1</code>`;
+        if (isNaN(amount) || amount < 1.0 || amount > 100) {
+          return `⚠️ Monto inválido. En Multiplicadores el stake mínimo es $1.00 USD.\nEjemplo: <code>/deriv_stake 1</code>`;
         }
         this.derivEngine.setStake(amount);
         this.saveStrategyControls();
-        return `✅ <b>Monto por operación en Deriv actualizado a: $${amount.toFixed(2)} USD</b>\nSincronizado con Supabase Cloud DB y panel de control web.`;
+        return `✅ <b>Monto por operación en Deriv Multiplicadores actualizado a: $${amount.toFixed(2)} USD</b>\nSincronizado con Supabase Cloud DB y panel de control web.`;
       }
 
       if (cmd === "/deriv_meta" || cmd === "deriv_meta" || cmd === "/deriv_target" || cmd === "deriv_target") {
