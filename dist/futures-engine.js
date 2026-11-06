@@ -56,18 +56,17 @@ export class FuturesEngine {
             }
         }
         catch { }
-        // Sincronizar estrictamente con .strategy-controls.json: si futures está desactivado o en 0%, silenciar motor
+        // Sincronizar con .strategy-controls.json: si es simulación y stateFile tiene enabled: true, respetarlo
         try {
             const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
             if (fs.existsSync(ctrlFile)) {
                 const ctrl = JSON.parse(fs.readFileSync(ctrlFile, "utf-8"));
                 const stratFutures = ctrl?.strategies?.futures;
-                const allocFutures = ctrl?.allocations?.futures ?? 0;
-                if (stratFutures === false || (stratFutures === undefined && allocFutures === 0)) {
-                    loaded.enabled = false;
-                }
-                else if (stratFutures === true) {
+                if (stratFutures === true) {
                     loaded.enabled = true;
+                }
+                else if (stratFutures === false && !loaded.isSimulated) {
+                    loaded.enabled = false;
                 }
             }
         }
