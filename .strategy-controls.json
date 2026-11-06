@@ -4,7 +4,8 @@
     "trailing_rebound": true,
     "smart_dca": true,
     "micro_grid": false,
-    "cazador_weekend": true
+    "cazador_weekend": true,
+    "deriv": true
   },
   "allocations": {
     "trailing_rebound": 70,
@@ -21,7 +22,7 @@
   "autoPilot": true,
   "aiEnabled": false,
   "approvalTimeoutSec": 180,
-  "updatedAt": 1793461915533,
+  "updatedAt": 1793738193834,
   "coreWatchlist": [
     "ETHUSDT",
     "SOLUSDT",
