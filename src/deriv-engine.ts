@@ -834,10 +834,38 @@ export class DerivEngine {
   }
 
   // --- TELEMETRY & CONTROLS ---
+  public getOperationalStatus(): { status: "ACTIVE" | "PAUSED" | "STOP_LOSS" | "PROFIT_TARGET" | "COOLDOWN" | "CAPITAL_FLOOR" | "DISCONNECTED"; message: string } {
+    if (!this.isConnected) {
+      return { status: "DISCONNECTED", message: "🔴 Desconectado de Deriv WebSocket (reconectando...)" };
+    }
+    if (!this.state.enabled) {
+      return { status: "PAUSED", message: "⏸️ Pausado manualmente. Envía /deriv_reanudar para activar." };
+    }
+    if (this.state.dailyRealizedPnl >= this.state.dailyProfitTarget) {
+      return { status: "PROFIT_TARGET", message: `🎉 Meta diaria alcanzada (+$${this.state.dailyRealizedPnl.toFixed(2)} USD). Modo reposo de protección.` };
+    }
+    if (this.state.dailyRealizedPnl <= -this.state.dailyStopLoss) {
+      return { status: "STOP_LOSS", message: `🛑 Stop loss diario alcanzado (-$${Math.abs(this.state.dailyRealizedPnl).toFixed(2)} USD vs límite -$${this.state.dailyStopLoss.toFixed(2)} USD). Envía /deriv_reanudar para desbloquear nueva sesión.` };
+    }
+    if (Date.now() < (this.state.pauseUntil || 0)) {
+      const restMin = Math.max(1, Math.ceil(((this.state.pauseUntil || 0) - Date.now()) / 60000));
+      return { status: "COOLDOWN", message: `⏳ Enfriamiento por 3 pérdidas consecutivas (restan ~${restMin} min). Envía /deriv_reanudar para reanudar de inmediato.` };
+    }
+    if (!this.state.isSimulated && this.state.balanceUsdt > 0 && this.state.balanceUsdt - this.state.defaultStake < this.state.capitalFloorUsdt) {
+      return { status: "CAPITAL_FLOOR", message: `🛡️ Piso de capital activo ($${this.state.balanceUsdt.toFixed(2)} USD <= $${this.state.capitalFloorUsdt.toFixed(2)} USD).` };
+    }
+    if (this.positions.length >= this.state.maxConcurrentTrades) {
+      return { status: "ACTIVE", message: `📊 Trade en ejecución (${this.positions[0]?.symbol} ${this.positions[0]?.contractType}). Esperando resultado.` };
+    }
+    return { status: "ACTIVE", message: `🟢 Vigilando ticks 24/7 (Estrategia: Rebote Pullback EMA10 & Racha Impulso 15t)` };
+  }
+
   public getTelemetry() {
+    const op = this.getOperationalStatus();
     return {
       connected: this.isConnected,
       state: this.state,
+      operationalStatus: op,
       radar: this.getRadar(),
       openPositions: this.positions,
       recentTrades: this.trades.slice(0, 20),
@@ -864,6 +892,20 @@ export class DerivEngine {
 
   public setEnabled(enabled: boolean): void {
     this.state.enabled = enabled;
+    if (enabled) {
+      this.state.pauseUntil = 0;
+      this.state.consecutiveLosses = 0;
+      if (this.state.dailyRealizedPnl <= -this.state.dailyStopLoss) {
+        this.state.dailyRealizedPnl = 0;
+      }
+    }
+    this.saveState();
+  }
+
+  public resetDailyPnl(): void {
+    this.state.dailyRealizedPnl = 0;
+    this.state.pauseUntil = 0;
+    this.state.consecutiveLosses = 0;
     this.saveState();
   }
 

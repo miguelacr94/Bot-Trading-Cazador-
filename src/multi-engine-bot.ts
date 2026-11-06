@@ -3367,12 +3367,15 @@ export class TrailingMasterBot {
         const st = tel.state;
         const icon = tel.connected ? "🟢 CONECTADO" : "🔴 RECONECTANDO";
         const pnlSign = st.totalProfitUsdt >= 0 ? "+" : "";
+        const envLabel = st.isSimulated ? "🧪 DEMO OFICIAL" : "🔥 REAL (DINERO REAL)";
         let msg = `🎰 <b>ESTADO DEL MOTOR DERIV SINTÉTICOS</b> 📊\n\n` +
           `• <b>Conexión WebSocket:</b> ${icon}\n` +
-          `• <b>Cuenta Demo:</b> <code>${st.accountId}</code> (${st.isSimulated ? "Demo Oficial" : "Real"})\n` +
-          `• <b>Balance Demo Deriv:</b> $${st.balanceUsdt.toFixed(2)} USD\n` +
+          `• <b>Entorno Activo:</b> <b>${envLabel}</b>\n` +
+          `• <b>Cuenta ID:</b> <code>${st.accountId}</code>\n` +
+          `• <b>Balance Actual:</b> <b>$${st.balanceUsdt.toFixed(2)} USD</b>\n` +
+          `• <b>Estado Operativo:</b> ${tel.operationalStatus.message}\n` +
           `• <b>Stake por Operación:</b> $${st.defaultStake.toFixed(2)} USD\n` +
-          `• <b>Duración Contrato:</b> ${st.defaultDurationTicks} ticks (~10 seg)\n` +
+          `• <b>Duración Contrato:</b> ${st.defaultDurationTicks} ticks (~20-25 seg)\n` +
           `• <b>Operaciones Abiertas:</b> ${tel.openPositions.length} / ${st.maxConcurrentTrades}\n` +
           `• <b>Efectividad (Win Rate):</b> ${st.winRatePct.toFixed(1)}% (${st.winsCount}W / ${st.lossesCount}L)\n` +
           `• <b>Ganancia Neta Hoy:</b> ${st.dailyRealizedPnl >= 0 ? "+" : ""}$${st.dailyRealizedPnl.toFixed(2)} USD (Meta: +$${st.dailyProfitTarget.toFixed(2)} USD)\n` +
@@ -3380,10 +3383,11 @@ export class TrailingMasterBot {
           `• <b>PnL Histórico Acumulado:</b> <b>${pnlSign}$${st.totalProfitUsdt.toFixed(2)} USD</b>\n` +
           `• <b>Índices en Radar:</b> ${st.activeSymbols.join(", ")}\n\n` +
           `👉 Ver historial: /deriv_trades\n` +
-          `👉 Cambiar monto: <code>/deriv_stake 1</code>\n` +
-          `👉 Ajustar meta diaria: <code>/deriv_meta 4</code>\n` +
-          `👉 Ajustar stop diario: <code>/deriv_stop 3</code>\n` +
-          `👉 Pausar: /deriv_pausa | Reanudar: /deriv_reanudar`;
+          `👉 Cambiar entorno: /deriv_real o /deriv_demo\n` +
+          `👉 Cambiar monto: <code>/deriv_stake 0.50</code>\n` +
+          `👉 Reanudar / Desbloquear: /deriv_reanudar\n` +
+          `👉 Resetear PnL diario: /deriv_reset_pnl\n` +
+          `👉 Pausar: /deriv_pausa`;
         return msg;
       }
 
@@ -3471,7 +3475,19 @@ export class TrailingMasterBot {
         if (!this.controls.strategies) this.controls.strategies = {} as any;
         (this.controls.strategies as any).deriv = true;
         this.saveStrategyControls();
-        return `▶️ <b>Motor Deriv Sintéticos reanudado.</b> Buscando señales cuantitativas activas. (Sincronizado con DB y panel web)`;
+        const op = this.derivEngine.getTelemetry().operationalStatus;
+        return `▶️ <b>Motor Deriv Sintéticos reanudado.</b>\n\n` +
+          `• <b>Estado Operativo:</b> ${op.message}\n` +
+          `• Enfriamientos previos y bloqueos de stop loss reseteados para una sesión limpia.\n` +
+          `• Buscando oportunidades con 15 ticks y stake de $${this.derivEngine.getTelemetry().state.defaultStake.toFixed(2)} USD.\n\n` +
+          `👉 Consulta estado: /deriv`;
+      }
+
+      if (cmd === "/deriv_reset_pnl" || cmd === "deriv_reset_pnl") {
+        this.derivEngine.resetDailyPnl();
+        return `🔄 <b>Contador diario de PnL Deriv reseteado a $0.00 USD.</b>\n` +
+          `• Bloqueos de stop loss y enfriamiento levantados.\n` +
+          `• Margen diario completo disponible (-$${this.derivEngine.getTelemetry().state.dailyStopLoss.toFixed(2)} USD).`;
       }
 
       if (cmd === "/toggle_deriv" || cmd === "toggle_deriv") {
