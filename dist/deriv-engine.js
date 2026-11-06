@@ -69,7 +69,13 @@ export class DerivEngine {
             dailyRealizedPnl: 0.0,
             lastDailyReset: new Date().toISOString().split("T")[0],
             activeSymbols: ["1HZ75V", "1HZ100V", "1HZ50V", "R_75"],
-            lastTradeTime: 0
+            lastTradeTime: 0,
+            consecutiveLosses: 0,
+            maxConsecutiveLosses: 3,
+            cooldownMinutes: 30,
+            pauseUntil: 0,
+            capitalFloorUsdt: 10.0,
+            maxStakePctOfBalance: 10
         };
         try {
             if (fs.existsSync(this.stateFile)) {
@@ -255,6 +261,9 @@ export class DerivEngine {
                 const bal = data.balance?.balance;
                 if (typeof bal === "number") {
                     this.state.balanceUsdt = bal;
+                    if (!this.state.startingBalanceUsdt || this.state.startingBalanceUsdt <= 0) {
+                        this.state.startingBalanceUsdt = bal; // Línea base del entorno actual
+                    }
                     this.saveState();
                 }
             }
@@ -396,6 +405,27 @@ export class DerivEngine {
         }
         if (this.state.dailyRealizedPnl <= -this.state.dailyStopLoss) {
             return; // Stop loss diario alcanzado
+        }
+        // BLINDAJE 1: Pausa de enfriamiento tras racha de pérdidas seguidas
+        if (Date.now() < (this.state.pauseUntil || 0)) {
+            return;
+        }
+        // En REAL no se opera hasta conocer el balance verdadero de la cuenta
+        if (!this.state.isSimulated && this.state.balanceUsdt <= 0) {
+            return;
+        }
+        // BLINDAJE 2: Piso de capital absoluto (solo aplica en cuenta REAL)
+        if (!this.state.isSimulated && this.state.balanceUsdt > 0 &&
+            this.state.balanceUsdt - this.state.defaultStake < this.state.capitalFloorUsdt) {
+            this.triggerCapitalFloor();
+            return;
+        }
+        // BLINDAJE 3: El stake nunca puede superar el % máximo del balance actual
+        if (this.state.balanceUsdt > 0) {
+            const maxStake = (this.state.balanceUsdt * this.state.maxStakePctOfBalance) / 100;
+            if (this.state.defaultStake > maxStake) {
+                return; // Stake demasiado grande para el balance actual → no opera
+            }
         }
         // Máximo de trades concurrentes (disciplina estricta)
         if (this.positions.length >= this.state.maxConcurrentTrades) {
@@ -574,7 +604,7 @@ export class DerivEngine {
             `• <b>Ganancia si acierta:</b> +$${(pos.payoutExpected - pos.stake).toFixed(2)} USD\n` +
             `• <b>Estrategia:</b> ${pos.rationale}\n\n` +
             `📊 <b>Estado de tu Cuenta:</b> ${pnlText}\n` +
-            `💼 <b>Balance Demo Oficial:</b> $${this.state.balanceUsdt.toFixed(2)} USD (${this.state.winsCount}W / ${this.state.lossesCount}L)`;
+            `💼 <b>Balance ${this.state.isSimulated ? "Demo" : "🔥 REAL"}:</b> $${this.state.balanceUsdt.toFixed(2)} USD (${this.state.winsCount}W / ${this.state.lossesCount}L)`;
         this.notifier.send(msg).catch(() => { });
         // Suscribir a actualizaciones del contrato
         this.send({
@@ -620,9 +650,19 @@ export class DerivEngine {
             // Actualizar métricas acumuladas
             if (isWon) {
                 this.state.winsCount++;
+                this.state.consecutiveLosses = 0;
             }
             else {
                 this.state.lossesCount++;
+                this.state.consecutiveLosses = (this.state.consecutiveLosses || 0) + 1;
+                if (this.state.consecutiveLosses >= this.state.maxConsecutiveLosses) {
+                    this.state.pauseUntil = Date.now() + this.state.cooldownMinutes * 60000;
+                    this.state.consecutiveLosses = 0;
+                    this.notifier.send(`🧊 <b>DERIV: PAUSA DE ENFRIAMIENTO ACTIVADA</b>\n\n` +
+                        `• Se registraron <b>${this.state.maxConsecutiveLosses} pérdidas seguidas</b>.\n` +
+                        `• El mercado está errático: el bot descansa <b>${this.state.cooldownMinutes} minutos</b> para no perseguir pérdidas.\n` +
+                        `• Reanuda automáticamente a las ${new Date(this.state.pauseUntil).toLocaleTimeString("es-CO")}.`).catch(() => { });
+                }
             }
             this.state.totalProfitUsdt += netProfit;
             this.state.dailyRealizedPnl += netProfit;
@@ -642,7 +682,7 @@ export class DerivEngine {
             const closeMsg = `${icon} <b>DERIV SINTÉTICOS: ${outcomeText}</b>\n\n` +
                 `• <b>Índice:</b> <code>${trade.symbol}</code> (${trade.contractType})\n` +
                 `• <b>Resultado del Trade:</b> <b>${profitFormatted}</b> (Duración: ${trade.durationSec}s)\n` +
-                `• <b>Balance Demo Oficial:</b> <b>$${this.state.balanceUsdt.toFixed(2)} USD</b> (Inició en $${this.state.startingBalanceUsdt.toFixed(2)})\n` +
+                `• <b>Balance ${this.state.isSimulated ? "Demo" : "🔥 REAL"}:</b> <b>$${this.state.balanceUsdt.toFixed(2)} USD</b> (Inició en $${this.state.startingBalanceUsdt.toFixed(2)})\n` +
                 `• <b>Estado General:</b> <b>${pnlText}</b>\n` +
                 `• <b>Récord Global:</b> ${this.state.winRatePct.toFixed(1)}% (${this.state.winsCount} Ganadas / ${this.state.lossesCount} Perdidas)`;
             this.notifier.send(closeMsg).catch(() => { });
@@ -702,7 +742,35 @@ export class DerivEngine {
     isRealEnvironment() {
         return !this.state.isSimulated;
     }
+    triggerCapitalFloor() {
+        if (!this.state.enabled)
+            return;
+        this.state.enabled = false;
+        this.saveState();
+        console.warn(`[DERIV] 🛑 PISO DE CAPITAL alcanzado ($${this.state.balanceUsdt.toFixed(2)}). Motor APAGADO.`);
+        this.notifier.send(`🛑 <b>DERIV: PISO DE CAPITAL ALCANZADO — BOT APAGADO</b>\n\n` +
+            `• Balance real: <b>$${this.state.balanceUsdt.toFixed(2)} USD</b>\n` +
+            `• Piso protegido: <b>$${this.state.capitalFloorUsdt.toFixed(2)} USD</b>\n\n` +
+            `El bot NO volverá a operar solo. Revisa la situación y reactívalo manualmente con /deriv_reanudar si lo deseas.`).catch(() => { });
+    }
     async setEnvironment(isReal) {
+        if (this.positions.length > 0) {
+            console.warn("[DERIV] No se puede cambiar de entorno con contratos abiertos.");
+            return { success: false, isSimulated: this.state.isSimulated, accountId: this.state.accountId };
+        }
+        const changed = this.state.isSimulated !== !isReal;
+        if (changed) {
+            // Estadísticas separadas por entorno: lo de la demo NO contamina la cuenta real
+            this.state.dailyRealizedPnl = 0;
+            this.state.totalProfitUsdt = 0;
+            this.state.winsCount = 0;
+            this.state.lossesCount = 0;
+            this.state.winRatePct = 0;
+            this.state.consecutiveLosses = 0;
+            this.state.pauseUntil = 0;
+            this.state.startingBalanceUsdt = 0; // se fija con el primer balance recibido
+            this.state.balanceUsdt = 0;
+        }
         this.state.isSimulated = !isReal;
         this.accountId = isReal ? this.realAccountId : this.demoAccountId;
         this.state.accountId = this.accountId;

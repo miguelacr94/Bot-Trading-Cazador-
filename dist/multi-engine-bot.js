@@ -3111,7 +3111,10 @@ export class TrailingMasterBot {
                 return `⏸️ <b>Motor Deriv Sintéticos pausado.</b> No se ejecutarán nuevos contratos. (Sincronizado con DB y panel web)`;
             }
             if (cmd === "/deriv_real" || cmd === "deriv_real") {
-                await this.derivEngine.setEnvironment(true);
+                const envRes = await this.derivEngine.setEnvironment(true);
+                if (!envRes.success) {
+                    return `⚠️ No se puede cambiar a REAL mientras haya un contrato abierto. Intenta en unos segundos.`;
+                }
                 this.saveStrategyControls();
                 return `🔥 <b>Deriv cambiado a ENTORNO REAL</b> 💸\n\n` +
                     `• Cuenta: <code>ROT92884781</code>\n` +
