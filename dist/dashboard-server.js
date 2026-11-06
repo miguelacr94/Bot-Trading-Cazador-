@@ -785,21 +785,47 @@ export class DashboardServer {
                 derivRadar = JSON.parse(fs.readFileSync(f, "utf-8"));
         }
         catch { }
-        const derivTelemetry = {
-            state: derivState,
-            positions: derivPositions,
-            trades: derivTrades.slice(0, 15),
-            radar: derivRadar,
-            stats: {
-                balanceUsdt: derivState.balanceUsdt,
-                totalProfitUsdt: derivState.totalProfitUsdt,
-                dailyProfitUsdt: derivState.dailyRealizedPnl,
-                wins: derivState.winsCount,
-                losses: derivState.lossesCount,
-                winRate: derivState.winRatePct,
-                activePositionsCount: derivPositions.length
+        let derivTelemetry = null;
+        try {
+            if (derivEngine) {
+                const tel = derivEngine.getTelemetry();
+                derivTelemetry = {
+                    state: tel.state,
+                    positions: tel.openPositions,
+                    trades: tel.recentTrades,
+                    radar: tel.radar,
+                    stats: {
+                        balanceUsdt: tel.metrics.balance,
+                        totalProfitUsdt: tel.metrics.totalProfit,
+                        dailyProfitUsdt: tel.metrics.dailyProfit,
+                        wins: tel.metrics.wins,
+                        losses: tel.metrics.losses,
+                        winRate: tel.metrics.winRate,
+                        activePositionsCount: tel.metrics.openPositionsCount
+                    },
+                    operationalStatus: tel.operationalStatus,
+                    connected: tel.connected
+                };
             }
-        };
+        }
+        catch { }
+        if (!derivTelemetry) {
+            derivTelemetry = {
+                state: derivState,
+                positions: derivPositions,
+                trades: derivTrades.slice(0, 15),
+                radar: derivRadar,
+                stats: {
+                    balanceUsdt: derivState.balanceUsdt,
+                    totalProfitUsdt: derivState.totalProfitUsdt,
+                    dailyProfitUsdt: derivState.dailyRealizedPnl,
+                    wins: derivState.winsCount,
+                    losses: derivState.lossesCount,
+                    winRate: derivState.winRatePct,
+                    activePositionsCount: derivPositions.length
+                }
+            };
+        }
         const cash = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
         const total = positionsValue + cash;
         const p = this.pnl;

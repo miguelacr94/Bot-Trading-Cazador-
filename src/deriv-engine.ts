@@ -727,18 +727,37 @@ export class DerivEngine {
     console.log(`[DERIV MULTIPLIER] 🚀 Contrato abierto exitosamente: ${symbol} (${contractType} x${multiplier}) ID: ${contractId}`);
 
     const dirIcon = contractType === "MULTUP" ? "🟢 ALZA (MULTUP)" : "🔴 BAJA (MULTDOWN)";
-    this.notifier.send(
-      `🎯 <b>DERIV MULTIPLICADOR: OPERACIÓN ABIERTA</b> 🚀\n\n` +
-      `• <b>Índice:</b> <code>${symbol}</code>\n` +
-      `• <b>Dirección:</b> ${dirIcon}\n` +
-      `• <b>Multiplicador:</b> <b>x${multiplier}</b>\n` +
-      `• <b>Monto Arriesgado:</b> $${this.state.defaultStake.toFixed(2)} USD\n` +
-      `• <b>Stop-Loss Garantizado:</b> -$${this.state.defaultStopLoss.toFixed(2)} USD\n` +
-      `• <b>Take-Profit Objetivo:</b> +$${this.state.defaultTakeProfit.toFixed(2)} USD\n` +
-      `• <b>Trailing TP:</b> Activa en +$${this.state.trailingTriggerProfit.toFixed(2)} USD (callback: $${this.state.trailingCallback.toFixed(2)})\n\n` +
-      `• <b>Estrategia:</b> <i>${rationale}</i>\n` +
-      `💼 <b>Entorno:</b> ${this.state.isSimulated ? "🧪 DEMO OFICIAL" : "🔥 REAL"}`
-    ).catch(() => {});
+    const isReal = !this.state.isSimulated;
+
+    if (isReal) {
+      this.notifier.send(
+        `🚨🔥 <b>¡ATENCIÓN: OPERACIÓN CON DINERO REAL EN EJECUCIÓN!</b> 🔥🚨\n\n` +
+        `• <b>Entorno:</b> <b>DINERO REAL</b> (Cuenta: <code>${this.accountId}</code>)\n` +
+        `• <b>Saldo Real Actual:</b> <b>$${this.state.balanceUsdt.toFixed(2)} USD</b>\n` +
+        `• <b>Índice:</b> <code>${symbol}</code>\n` +
+        `• <b>Dirección:</b> ${dirIcon}\n` +
+        `• <b>Multiplicador:</b> <b>x${multiplier}</b>\n` +
+        `• <b>Monto en Riesgo:</b> <b>$${this.state.defaultStake.toFixed(2)} USD</b>\n` +
+        `• <b>Stop-Loss Garantizado:</b> <b>-$${this.state.defaultStopLoss.toFixed(2)} USD</b>\n` +
+        `• <b>Take-Profit Objetivo:</b> +$${this.state.defaultTakeProfit.toFixed(2)} USD\n` +
+        `• <b>Trailing TP:</b> Activa en +$${this.state.trailingTriggerProfit.toFixed(2)} USD\n\n` +
+        `• <b>Estrategia:</b> <i>${rationale}</i>\n` +
+        `🛡️ <i>Tu capital está protegido con Stop-Loss automático garantizado sin deslizamiento.</i>`
+      ).catch(() => {});
+    } else {
+      this.notifier.send(
+        `🎯 <b>DERIV MULTIPLICADOR: OPERACIÓN EN EJECUCIÓN</b> 🚀\n\n` +
+        `• <b>Índice:</b> <code>${symbol}</code>\n` +
+        `• <b>Dirección:</b> ${dirIcon}\n` +
+        `• <b>Multiplicador:</b> <b>x${multiplier}</b>\n` +
+        `• <b>Monto Arriesgado:</b> $${this.state.defaultStake.toFixed(2)} USD\n` +
+        `• <b>Stop-Loss Garantizado:</b> -$${this.state.defaultStopLoss.toFixed(2)} USD\n` +
+        `• <b>Take-Profit Objetivo:</b> +$${this.state.defaultTakeProfit.toFixed(2)} USD\n` +
+        `• <b>Trailing TP:</b> Activa en +$${this.state.trailingTriggerProfit.toFixed(2)} USD (callback: $${this.state.trailingCallback.toFixed(2)})\n\n` +
+        `• <b>Estrategia:</b> <i>${rationale}</i>\n` +
+        `💼 <b>Entorno:</b> 🧪 DEMO OFICIAL (Cuenta: <code>${this.accountId}</code>)`
+      ).catch(() => {});
+    }
   }
 
   private handleContractUpdate(poc: any): void {
@@ -813,6 +832,7 @@ export class DerivEngine {
       this.saveState();
 
       // Notificación enriquecida a Telegram
+      const isReal = !this.state.isSimulated;
       const resultIcon = won ? "🏆 ¡OPERACIÓN GANADA!" : "🛑 OPERACIÓN CERRADA (STOP-LOSS)";
       const reasonText = exitReason === "TRAILING_TP"
         ? "🏹 Trailing Take Profit (Capturado en el pico)"
@@ -822,14 +842,19 @@ export class DerivEngine {
         ? "🛡️ Stop-Loss Ejecutado (Pérdida Cortada)"
         : "Salida de mercado";
 
+      const headerPrefix = isReal ? "🔥 [DINERO REAL] " : "";
+      const envNotice = isReal
+        ? `\n💼 <b>Entorno:</b> 🔥 <b>CUENTA REAL</b> (Saldo: $${this.state.balanceUsdt.toFixed(2)} USD)`
+        : `\n💼 <b>Entorno:</b> 🧪 DEMO OFICIAL (DOT95084693)`;
+
       this.notifier.send(
-        `${won ? "🎉" : "⚠️"} <b>DERIV MULTIPLICADOR: ${resultIcon}</b>\n\n` +
+        `${won ? "🎉" : "⚠️"} <b>${headerPrefix}DERIV MULTIPLICADOR: ${resultIcon}</b>\n\n` +
         `• <b>Índice:</b> <code>${trade.symbol}</code> (${trade.contractType} x${trade.multiplier})\n` +
         `• <b>Resultado:</b> <b>${profit >= 0 ? "+" : ""}$${profit.toFixed(2)} USD</b> (${trade.durationSec}s)\n` +
         `• <b>Tipo de Salida:</b> <i>${reasonText}</i>\n` +
         `• <b>PnL del Día:</b> <b>${this.state.dailyRealizedPnl >= 0 ? "+" : ""}$${this.state.dailyRealizedPnl.toFixed(2)} USD</b>\n` +
-        `• <b>Récord:</b> <b>${this.state.winRatePct.toFixed(1)}%</b> (${this.state.winsCount}W / ${this.state.lossesCount}L)\n` +
-        `💼 <b>Entorno:</b> ${this.state.isSimulated ? "🧪 DEMO OFICIAL" : "🔥 REAL"}`
+        `• <b>Récord:</b> <b>${this.state.winRatePct.toFixed(1)}%</b> (${this.state.winsCount}W / ${this.state.lossesCount}L)` +
+        envNotice
       ).catch(() => {});
 
       return;
