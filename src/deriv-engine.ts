@@ -138,13 +138,13 @@ export class DerivEngine {
       lossesCount: 0,
       winRatePct: 0.0,
       defaultStake: 0.5, // $0.50 USD por trade (Ultraconservador: 25+ vidas para balance de $12.78 USD)
-      defaultDurationTicks: 15, // 15 ticks (~20-25 seg) para dar tiempo a la racha de desarrollarse
+      defaultDurationTicks: 10, // 10 ticks (~12-15 seg) para capturar el impulso ágilmente
       maxConcurrentTrades: 1, // Ultra-disciplined execution
       dailyProfitTarget: 3.0, // Meta diaria +$3 USD (recupera cuenta a $15.78 USD)
       dailyStopLoss: 2.0, // Stop-loss diario -$2 USD (blindaje estricto de capital)
       dailyRealizedPnl: 0.0,
       lastDailyReset: new Date().toISOString().split("T")[0],
-      activeSymbols: ["1HZ75V", "1HZ100V", "1HZ50V", "R_75"],
+      activeSymbols: ["1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V", "R_75", "R_100"],
       lastTradeTime: 0,
       consecutiveLosses: 0,
       maxConsecutiveLosses: 3,
@@ -533,8 +533,8 @@ export class DerivEngine {
       return;
     }
 
-    // Cooldown global anti-sobreoperativa: mínimo 90 segundos de descanso entre operaciones
-    if (Date.now() - this.state.lastTradeTime < 90000) {
+    // Cooldown global anti-sobreoperativa: 30 segundos de descanso entre operaciones
+    if (Date.now() - this.state.lastTradeTime < 30000) {
       return;
     }
 
@@ -546,12 +546,12 @@ export class DerivEngine {
       if (Date.now() < cooldown) continue;
 
       const ticks = this.tickHistory.get(symbol);
-      if (!ticks || ticks.length < 30) continue; // Necesitamos al menos 30 ticks para cálculo confiable
+      if (!ticks || ticks.length < 20) continue; // Con 20 ticks ya podemos evaluar con precisión
 
       const signal = this.calculateSignal(symbol, ticks);
       if (signal) {
         console.log(`[DERIV] 🎯 Señal detectada en ${symbol}: ${signal.type} | Razón: ${signal.rationale}`);
-        this.symbolCooldowns.set(symbol, Date.now() + 180000); // 3 min de descanso en el mismo símbolo
+        this.symbolCooldowns.set(symbol, Date.now() + 60000); // 60s de descanso en el mismo símbolo
         await this.executeTrade(symbol, signal.type, signal.rationale);
         break; // Una operación a la vez
       }
@@ -561,63 +561,65 @@ export class DerivEngine {
   private calculateSignal(symbol: string, ticks: TickData[]): { type: "CALL" | "PUT"; rationale: string } | null {
     const quotes = ticks.map((t) => t.quote);
     const n = quotes.length;
-    if (n < 35) return null;
+    if (n < 22) return null;
 
     const currentPrice = quotes[n - 1];
     const prevPrice = quotes[n - 2];
     const prev2Price = quotes[n - 3];
 
-    // Oscilador de Momentum RSI (período 12 ticks)
-    const rsi = this.calculateRSI(quotes, 12);
+    // Oscilador de Momentum RSI (período 10 ticks para rápida reacción)
+    const rsi = this.calculateRSI(quotes, 10);
 
-    // Medias Móviles Institucionales: Rápida (EMA 10) vs Estructura de Tendencia (EMA 30)
-    const emaFast = this.calculateEMA(quotes, 10);
-    const emaSlow = this.calculateEMA(quotes, 30);
-    const isUptrend = emaFast > emaSlow && currentPrice >= emaSlow;
-    const isDowntrend = emaFast < emaSlow && currentPrice <= emaSlow;
+    // Medias Móviles Institucionales: Rápida (EMA 8) vs Estructura de Tendencia (EMA 20)
+    const emaFast = this.calculateEMA(quotes, 8);
+    const emaSlow = this.calculateEMA(quotes, 20);
+    const isUptrend = emaFast > emaSlow;
+    const isDowntrend = emaFast < emaSlow;
 
-    // === ESTRATEGIA 1: RACHA ALCISTA - REBOTE EN SOPORTE (PULLBACK SNIPER) ===
-    // En tendencia alcista consolidada: el precio retrocedió a la EMA rápida para tomar aire y reanuda la subida.
-    if (isUptrend && rsi >= 44 && rsi <= 62) {
-      const touchedFast = quotes.slice(n - 4, n).some((p) => p <= emaFast * 1.0005);
-      const tickGreen = currentPrice > prevPrice; // Giro alcista confirmado en el último tick
-      if (touchedFast && tickGreen) {
-        return {
-          type: "CALL",
-          rationale: `🚀 Racha Alcista: Rebote confirmado sobre EMA(10) con RSI saludable (${rsi.toFixed(1)}) en ${symbol}`
-        };
-      }
-    }
-
-    // === ESTRATEGIA 2: RACHA DE IMPULSO ALCISTA CONTINUO (3 TICKS VERDES + TENDENCIA) ===
-    // Racha sostenida con aceleración limpia: 3 ticks consecutivos al alza en plena tendencia sin agotamiento.
-    if (isUptrend && currentPrice > prevPrice && prevPrice > prev2Price && currentPrice > emaFast) {
-      if (rsi >= 54 && rsi <= 72) {
-        return {
-          type: "CALL",
-          rationale: `🔥 Racha de Impulso: 3 ticks verdes consecutivos sobre EMA 10/30 con RSI en aceleración (${rsi.toFixed(1)}) en ${symbol}`
-        };
-      }
-    }
-
-    // === ESTRATEGIA 3: PISO EXTREMO DE SOBREVENTA (REVERSIÓN DESDE EL FONDO) ===
-    // Si el precio cayó a sobreventa extrema y da el primer tick verde fuerte superando la EMA rápida.
-    if (rsi < 20 && currentPrice > prevPrice && currentPrice > emaFast) {
+    // === ESTRATEGIA 1: RACHA DE IMPULSO ALCISTA (2 ticks verdes sobre EMA8 en tendencia alcista) ===
+    if (isUptrend && currentPrice > prevPrice && prevPrice > prev2Price && currentPrice > emaFast && rsi >= 50 && rsi <= 76) {
       return {
         type: "CALL",
-        rationale: `🎯 Piso Extremo: Rebote desde sobreventa crítica (RSI ${rsi.toFixed(1)} < 20) en ${symbol}`
+        rationale: `🚀 Racha Alcista: Impulso de 2 ticks verdes sobre EMA(8) con RSI saludable (${rsi.toFixed(1)}) en ${symbol}`
       };
     }
 
-    // === ESTRATEGIA 4: TENDENCIA BAJISTA CLARA (SOLO SI EL MERCADO ESTÁ EN CAÍDA FUERTE Y CONTINUA) ===
-    // Prohibido meter PUTs durante subidas. Solo se permite PUT si la caída es absoluta e indiscutible.
-    if (isDowntrend && currentPrice < prevPrice && prevPrice < prev2Price && currentPrice < emaFast) {
-      if (rsi >= 28 && rsi <= 44) {
+    // === ESTRATEGIA 2: REBOTE PULLBACK EN SOPORTE (Retroceso a EMA8 en tendencia alcista) ===
+    if (isUptrend && rsi >= 40 && rsi <= 64) {
+      const touchedFast = quotes.slice(n - 3, n).some((p) => p <= emaFast * 1.0003);
+      if (touchedFast && currentPrice > prevPrice) {
         return {
-          type: "PUT",
-          rationale: `📉 Cascada Bajista: 3 ticks rojos consecutivos bajo EMA 10/30 con RSI (${rsi.toFixed(1)}) en ${symbol}`
+          type: "CALL",
+          rationale: `🎯 Pullback Alcista: Rebote confirmado en soporte EMA(8) con RSI (${rsi.toFixed(1)}) en ${symbol}`
         };
       }
+    }
+
+    // === ESTRATEGIA 3: RACHA CASCADA BAJISTA (2 ticks rojos bajo EMA8 en tendencia bajista) ===
+    if (isDowntrend && currentPrice < prevPrice && prevPrice < prev2Price && currentPrice < emaFast && rsi >= 24 && rsi <= 50) {
+      return {
+        type: "PUT",
+        rationale: `📉 Cascada Bajista: Impulso de 2 ticks rojos bajo EMA(8) con RSI saludable (${rsi.toFixed(1)}) en ${symbol}`
+      };
+    }
+
+    // === ESTRATEGIA 4: REBOTE RESISTENCIA BAJISTA (Retroceso al alza rechazado en EMA8) ===
+    if (isDowntrend && rsi >= 36 && rsi <= 60) {
+      const touchedFast = quotes.slice(n - 3, n).some((p) => p >= emaFast * 0.9997);
+      if (touchedFast && currentPrice < prevPrice) {
+        return {
+          type: "PUT",
+          rationale: `🔻 Rechazo Bajista: Rebote a resistencia EMA(8) rechazado a la baja con RSI (${rsi.toFixed(1)}) en ${symbol}`
+        };
+      }
+    }
+
+    // === ESTRATEGIA 5: PISO EXTREMO DE SOBREVENTA (Reversión rápida desde el fondo) ===
+    if (rsi < 20 && currentPrice > prevPrice) {
+      return {
+        type: "CALL",
+        rationale: `💎 Piso Extremo: Rebote desde sobreventa crítica (RSI ${rsi.toFixed(1)} < 20) en ${symbol}`
+      };
     }
 
     return null;

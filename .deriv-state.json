@@ -10,17 +10,20 @@
   "lossesCount": 4,
   "winRatePct": 33.3,
   "defaultStake": 0.5,
-  "defaultDurationTicks": 15,
+  "defaultDurationTicks": 10,
   "maxConcurrentTrades": 1,
   "dailyProfitTarget": 3,
   "dailyStopLoss": 2,
   "dailyRealizedPnl": 0,
   "lastDailyReset": "2026-11-06",
   "activeSymbols": [
+    "1HZ10V",
+    "1HZ25V",
+    "1HZ50V",
     "1HZ75V",
     "1HZ100V",
-    "1HZ50V",
-    "R_75"
+    "R_75",
+    "R_100"
   ],
   "lastTradeTime": 1793998653000,
   "consecutiveLosses": 0,
