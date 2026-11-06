@@ -411,6 +411,43 @@ export class DerivEngine {
                     readinessReason = `⏳ Mercado lateral o consolidando (${readinessScore}%)`;
                 }
             }
+            // 🎯 CÁLCULO DE RACHA DE TICKS CONSECUTIVOS (STREAK EN VIVO)
+            let consecutiveCount = 0;
+            let consecutiveDirection = "FLAT";
+            if (quotes.length >= 2) {
+                const lastChange = quotes[quotes.length - 1] - quotes[quotes.length - 2];
+                if (lastChange > 0) {
+                    consecutiveDirection = "UP";
+                }
+                else if (lastChange < 0) {
+                    consecutiveDirection = "DOWN";
+                }
+                if (consecutiveDirection !== "FLAT") {
+                    for (let i = quotes.length - 1; i > 0; i--) {
+                        const diff = quotes[i] - quotes[i - 1];
+                        if ((consecutiveDirection === "UP" && diff > 0) || (consecutiveDirection === "DOWN" && diff < 0)) {
+                            consecutiveCount++;
+                        }
+                        else {
+                            break;
+                        }
+                    }
+                }
+            }
+            // Cinta visual de los últimos 12 ticks con su delta exacto y dirección
+            const recentTicks = quotes.slice(-12).map((q, idx, arr) => {
+                const prev = idx > 0 ? arr[idx - 1] : q;
+                const diff = q - prev;
+                const dir = diff > 0 ? "UP" : diff < 0 ? "DOWN" : "FLAT";
+                return {
+                    price: q,
+                    diff: parseFloat(diff.toFixed(4)),
+                    dir
+                };
+            });
+            // Racha requerida para disparo (mínimo 2 ticks consecutivos confirmados en tendencia)
+            const requiredConsecutiveMet = (isUptrend && consecutiveDirection === "UP" && consecutiveCount >= 2) ||
+                (isDowntrend && consecutiveDirection === "DOWN" && consecutiveCount >= 2);
             return {
                 symbol: sym,
                 multiplier: SYMBOL_MULTIPLIERS[sym] || 100,
@@ -427,6 +464,10 @@ export class DerivEngine {
                 statusColor,
                 readinessScore,
                 readinessReason,
+                consecutiveCount,
+                consecutiveDirection,
+                recentTicks,
+                requiredConsecutiveMet,
                 lastUpdate: Date.now()
             };
         });

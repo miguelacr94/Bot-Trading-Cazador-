@@ -2138,6 +2138,70 @@
           scoreBadge = "🔍 EN FORMACIÓN";
         }
 
+        // 🎯 CÁLCULO DE RACHA Y CINTA DE TICKS CONSECUTIVOS
+        const cCount = r.consecutiveCount || 0;
+        const cDir = r.consecutiveDirection || "FLAT";
+        const isStreakUp = cDir === "UP";
+        const isStreakDown = cDir === "DOWN";
+
+        let streakColor = "#94a3b8";
+        let streakBg = "rgba(255, 255, 255, 0.05)";
+        let streakBadge = "0 Ticks (Sin Racha)";
+        let streakRequirementStatus = "⏳ Esperando 2 ticks consecutivos";
+
+        if (isStreakUp) {
+          streakColor = "#34d399";
+          streakBg = "rgba(16, 185, 129, 0.2)";
+          streakBadge = `🔥 ${cCount} Tick${cCount > 1 ? 's' : ''} Verde${cCount > 1 ? 's' : ''} (Alza)`;
+          if (cCount >= 2) {
+            streakRequirementStatus = isBullish
+              ? "✅ Racha de 2+ ticks confirmada con tendencia alcista"
+              : "⚠️ Ticks al alza en contra de tendencia bajista";
+          } else {
+            streakRequirementStatus = "⏳ 1/2 tick al alza (esperando confirmación)";
+          }
+        } else if (isStreakDown) {
+          streakColor = "#f87171";
+          streakBg = "rgba(239, 68, 68, 0.2)";
+          streakBadge = `❄️ ${cCount} Tick${cCount > 1 ? 's' : ''} Rojo${cCount > 1 ? 's' : ''} (Baja)`;
+          if (cCount >= 2) {
+            streakRequirementStatus = !isBullish
+              ? "✅ Racha de 2+ ticks confirmada con tendencia bajista"
+              : "⚠️ Ticks a la baja en contra de tendencia alcista";
+          } else {
+            streakRequirementStatus = "⏳ 1/2 tick a la baja (esperando confirmación)";
+          }
+        }
+
+        const recentTicksList = Array.isArray(r.recentTicks) ? r.recentTicks : [];
+        const tickPills = recentTicksList.length > 0
+          ? recentTicksList.map((t, idx, arr) => {
+              const isLatest = idx === arr.length - 1;
+              const isUp = t.dir === "UP";
+              const isDown = t.dir === "DOWN";
+              const pillColor = isUp ? "#34d399" : isDown ? "#f87171" : "#94a3b8";
+              const pillBg = isUp ? "rgba(16, 185, 129, 0.22)" : isDown ? "rgba(239, 68, 68, 0.22)" : "rgba(255, 255, 255, 0.05)";
+              const pillBorder = isLatest
+                ? "1.5px solid #38bdf8"
+                : isUp
+                ? "1px solid rgba(16, 185, 129, 0.4)"
+                : isDown
+                ? "1px solid rgba(239, 68, 68, 0.4)"
+                : "1px solid rgba(255, 255, 255, 0.1)";
+              const arrow = isUp ? "▲" : isDown ? "▼" : "•";
+              const sign = t.diff > 0 ? "+" : "";
+              const diffFmt = t.diff !== 0 ? `${sign}${t.diff}` : "0.0";
+
+              return `
+                <div title="Precio: ${t.price} | Delta: ${diffFmt}" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-width: 32px; padding: 3px 5px; border-radius: 5px; background: ${pillBg}; border: ${pillBorder}; font-family: monospace; font-size: 9px; font-weight: 700; color: ${pillColor}; ${isLatest ? 'box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);' : ''}">
+                  <span style="font-size: 10px;">${arrow}</span>
+                  <span style="font-size: 8px; opacity: 0.9; margin-top: 1px;">${diffFmt}</span>
+                  ${isLatest ? '<span style="font-size:7px; color:#38bdf8; font-weight:800; letter-spacing:-0.5px;">AHORA</span>' : ''}
+                </div>
+              `;
+            }).join("")
+          : `<span style="font-size:10px; color:#64748b;">Recibiendo primeros ticks...</span>`;
+
         return `
           <div style="background: rgba(255,255,255,0.03); border: 1px solid ${score >= 90 ? 'rgba(16,185,129,0.5)' : 'rgba(255,255,255,0.08)'}; border-radius: 12px; padding: 14px 16px; position: relative; box-shadow: ${score >= 90 ? '0 0 16px rgba(16,185,129,0.15)' : 'none'};">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px;">
@@ -2162,6 +2226,28 @@
               </div>
               <div style="background: rgba(0,0,0,0.4); height: 5px; border-radius: 4px; overflow: hidden; position: relative;">
                 <div style="background: ${rsiColor}; height: 100%; width: ${rsiPct}%; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+
+            <!-- 🎯 CINTA DE TICKS CONSECUTIVOS EN TIEMPO REAL -->
+            <div style="margin-top: 10px; background: rgba(0,0,0,0.45); border-radius: 8px; padding: 8px 11px; border: 1px solid rgba(255,255,255,0.08);">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 11px; margin-bottom: 5px;">
+                <span style="color: #cbd5e1; font-weight: 700; display:flex; align-items:center; gap:5px;">
+                  <span>⏱️ Ticks Consecutivos:</span>
+                </span>
+                <span style="font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 4px; background: ${streakBg}; color: ${streakColor}; border: 1px solid ${streakColor};">
+                  ${streakBadge}
+                </span>
+              </div>
+
+              <!-- Cinta de los últimos ticks -->
+              <div style="display:flex; gap: 4px; overflow-x: auto; padding: 3px 0; scrollbar-width: none;">
+                ${tickPills}
+              </div>
+
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size: 9px; color: #94a3b8; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 4px;">
+                <span>Criterio Gatillo: <b>Mínimo 2 ticks en tendencia</b></span>
+                <span style="color: ${streakColor}; font-weight: 700;">${streakRequirementStatus}</span>
               </div>
             </div>
 
