@@ -1792,6 +1792,14 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
                 derivSt.defaultStake = s;
               }
             }
+            if (data.dailyProfitTarget !== undefined) {
+              const dpt = parseFloat(data.dailyProfitTarget);
+              if (!isNaN(dpt) && dpt > 0) derivSt.dailyProfitTarget = dpt;
+            }
+            if (data.dailyStopLoss !== undefined) {
+              const dsl = parseFloat(data.dailyStopLoss);
+              if (!isNaN(dsl) && dsl > 0) derivSt.dailyStopLoss = dsl;
+            }
             if (data.reset) {
               derivSt.totalProfitUsdt = 0;
               derivSt.winsCount = 0;

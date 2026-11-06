@@ -57,11 +57,11 @@ export class DerivEngine {
             winsCount: 0,
             lossesCount: 0,
             winRatePct: 0.0,
-            defaultStake: 10.0, // $10 USD per trade
+            defaultStake: 1.0, // $1 USD per trade (Gestión de riesgo para cuentas micro de $15 USD)
             defaultDurationTicks: 5, // 5 ticks (~10 seconds)
             maxConcurrentTrades: 1, // Ultra-disciplined execution
-            dailyProfitTarget: 50.0,
-            dailyStopLoss: 30.0,
+            dailyProfitTarget: 4.0, // Meta diaria +$4 USD (+27% sobre cuenta de $15 USD)
+            dailyStopLoss: 3.0, // Stop-loss diario -$3 USD (blindaje de $12 USD de capital)
             dailyRealizedPnl: 0.0,
             lastDailyReset: new Date().toISOString().split("T")[0],
             activeSymbols: ["1HZ75V", "1HZ100V", "1HZ50V", "R_75"],
@@ -680,6 +680,18 @@ export class DerivEngine {
     setStake(stake) {
         if (stake >= 0.35 && stake <= 100) {
             this.state.defaultStake = stake;
+            this.saveState();
+        }
+    }
+    setDailyProfitTarget(target) {
+        if (target > 0) {
+            this.state.dailyProfitTarget = target;
+            this.saveState();
+        }
+    }
+    setDailyStopLoss(stopLoss) {
+        if (stopLoss > 0) {
+            this.state.dailyStopLoss = stopLoss;
             this.saveState();
         }
     }

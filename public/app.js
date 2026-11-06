@@ -1957,6 +1957,11 @@
       dailyPnlEl.style.color = pnl >= 0 ? "#34d399" : "#f87171";
     }
 
+    const dailySubEl = document.getElementById("kpi-deriv-daily-sub");
+    if (dailySubEl) {
+      dailySubEl.textContent = `Meta diaria: +$${(st.dailyProfitTarget || 4).toFixed(2)} | Stop: -$${(st.dailyStopLoss || 3).toFixed(2)}`;
+    }
+
     const wrEl = document.getElementById("kpi-deriv-winrate");
     if (wrEl) wrEl.textContent = (stats.winRate || 0).toFixed(1) + "%";
 

@@ -3037,11 +3037,14 @@ export class TrailingMasterBot {
                     `• <b>Duración Contrato:</b> ${st.defaultDurationTicks} ticks (~10 seg)\n` +
                     `• <b>Operaciones Abiertas:</b> ${tel.openPositions.length} / ${st.maxConcurrentTrades}\n` +
                     `• <b>Efectividad (Win Rate):</b> ${st.winRatePct.toFixed(1)}% (${st.winsCount}W / ${st.lossesCount}L)\n` +
-                    `• <b>Ganancia Neta Hoy:</b> ${st.dailyRealizedPnl >= 0 ? "+" : ""}$${st.dailyRealizedPnl.toFixed(2)} USD (Meta: +$${st.dailyProfitTarget})\n` +
+                    `• <b>Ganancia Neta Hoy:</b> ${st.dailyRealizedPnl >= 0 ? "+" : ""}$${st.dailyRealizedPnl.toFixed(2)} USD (Meta: +$${st.dailyProfitTarget.toFixed(2)} USD)\n` +
+                    `• <b>Stop-Loss Diario:</b> -$${st.dailyStopLoss.toFixed(2)} USD (Blindaje de Capital)\n` +
                     `• <b>PnL Histórico Acumulado:</b> <b>${pnlSign}$${st.totalProfitUsdt.toFixed(2)} USD</b>\n` +
                     `• <b>Índices en Radar:</b> ${st.activeSymbols.join(", ")}\n\n` +
                     `👉 Ver historial: /deriv_trades\n` +
-                    `👉 Cambiar monto: <code>/deriv_stake 15</code>\n` +
+                    `👉 Cambiar monto: <code>/deriv_stake 1</code>\n` +
+                    `👉 Ajustar meta diaria: <code>/deriv_meta 4</code>\n` +
+                    `👉 Ajustar stop diario: <code>/deriv_stop 3</code>\n` +
                     `👉 Pausar: /deriv_pausa | Reanudar: /deriv_reanudar`;
                 return msg;
             }
@@ -3064,10 +3067,26 @@ export class TrailingMasterBot {
             if (cmd === "/deriv_stake" || cmd === "deriv_stake") {
                 const amount = parseFloat(arg1);
                 if (isNaN(amount) || amount < 0.35 || amount > 100) {
-                    return `⚠️ Monto inválido. El stake debe ser entre $0.35 y $100 USD.\nEjemplo: <code>/deriv_stake 10</code>`;
+                    return `⚠️ Monto inválido. El stake debe ser entre $0.35 y $100 USD.\nEjemplo: <code>/deriv_stake 1</code>`;
                 }
                 this.derivEngine.setStake(amount);
                 return `✅ <b>Monto por operación en Deriv actualizado a: $${amount.toFixed(2)} USD</b>`;
+            }
+            if (cmd === "/deriv_meta" || cmd === "deriv_meta" || cmd === "/deriv_target" || cmd === "deriv_target") {
+                const amount = parseFloat(arg1);
+                if (isNaN(amount) || amount <= 0) {
+                    return `⚠️ Monto inválido. Ingresa un valor en USD.\nEjemplo: <code>/deriv_meta 4</code>`;
+                }
+                this.derivEngine.setDailyProfitTarget(amount);
+                return `🎯 <b>Meta diaria de ganancias Deriv actualizada a: +$${amount.toFixed(2)} USD</b>\nAl alcanzarla, el bot asegurará ganancias y pausará hasta el día siguiente.`;
+            }
+            if (cmd === "/deriv_stop" || cmd === "deriv_stop" || cmd === "/deriv_stoploss" || cmd === "deriv_stoploss") {
+                const amount = parseFloat(arg1);
+                if (isNaN(amount) || amount <= 0) {
+                    return `⚠️ Monto inválido. Ingresa un valor positivo en USD.\nEjemplo: <code>/deriv_stop 3</code>`;
+                }
+                this.derivEngine.setDailyStopLoss(amount);
+                return `🛑 <b>Stop-Loss diario Deriv actualizado a: -$${amount.toFixed(2)} USD</b>\nSi las pérdidas del día alcanzan este límite, el motor se pausará automáticamente para proteger tu capital.`;
             }
             if (cmd === "/deriv_pausa" || cmd === "deriv_pausa") {
                 this.derivEngine.setEnabled(false);
