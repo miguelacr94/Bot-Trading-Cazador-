@@ -40,12 +40,12 @@ export class FuturesEngine {
             enabled: false,
             virtualBalanceUsdt: 100.0,
             startingBalanceUsdt: 100.0,
-            maxActivePositions: 2,
-            defaultMarginPerTrade: 15.0,
-            defaultLeverage: 3,
+            maxActivePositions: 3,
+            defaultMarginPerTrade: 30.0,
+            defaultLeverage: 7,
             leverageMode: "dynamic",
-            stopLossPct: 1.2,
-            trailingTriggerPct: 1.2,
+            stopLossPct: 1.5,
+            trailingTriggerPct: 1.5,
             trailingCallbackPct: 0.35,
             lastScanTime: 0
         };
@@ -193,17 +193,17 @@ export class FuturesEngine {
     // Apalancamiento Dinámico Cuantitativo según Volatilidad Institucional
     getDynamicLeverage(symbol) {
         if (this.state.leverageMode !== "dynamic")
-            return this.state.defaultLeverage || 3;
+            return this.state.defaultLeverage || 7;
         const levMap = {
-            BTCUSDT: 4, // Gigante, baja volatilidad -> 4x
-            ETHUSDT: 4, // Gigante, baja volatilidad -> 4x
-            SOLUSDT: 3, // Volatilidad media -> 3x
-            BNBUSDT: 3, // Volatilidad media -> 3x
-            XRPUSDT: 3, // Volatilidad media -> 3x
-            AVAXUSDT: 2, // Mayor volatilidad -> 2x
-            DOGEUSDT: 2 // Mayor volatilidad -> 2x
+            BTCUSDT: 10, // Gigante, baja volatilidad -> 10x
+            ETHUSDT: 10, // Gigante, baja volatilidad -> 10x
+            SOLUSDT: 8, // Volatilidad media-alta -> 8x
+            BNBUSDT: 8, // Volatilidad media -> 8x
+            XRPUSDT: 7, // Volatilidad media -> 7x
+            AVAXUSDT: 6, // Mayor volatilidad -> 6x
+            DOGEUSDT: 5 // Mayor volatilidad -> 5x
         };
-        return levMap[symbol] !== undefined ? levMap[symbol] : 3;
+        return levMap[symbol] !== undefined ? levMap[symbol] : 7;
     }
     getState() {
         return this.state;
