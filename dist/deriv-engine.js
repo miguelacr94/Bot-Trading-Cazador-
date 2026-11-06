@@ -61,11 +61,11 @@ export class DerivEngine {
             winsCount: 0,
             lossesCount: 0,
             winRatePct: 0.0,
-            defaultStake: 1.0, // $1 USD per trade (Gestión de riesgo para cuentas micro de $15 USD)
-            defaultDurationTicks: 5, // 5 ticks (~10 seconds)
+            defaultStake: 0.5, // $0.50 USD por trade (Ultraconservador: 25+ vidas para balance de $12.78 USD)
+            defaultDurationTicks: 15, // 15 ticks (~20-25 seg) para dar tiempo a la racha de desarrollarse
             maxConcurrentTrades: 1, // Ultra-disciplined execution
-            dailyProfitTarget: 4.0, // Meta diaria +$4 USD (+27% sobre cuenta de $15 USD)
-            dailyStopLoss: 3.0, // Stop-loss diario -$3 USD (blindaje de $12 USD de capital)
+            dailyProfitTarget: 3.0, // Meta diaria +$3 USD (recupera cuenta a $15.78 USD)
+            dailyStopLoss: 2.0, // Stop-loss diario -$2 USD (blindaje estricto de capital)
             dailyRealizedPnl: 0.0,
             lastDailyReset: new Date().toISOString().split("T")[0],
             activeSymbols: ["1HZ75V", "1HZ100V", "1HZ50V", "R_75"],
@@ -457,41 +457,57 @@ export class DerivEngine {
     calculateSignal(symbol, ticks) {
         const quotes = ticks.map((t) => t.quote);
         const n = quotes.length;
+        if (n < 35)
+            return null;
         const currentPrice = quotes[n - 1];
-        // Cálculo de RSI (período 9 ticks)
-        const rsi = this.calculateRSI(quotes, 9);
-        // Cálculo de EMAs para cruces institucionales (8 vs 20 ticks)
-        const emaFast = this.calculateEMA(quotes, 8);
-        const emaSlow = this.calculateEMA(quotes, 20);
-        // Estrategia 1: Sniper de Reversión Extrema (Alta Efectividad)
-        // Sobreventa extrema (< 22) + giro alcista
-        if (rsi < 22 && currentPrice > emaFast) {
+        const prevPrice = quotes[n - 2];
+        const prev2Price = quotes[n - 3];
+        // Oscilador de Momentum RSI (período 12 ticks)
+        const rsi = this.calculateRSI(quotes, 12);
+        // Medias Móviles Institucionales: Rápida (EMA 10) vs Estructura de Tendencia (EMA 30)
+        const emaFast = this.calculateEMA(quotes, 10);
+        const emaSlow = this.calculateEMA(quotes, 30);
+        const isUptrend = emaFast > emaSlow && currentPrice >= emaSlow;
+        const isDowntrend = emaFast < emaSlow && currentPrice <= emaSlow;
+        // === ESTRATEGIA 1: RACHA ALCISTA - REBOTE EN SOPORTE (PULLBACK SNIPER) ===
+        // En tendencia alcista consolidada: el precio retrocedió a la EMA rápida para tomar aire y reanuda la subida.
+        if (isUptrend && rsi >= 44 && rsi <= 62) {
+            const touchedFast = quotes.slice(n - 4, n).some((p) => p <= emaFast * 1.0005);
+            const tickGreen = currentPrice > prevPrice; // Giro alcista confirmado en el último tick
+            if (touchedFast && tickGreen) {
+                return {
+                    type: "CALL",
+                    rationale: `🚀 Racha Alcista: Rebote confirmado sobre EMA(10) con RSI saludable (${rsi.toFixed(1)}) en ${symbol}`
+                };
+            }
+        }
+        // === ESTRATEGIA 2: RACHA DE IMPULSO ALCISTA CONTINUO (3 TICKS VERDES + TENDENCIA) ===
+        // Racha sostenida con aceleración limpia: 3 ticks consecutivos al alza en plena tendencia sin agotamiento.
+        if (isUptrend && currentPrice > prevPrice && prevPrice > prev2Price && currentPrice > emaFast) {
+            if (rsi >= 54 && rsi <= 72) {
+                return {
+                    type: "CALL",
+                    rationale: `🔥 Racha de Impulso: 3 ticks verdes consecutivos sobre EMA 10/30 con RSI en aceleración (${rsi.toFixed(1)}) en ${symbol}`
+                };
+            }
+        }
+        // === ESTRATEGIA 3: PISO EXTREMO DE SOBREVENTA (REVERSIÓN DESDE EL FONDO) ===
+        // Si el precio cayó a sobreventa extrema y da el primer tick verde fuerte superando la EMA rápida.
+        if (rsi < 20 && currentPrice > prevPrice && currentPrice > emaFast) {
             return {
                 type: "CALL",
-                rationale: `Sniper Sobreventa Extrema (RSI ${rsi.toFixed(1)} < 22) + Giro alcista en ${symbol}`
+                rationale: `🎯 Piso Extremo: Rebote desde sobreventa crítica (RSI ${rsi.toFixed(1)} < 20) en ${symbol}`
             };
         }
-        // Sobrecompra extrema (> 78) + giro bajista
-        if (rsi > 78 && currentPrice < emaFast) {
-            return {
-                type: "PUT",
-                rationale: `Sniper Sobrecompra Extrema (RSI ${rsi.toFixed(1)} > 78) + Giro bajista en ${symbol}`
-            };
-        }
-        // Estrategia 2: Golden / Death Cross con Filtro de Tendencia Fuerte
-        const prevFast = this.calculateEMA(quotes.slice(0, n - 1), 8);
-        const prevSlow = this.calculateEMA(quotes.slice(0, n - 1), 20);
-        if (prevFast <= prevSlow && emaFast > emaSlow && rsi >= 48 && rsi <= 60) {
-            return {
-                type: "CALL",
-                rationale: `Golden Cross Confirmado (EMA 8 cruzó EMA 20 al alza) con RSI en aceleración (${rsi.toFixed(1)})`
-            };
-        }
-        if (prevFast >= prevSlow && emaFast < emaSlow && rsi >= 40 && rsi <= 52) {
-            return {
-                type: "PUT",
-                rationale: `Death Cross Confirmado (EMA 8 cruzó EMA 20 a la baja) con RSI en aceleración (${rsi.toFixed(1)})`
-            };
+        // === ESTRATEGIA 4: TENDENCIA BAJISTA CLARA (SOLO SI EL MERCADO ESTÁ EN CAÍDA FUERTE Y CONTINUA) ===
+        // Prohibido meter PUTs durante subidas. Solo se permite PUT si la caída es absoluta e indiscutible.
+        if (isDowntrend && currentPrice < prevPrice && prevPrice < prev2Price && currentPrice < emaFast) {
+            if (rsi >= 28 && rsi <= 44) {
+                return {
+                    type: "PUT",
+                    rationale: `📉 Cascada Bajista: 3 ticks rojos consecutivos bajo EMA 10/30 con RSI (${rsi.toFixed(1)}) en ${symbol}`
+                };
+            }
         }
         return null;
     }

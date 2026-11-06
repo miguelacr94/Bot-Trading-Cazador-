@@ -3505,11 +3505,11 @@
               • <b>4. Ganancia Rápida:</b> Payout ~88% a 95% por trade ganada (+$8.80 a +$9.50 por cada $10 arriesgados).
             </div>
             <div class="strategy-pills-row">
-              <span class="strat-pill logic">⏱️ 5 Ticks (~10s)</span>
+              <span class="strat-pill logic">⏱️ 15 Ticks (~20s)</span>
               <span class="strat-pill logic" style="border-color: #f87171; color: #f87171;">🎰 Volatility 75 / 100</span>
-              <span class="strat-pill logic" id="pill-deriv-stake">💵 Stake: $1.00 USD</span>
-              <span class="strat-pill target" id="pill-deriv-target">🎯 Meta: +$4.00 USD/día</span>
-              <span class="strat-pill risk" id="pill-deriv-stop">🛑 SL Máx: -$3.00 USD/día</span>
+              <span class="strat-pill logic" id="pill-deriv-stake">💵 Stake: $0.50 USD</span>
+              <span class="strat-pill target" id="pill-deriv-target">🎯 Meta: +$3.00 USD/día</span>
+              <span class="strat-pill risk" id="pill-deriv-stop">🛑 SL Máx: -$2.00 USD/día</span>
               <span class="strat-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">🧪 Demo Oficial DOT</span>
             </div>
           </div>
@@ -3523,17 +3523,17 @@
             <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
               <div style="display:flex; align-items:center; gap:5px;">
                 <span style="font-size:11px; font-weight:600; color:#cbd5e1;">💵 Stake:</span>
-                <input type="number" id="input-deriv-stake" min="0.35" max="100" step="0.5" value="1" style="width:55px; background:#0f172a; border:1px solid #334155; color:#38bdf8; font-weight:700; font-size:12px; text-align:center; padding:3px 5px; border-radius:4px;">
+                <input type="number" id="input-deriv-stake" min="0.35" max="100" step="0.5" value="0.5" style="width:55px; background:#0f172a; border:1px solid #334155; color:#38bdf8; font-weight:700; font-size:12px; text-align:center; padding:3px 5px; border-radius:4px;">
                 <span style="font-size:10px; color:#94a3b8;">USD</span>
               </div>
               <div style="display:flex; align-items:center; gap:5px;">
                 <span style="font-size:11px; font-weight:600; color:#cbd5e1;">🎯 Meta:</span>
-                <input type="number" id="input-deriv-target" min="1" max="1000" step="1" value="4" style="width:55px; background:#0f172a; border:1px solid #334155; color:#34d399; font-weight:700; font-size:12px; text-align:center; padding:3px 5px; border-radius:4px;">
+                <input type="number" id="input-deriv-target" min="1" max="1000" step="1" value="3" style="width:55px; background:#0f172a; border:1px solid #334155; color:#34d399; font-weight:700; font-size:12px; text-align:center; padding:3px 5px; border-radius:4px;">
                 <span style="font-size:10px; color:#94a3b8;">USD</span>
               </div>
               <div style="display:flex; align-items:center; gap:5px;">
                 <span style="font-size:11px; font-weight:600; color:#cbd5e1;">🛑 Stop:</span>
-                <input type="number" id="input-deriv-stop" min="1" max="1000" step="1" value="3" style="width:55px; background:#0f172a; border:1px solid #334155; color:#f87171; font-weight:700; font-size:12px; text-align:center; padding:3px 5px; border-radius:4px;">
+                <input type="number" id="input-deriv-stop" min="1" max="1000" step="1" value="2" style="width:55px; background:#0f172a; border:1px solid #334155; color:#f87171; font-weight:700; font-size:12px; text-align:center; padding:3px 5px; border-radius:4px;">
                 <span style="font-size:10px; color:#94a3b8;">USD</span>
               </div>
               <button id="btn-save-deriv-config" type="button" style="background:rgba(16,185,129,0.25); border:1px solid rgba(16,185,129,0.5); color:#34d399; font-size:11px; font-weight:700; padding:5px 12px; border-radius:5px; cursor:pointer;">💾 Guardar en DB</button>
@@ -3875,7 +3875,7 @@
             <button id="btn-toggle-deriv-panel" type="button" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.5); color:#f87171; font-size:11px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer;">⏸️ Pausar / Reanudar</button>
             <div style="display:flex; align-items:center; gap:6px; background:#0f172a; padding:4px 8px; border-radius:6px; border:1px solid #334155;">
               <span style="font-size:11px; color:#94a3b8;">Stake:</span>
-              <input type="number" id="input-deriv-stake-tab" min="0.35" max="100" step="0.5" value="1" style="width:45px; background:transparent; border:none; color:#38bdf8; font-weight:700; font-size:12px; text-align:center;">
+              <input type="number" id="input-deriv-stake-tab" min="0.35" max="100" step="0.5" value="0.5" style="width:45px; background:transparent; border:none; color:#38bdf8; font-weight:700; font-size:12px; text-align:center;">
               <span style="font-size:10px; color:#94a3b8;">USD</span>
             </div>
           </div>

@@ -1477,9 +1477,9 @@
     document.getElementById("toggle-deriv")?.addEventListener("change", (e) => toggleStrategy("deriv", false, e.target.checked));
 
     document.getElementById("btn-save-deriv-config")?.addEventListener("click", async () => {
-      const stake = parseFloat(document.getElementById("input-deriv-stake")?.value || "1");
-      const dailyProfitTarget = parseFloat(document.getElementById("input-deriv-target")?.value || "4");
-      const dailyStopLoss = parseFloat(document.getElementById("input-deriv-stop")?.value || "3");
+      const stake = parseFloat(document.getElementById("input-deriv-stake")?.value || "0.5");
+      const dailyProfitTarget = parseFloat(document.getElementById("input-deriv-target")?.value || "3");
+      const dailyStopLoss = parseFloat(document.getElementById("input-deriv-stop")?.value || "2");
       const enabled = document.getElementById("toggle-deriv")?.checked ?? true;
       try {
         const res = await fetch("/api/deriv/config", {
