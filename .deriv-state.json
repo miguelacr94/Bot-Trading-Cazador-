@@ -4,7 +4,7 @@
   "accountId": "ROT92884781",
   "appId": "34SYxCtiDvBW9lnMHcb4f",
   "balanceUsdt": 12.78,
-  "startingBalanceUsdt": 15.00,
+  "startingBalanceUsdt": 15,
   "totalProfitUsdt": -2.22,
   "winsCount": 2,
   "lossesCount": 4,
@@ -14,7 +14,7 @@
   "maxConcurrentTrades": 1,
   "dailyProfitTarget": 3,
   "dailyStopLoss": 2,
-  "dailyRealizedPnl": 0.0,
+  "dailyRealizedPnl": 0,
   "lastDailyReset": "2026-11-06",
   "activeSymbols": [
     "1HZ75V",
@@ -27,6 +27,6 @@
   "maxConsecutiveLosses": 3,
   "cooldownMinutes": 30,
   "pauseUntil": 0,
-  "capitalFloorUsdt": 10.0,
+  "capitalFloorUsdt": 10,
   "maxStakePctOfBalance": 10
 }
