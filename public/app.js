@@ -1494,6 +1494,22 @@
       }
     });
 
+    document.getElementById("btn-toggle-deriv-panel")?.addEventListener("click", async () => {
+      const curChecked = document.getElementById("toggle-deriv")?.checked ?? true;
+      const next = !curChecked;
+      await toggleStrategy("deriv", false, next);
+    });
+
+    document.getElementById("input-deriv-stake-tab")?.addEventListener("change", async (e) => {
+      const stake = parseFloat(e.target.value || "10");
+      const enabled = document.getElementById("toggle-deriv")?.checked ?? true;
+      await fetch("/api/deriv/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stake, enabled })
+      });
+    });
+
     document.getElementById("btn-save-widegap-amount")?.addEventListener("click", async () => {
       const val = parseInt(document.getElementById("input-widegap-amount")?.value || "50", 10);
       try {
@@ -1889,6 +1905,163 @@
           <td><span style="font-size:11px; padding:2px 6px; border-radius:4px; background:${t.exitReason === 'TRAILING_TP' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}; color:${t.exitReason === 'TRAILING_TP' ? '#34d399' : '#f87171'};">${t.exitReason}</span></td>
         </tr>`;
       }).join("");
+    }
+  }
+
+  function renderDerivTelemetry(deriv) {
+    if (!deriv) return;
+
+    const st = deriv.state || {};
+    const stats = deriv.stats || {};
+    const radar = deriv.radar || [];
+    const positions = deriv.positions || [];
+    const trades = deriv.trades || [];
+
+    // 1. Badge y Conexión
+    const wsBadge = document.getElementById("deriv-ws-badge");
+    if (wsBadge) {
+      const isConn = st.enabled !== false;
+      wsBadge.textContent = isConn ? "🟢 CONECTADO (DEMO)" : "🔴 PAUSADO";
+      wsBadge.style.color = isConn ? "#34d399" : "#f87171";
+      wsBadge.style.background = isConn ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+      wsBadge.style.borderColor = isConn ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)";
+    }
+
+    const tabBadge = document.getElementById("tab-deriv-badge");
+    if (tabBadge) {
+      tabBadge.textContent = positions.length > 0 ? `⚡ ${positions.length} ACTIVO` : (st.enabled ? "🟢 EN VIVO" : "⏸️ PAUSA");
+      tabBadge.style.color = st.enabled ? (positions.length > 0 ? "#38bdf8" : "#f87171") : "#94a3b8";
+    }
+
+    const btnToggle = document.getElementById("btn-toggle-deriv-panel");
+    if (btnToggle) {
+      btnToggle.textContent = st.enabled ? "⏸️ Pausar Motor" : "▶️ Reanudar Motor";
+      btnToggle.style.color = st.enabled ? "#f87171" : "#34d399";
+      btnToggle.style.borderColor = st.enabled ? "rgba(239, 68, 68, 0.5)" : "rgba(16, 185, 129, 0.5)";
+      btnToggle.style.background = st.enabled ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.2)";
+    }
+
+    const stakeInput = document.getElementById("input-deriv-stake-tab");
+    if (stakeInput && !stakeInput.matches(":focus") && st.defaultStake) {
+      stakeInput.value = st.defaultStake;
+    }
+
+    // 2. KPIs
+    const balEl = document.getElementById("kpi-deriv-balance");
+    if (balEl) balEl.textContent = "$" + (stats.balanceUsdt || 10000).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USD";
+
+    const dailyPnlEl = document.getElementById("kpi-deriv-daily-pnl");
+    if (dailyPnlEl) {
+      const pnl = stats.dailyProfitUsdt || 0;
+      dailyPnlEl.textContent = (pnl >= 0 ? "+" : "") + "$" + pnl.toFixed(2) + " USD";
+      dailyPnlEl.style.color = pnl >= 0 ? "#34d399" : "#f87171";
+    }
+
+    const wrEl = document.getElementById("kpi-deriv-winrate");
+    if (wrEl) wrEl.textContent = (stats.winRate || 0).toFixed(1) + "%";
+
+    const tcEl = document.getElementById("kpi-deriv-trades-count");
+    if (tcEl) tcEl.textContent = `${stats.wins || 0} Ganadas / ${stats.losses || 0} Perdidas`;
+
+    const actCountEl = document.getElementById("kpi-deriv-active-count");
+    if (actCountEl) actCountEl.textContent = `${positions.length} / ${st.maxConcurrentTrades || 1}`;
+
+    // 3. Radar de Índices Cuantitativos en Vivo
+    const radarGrid = document.getElementById("deriv-radar-grid");
+    if (radarGrid && radar.length > 0) {
+      radarGrid.innerHTML = radar.map((r) => {
+        const isBullish = r.trend === "BULLISH";
+        const rsiColor = r.rsi < 28 ? "#34d399" : r.rsi > 72 ? "#f87171" : "#38bdf8";
+        const rsiPct = Math.min(100, Math.max(0, r.rsi));
+        return `
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 16px; position: relative;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 8px;">
+              <div>
+                <div style="font-size: 14px; font-weight: 800; color: #f1f5f9; display:flex; align-items:center; gap:6px;">
+                  <span>${r.name || r.symbol}</span>
+                  <span style="font-size: 9px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 1px 6px; border-radius: 4px;">${r.symbol}</span>
+                </div>
+                <div style="font-size: 10px; color: #94a3b8; margin-top:2px;">${r.ticksBuffered || 0} ticks analizados</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 16px; font-weight: 800; color: #38bdf8; font-family: monospace;">${(r.price || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</div>
+                <div style="font-size: 10px; color: ${isBullish ? '#34d399' : '#f87171'}; font-weight: 700;">${isBullish ? '▲ EMA 5 > 15' : '▼ EMA 5 < 15'}</div>
+              </div>
+            </div>
+
+            <!-- RSI Bar & Gauge -->
+            <div style="margin-top: 10px;">
+              <div style="display:flex; justify-content:space-between; font-size: 11px; margin-bottom: 3px;">
+                <span style="color: #94a3b8;">RSI (9 ticks): <b style="color: ${rsiColor};">${r.rsi}</b></span>
+                <span style="font-size: 10px; color: ${r.statusColor || '#94a3b8'}; font-weight: 700;">${r.statusBadge || 'NEUTRAL'}</span>
+              </div>
+              <div style="background: rgba(0,0,0,0.4); height: 6px; border-radius: 4px; overflow: hidden; position: relative;">
+                <div style="background: ${rsiColor}; height: 100%; width: ${rsiPct}%; transition: width 0.3s ease;"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size: 9px; color: #64748b; margin-top: 2px;">
+                <span>0 (Sobreventa)</span>
+                <span>50</span>
+                <span>100 (Sobrecompra)</span>
+              </div>
+            </div>
+
+            <!-- Live Status Text -->
+            <div style="margin-top: 10px; font-size: 11px; color: ${r.statusColor || '#cbd5e1'}; font-weight: 600; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+              ${r.status || '🔍 Analizando flujo de ticks'}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // 4. Contratos Activos Table
+    const activeTbody = document.getElementById("deriv-active-tbody");
+    if (activeTbody) {
+      if (positions.length === 0) {
+        activeTbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:16px; color:#64748b;">No hay contratos abiertos en este momento. El bot está escaneando los índices para la próxima oportunidad óptima.</td></tr>`;
+      } else {
+        activeTbody.innerHTML = positions.map((p) => {
+          const isCall = p.contractType === "CALL";
+          const pnl = p.currentProfit || 0;
+          return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+              <td style="padding: 10px; color:#38bdf8; font-family: monospace;">${p.contractId}</td>
+              <td style="font-weight: 700;">${p.symbol}</td>
+              <td><span style="background: ${isCall ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}; color: ${isCall ? '#34d399' : '#f87171'}; padding: 2px 8px; border-radius: 4px; font-weight: 700;">${isCall ? '🟢 ALZA (CALL)' : '🔴 BAJA (PUT)'}</span></td>
+              <td>$${(p.stake || 10).toFixed(2)} USD</td>
+              <td style="font-family: monospace;">${p.entrySpot || '--'}</td>
+              <td style="color: #34d399; font-weight: 700;">+$${((p.payoutExpected || 18.8) - (p.stake || 10)).toFixed(2)} USD</td>
+              <td>${p.duration} ticks (~10s)</td>
+              <td><span style="color:#38bdf8; font-weight:700;">⏳ En Curso (${(pnl >= 0 ? '+' : '') + pnl.toFixed(2)})</span></td>
+            </tr>
+          `;
+        }).join("");
+      }
+    }
+
+    // 5. Historial de Operaciones Table
+    const tradesTbody = document.getElementById("deriv-trades-tbody");
+    if (tradesTbody) {
+      if (trades.length === 0) {
+        tradesTbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:16px; color:#64748b;">Aún no hay operaciones cerradas.</td></tr>`;
+      } else {
+        tradesTbody.innerHTML = trades.slice(0, 15).map((t) => {
+          const isWon = t.status === "won";
+          return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+              <td style="padding: 10px; color:#94a3b8; font-family: monospace;">${t.contractId || '--'}</td>
+              <td style="font-weight: 700;">${t.symbol}</td>
+              <td><span style="background: ${t.contractType === 'CALL' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}; color: ${t.contractType === 'CALL' ? '#34d399' : '#f87171'}; padding: 2px 6px; border-radius: 4px; font-weight: 700;">${t.contractType}</span></td>
+              <td>$${(t.stake || 0).toFixed(2)}</td>
+              <td>$${(t.payout || 0).toFixed(2)}</td>
+              <td style="color: ${isWon ? '#34d399' : '#f87171'}; font-weight: 800;">${(t.profit >= 0 ? '+' : '')}$${(t.profit || 0).toFixed(2)} USD</td>
+              <td>${t.durationSec || 5}s</td>
+              <td><span style="background: ${isWon ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}; color: ${isWon ? '#34d399' : '#f87171'}; padding: 2px 8px; border-radius: 4px; font-weight: 700;">${isWon ? '🏆 GANADA' : '❌ PERDIDA'}</span></td>
+              <td style="color:#94a3b8; font-size:10px; max-width:250px;">${t.rationale || 'Algoritmo Cuantitativo'}</td>
+            </tr>
+          `;
+        }).join("");
+      }
     }
   }
 
@@ -2539,6 +2712,7 @@
         renderFuturesTelemetry(d.futuresTelemetry);
       }
       if (d.derivTelemetry) {
+        renderDerivTelemetry(d.derivTelemetry);
         const dt = d.derivTelemetry;
         const st = dt.state || {};
         const stats = dt.stats || {};

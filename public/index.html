@@ -2706,6 +2706,11 @@
         <span class="tab-label">Futuros USD-M</span>
         <span class="tab-badge purple" id="tab-futures-badge">🧪 SIM</span>
       </button>
+      <button class="main-tab-btn" data-tab="tab-deriv">
+        <span class="tab-icon">🎰</span>
+        <span class="tab-label">Deriv Sintéticos</span>
+        <span class="tab-badge" id="tab-deriv-badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🧪 DEMO</span>
+      </button>
       <button class="main-tab-btn" data-tab="tab-analysis">
         <span class="tab-icon">📊</span>
         <span class="tab-label">Análisis & Sesiones COT</span>
@@ -3838,8 +3843,139 @@
     </div>
     </div>
 
+    <!-- TAB 4: DERIV SINTÉTICOS (ÍNDICES DE VOLATILIDAD 24/7) -->
+    <div class="tab-content" id="tab-deriv">
+      <div class="futures-dev-panel" id="deriv-dev-panel" style="margin-top: 24px; background: rgba(18, 20, 29, 0.95); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 14px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+        <div class="futures-dev-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:16px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:24px;">🎰</span>
+            <div>
+              <div style="font-size:16px; font-weight:800; color:#f87171; display:flex; align-items:center; gap:8px;">
+                <span>TELEMETRÍA EN VIVO: DERIV SINTÉTICOS</span>
+                <span id="deriv-ws-badge" style="font-size:10px; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:2px 8px; border-radius:12px; font-weight:700;">🟢 CONECTADO</span>
+              </div>
+              <div style="font-size:11px; color:#94a3b8; margin-top:2px;">
+                Cuenta Demo Oficial: <code id="deriv-acc-id" style="color:#38bdf8;">DOT95084693</code> | 100% Aislado de Binance Spot & Futuros
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <button id="btn-toggle-deriv-panel" type="button" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.5); color:#f87171; font-size:11px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer;">⏸️ Pausar / Reanudar</button>
+            <div style="display:flex; align-items:center; gap:6px; background:#0f172a; padding:4px 8px; border-radius:6px; border:1px solid #334155;">
+              <span style="font-size:11px; color:#94a3b8;">Stake:</span>
+              <input type="number" id="input-deriv-stake-tab" min="0.35" max="100" step="1" value="10" style="width:45px; background:transparent; border:none; color:#38bdf8; font-weight:700; font-size:12px; text-align:center;">
+              <span style="font-size:10px; color:#94a3b8;">USD</span>
+            </div>
+          </div>
+        </div>
 
-    <!-- TAB 4: ANÁLISIS CUANTITATIVO & SESIONES -->
+        <!-- 4 KPI Cards -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:16px;">
+          <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:12px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600;">💼 BALANCE DEMO (DERIV)</div>
+            <div style="font-size:20px; font-weight:800; color:#38bdf8; margin-top:4px;" id="kpi-deriv-balance">$10,000.00 USD</div>
+            <div style="font-size:10px; color:#64748b; margin-top:2px;">Saldo virtual oficial Deriv</div>
+          </div>
+
+          <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:12px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600;">🎯 PNL NETO HOY</div>
+            <div style="font-size:20px; font-weight:800; color:#34d399; margin-top:4px;" id="kpi-deriv-daily-pnl">+$0.00 USD</div>
+            <div style="font-size:10px; color:#64748b; margin-top:2px;">Meta diaria: +$50 | Stop: -$30</div>
+          </div>
+
+          <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:12px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600;">🏆 EFECTIVIDAD (WIN RATE)</div>
+            <div style="font-size:20px; font-weight:800; color:#c084fc; margin-top:4px;" id="kpi-deriv-winrate">0.0%</div>
+            <div style="font-size:10px; color:#64748b; margin-top:2px;" id="kpi-deriv-trades-count">0 Ganadas / 0 Perdidas</div>
+          </div>
+
+          <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:12px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600;">⚡ CONTRATOS ACTIVOS</div>
+            <div style="font-size:20px; font-weight:800; color:#f87171; margin-top:4px;" id="kpi-deriv-active-count">0 / 1</div>
+            <div style="font-size:10px; color:#64748b; margin-top:2px;">Duración fija: 5 ticks (~10s)</div>
+          </div>
+        </div>
+
+        <!-- RADAR CUANTITATIVO DE ÍNDICES SINTÉTICOS EN TIEMPO REAL -->
+        <div style="margin-top:20px;">
+          <div style="font-size:13px; font-weight:700; color:#f1f5f9; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span>📡 RADAR EN VIVO: COTIZACIÓN, RSI Y TENDENCIA DE ÍNDICES</span>
+              <span style="font-size:10px; color:#34d399; font-weight:400;">● Flujo de ticks cada segundo</span>
+            </div>
+            <span style="font-size:11px; color:#94a3b8;">Filtro: RSI &lt; 24 (CALL) | RSI &gt; 76 (PUT)</span>
+          </div>
+
+          <div id="deriv-radar-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:14px;">
+            <!-- Radar cards injected dynamically -->
+          </div>
+        </div>
+
+        <!-- EXPLICACIÓN DIDÁCTICA DE CÓMO FUNCIONA -->
+        <div style="margin-top:20px; background:rgba(239,68,68,0.05); border:1px solid rgba(239,68,68,0.2); border-radius:10px; padding:14px 18px;">
+          <div style="font-size:12px; font-weight:700; color:#f87171; margin-bottom:6px;">💡 ¿CÓMO FUNCIONA Y CÓMO GANA DINERO EL BOT EN DERIV?</div>
+          <div style="font-size:11px; color:#cbd5e1; line-height:1.6;">
+            • <b>1. Mercado Sintético 24/7:</b> Los índices como <code>Volatility 75</code> generan ticks de precio continuos calculados criptográficamente. No dependen de noticias, bancos ni horarios de cierre.<br>
+            • <b>2. Señales Matemáticas:</b> El bot calcula un <b>RSI ultra rápido de 9 ticks</b> y dos medias móviles <b>EMA(5) y EMA(15)</b> en tiempo real.<br>
+            • <b>3. Ejecución Instantánea:</b> Si el RSI cae a sobreventa extrema (&lt;24) con giro alcista, compra un contrato <b>ALZA (CALL)</b> de 5 ticks (~10s). Si sube a sobrecompra extrema (&gt;76) con giro bajista, compra <b>BAJA (PUT)</b>.<br>
+            • <b>4. Ganancia en 10 segundos:</b> Si tras los 5 ticks el precio subió (en CALL) o bajó (en PUT), Deriv paga de inmediato el <b>88% al 95% de beneficio neto</b> (arriesgas $10 USD y recibes <b>+$8.80 a +$9.50 USD de ganancia limpia</b>).
+          </div>
+        </div>
+
+        <!-- TABLA DE CONTRATOS ABIERTOS -->
+        <div style="margin-top:20px;">
+          <div style="font-size:13px; font-weight:700; color:#f1f5f9; margin-bottom:8px;">⚡ CONTRATO ACTIVO EN EJECUCIÓN</div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:11px; text-align:left;">
+              <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:#94a3b8;">
+                  <th style="padding:8px;">ID Contrato</th>
+                  <th>Índice</th>
+                  <th>Tipo</th>
+                  <th>Stake (Arriesgado)</th>
+                  <th>Entrada (Spot)</th>
+                  <th>Ganancia Estimada</th>
+                  <th>Duración</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="deriv-active-tbody">
+                <tr><td colspan="8" style="text-align:center; padding:16px; color:#64748b;">No hay contratos abiertos en este momento. El bot está escaneando los índices para la próxima oportunidad óptima.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TABLA DE HISTORIAL DE OPERACIONES -->
+        <div style="margin-top:20px;">
+          <div style="font-size:13px; font-weight:700; color:#f1f5f9; margin-bottom:8px;">📜 HISTORIAL DE OPERACIONES EN DERIV</div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:11px; text-align:left;">
+              <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:#94a3b8;">
+                  <th style="padding:8px;">ID Contrato</th>
+                  <th>Índice</th>
+                  <th>Tipo</th>
+                  <th>Monto (Stake)</th>
+                  <th>Pago Recibido</th>
+                  <th>Beneficio Neto</th>
+                  <th>Duración</th>
+                  <th>Resultado</th>
+                  <th>Motivo Algorítmico</th>
+                </tr>
+              </thead>
+              <tbody id="deriv-trades-tbody">
+                <tr><td colspan="9" style="text-align:center; padding:16px; color:#64748b;">Aún no hay operaciones cerradas.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- TAB 5: ANÁLISIS CUANTITATIVO & SESIONES -->
     <div class="tab-content" id="tab-analysis">
       <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 22px; margin-bottom: 24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px;">

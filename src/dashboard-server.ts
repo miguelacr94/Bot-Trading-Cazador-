@@ -824,10 +824,17 @@ export class DashboardServer {
       if (fs.existsSync(f)) derivTrades = JSON.parse(fs.readFileSync(f, "utf-8"));
     } catch {}
 
+    let derivRadar: any[] = [];
+    try {
+      const f = path.resolve(process.cwd(), ".deriv-radar.json");
+      if (fs.existsSync(f)) derivRadar = JSON.parse(fs.readFileSync(f, "utf-8"));
+    } catch {}
+
     const derivTelemetry = {
       state: derivState,
       positions: derivPositions,
       trades: derivTrades.slice(0, 15),
+      radar: derivRadar,
       stats: {
         balanceUsdt: derivState.balanceUsdt,
         totalProfitUsdt: derivState.totalProfitUsdt,

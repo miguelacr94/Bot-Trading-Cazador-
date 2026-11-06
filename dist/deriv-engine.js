@@ -1,12 +1,21 @@
 import WebSocket from "ws";
 import * as fs from "fs";
 import * as path from "path";
+import * as dotenv from "dotenv";
 import { TelegramNotifier } from "./notifier.js";
+dotenv.config();
+try {
+    const envPath = path.resolve(process.cwd(), ".env");
+    if (fs.existsSync(envPath))
+        dotenv.config({ path: envPath });
+}
+catch { }
 export class DerivEngine {
     notifier;
     stateFile;
     positionsFile;
     tradesFile;
+    radarFile;
     state;
     positions = [];
     trades = [];
@@ -27,6 +36,7 @@ export class DerivEngine {
         this.stateFile = path.resolve(cwd, ".deriv-state.json");
         this.positionsFile = path.resolve(cwd, ".deriv-positions.json");
         this.tradesFile = path.resolve(cwd, ".deriv-trades.json");
+        this.radarFile = path.resolve(cwd, ".deriv-radar.json");
         this.apiKey = process.env.DERIV_KEY || "";
         this.appId = process.env.DERIV_APP_ID || "";
         this.accountId = process.env.DERIV_ACCOUNT_ID || "";
@@ -54,7 +64,7 @@ export class DerivEngine {
             dailyStopLoss: 30.0,
             dailyRealizedPnl: 0.0,
             lastDailyReset: new Date().toISOString().split("T")[0],
-            activeSymbols: ["R_75", "R_100", "1HZ75V"],
+            activeSymbols: ["1HZ75V", "1HZ100V", "1HZ50V", "R_75"],
             lastTradeTime: 0
         };
         try {
@@ -116,6 +126,12 @@ export class DerivEngine {
     }
     // --- ENGINE LIFECYCLE ---
     async start() {
+        if (!this.apiKey)
+            this.apiKey = process.env.DERIV_KEY || "";
+        if (!this.appId)
+            this.appId = process.env.DERIV_APP_ID || "";
+        if (!this.accountId)
+            this.accountId = process.env.DERIV_ACCOUNT_ID || "";
         if (!this.apiKey || !this.appId || !this.accountId) {
             console.warn("[DERIV] Credenciales de Deriv incompletas en .env. Motor pausado.");
             return;
@@ -188,10 +204,10 @@ export class DerivEngine {
                 this.isConnecting = false;
                 // Suscribirse a balance
                 this.send({ balance: 1, subscribe: 1 });
-                // Suscribirse a los símbolos activos
+                // Suscribirse a los símbolos activos con streaming continuo
                 for (const sym of this.state.activeSymbols) {
-                    this.send({ ticks: sym });
-                    console.log(`[DERIV] Suscrito a ticks de ${sym}`);
+                    this.send({ ticks: sym, subscribe: 1 });
+                    console.log(`[DERIV] Suscrito a streaming continuo de ticks de ${sym}`);
                 }
                 // Mantener vivo con ping cada 30s
                 if (this.pingInterval)
@@ -261,6 +277,7 @@ export class DerivEngine {
             console.error("[DERIV] Error procesando mensaje WS:", e);
         }
     }
+    lastRadarSave = 0;
     storeTick(symbol, quote, epoch) {
         if (!this.tickHistory.has(symbol)) {
             this.tickHistory.set(symbol, []);
@@ -270,6 +287,79 @@ export class DerivEngine {
         if (list.length > 100) {
             list.shift(); // Guardar los últimos 100 ticks
         }
+        const now = Date.now();
+        if (now - this.lastRadarSave > 1500) {
+            this.lastRadarSave = now;
+            this.saveRadar();
+        }
+    }
+    saveRadar() {
+        try {
+            const radar = this.getRadar();
+            fs.writeFileSync(this.radarFile, JSON.stringify(radar, null, 2), "utf8");
+        }
+        catch { }
+    }
+    getRadar() {
+        return this.state.activeSymbols.map((sym) => {
+            const ticks = this.tickHistory.get(sym) || [];
+            const quotes = ticks.map((t) => t.quote);
+            const curPrice = quotes.length > 0 ? quotes[quotes.length - 1] : 0;
+            const prevPrice = quotes.length > 1 ? quotes[quotes.length - 2] : curPrice;
+            const rsi = quotes.length >= 10 ? this.calculateRSI(quotes, 9) : 50;
+            const emaFast = quotes.length >= 5 ? this.calculateEMA(quotes, 5) : curPrice;
+            const emaSlow = quotes.length >= 15 ? this.calculateEMA(quotes, 15) : curPrice;
+            const trend = emaFast >= emaSlow ? "BULLISH" : "BEARISH";
+            const changeTickPct = prevPrice > 0 ? ((curPrice - prevPrice) / prevPrice) * 100 : 0;
+            let status = "🔍 Analizando Ticks en Vivo";
+            let statusBadge = "NEUTRAL";
+            let statusColor = "#94a3b8";
+            if (rsi < 24) {
+                status = "🟢 Sobreventa Extrema: Preparando CALL (Alza)";
+                statusBadge = "CALL READY";
+                statusColor = "#34d399";
+            }
+            else if (rsi > 76) {
+                status = "🔴 Sobrecompra Extrema: Preparando PUT (Baja)";
+                statusBadge = "PUT READY";
+                statusColor = "#f87171";
+            }
+            else if (trend === "BULLISH") {
+                status = "Tendencia Micro-Alcista (EMA 5 > EMA 15)";
+                statusBadge = "MOMENTUM UP";
+                statusColor = "#38bdf8";
+            }
+            else {
+                status = "Tendencia Micro-Bajista (EMA 5 < EMA 15)";
+                statusBadge = "MOMENTUM DOWN";
+                statusColor = "#fbbf24";
+            }
+            const friendlyName = sym === "1HZ75V"
+                ? "Volatility 75 (1s)"
+                : sym === "1HZ100V"
+                    ? "Volatility 100 (1s)"
+                    : sym === "1HZ50V"
+                        ? "Volatility 50 (1s)"
+                        : sym === "R_75"
+                            ? "Volatility 75 Index"
+                            : sym;
+            return {
+                symbol: sym,
+                name: friendlyName,
+                price: curPrice,
+                prevPrice,
+                changeTickPct: parseFloat(changeTickPct.toFixed(4)),
+                rsi: parseFloat(rsi.toFixed(1)),
+                emaFast: parseFloat(emaFast.toFixed(2)),
+                emaSlow: parseFloat(emaSlow.toFixed(2)),
+                trend,
+                ticksBuffered: quotes.length,
+                status,
+                statusBadge,
+                statusColor,
+                lastUpdate: Date.now()
+            };
+        });
     }
     // --- STRATEGY ENGINE & QUANTITATIVE SIGNALS ---
     async runStrategyAnalysis() {
@@ -553,6 +643,7 @@ export class DerivEngine {
         return {
             connected: this.isConnected,
             state: this.state,
+            radar: this.getRadar(),
             openPositions: this.positions,
             recentTrades: this.trades.slice(0, 20),
             metrics: {
