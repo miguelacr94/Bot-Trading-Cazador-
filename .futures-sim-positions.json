@@ -1,1 +1,44 @@
-[]
+[
+  {
+    "id": "sim_fut_1794012625000",
+    "symbol": "ETHUSDT",
+    "side": "SHORT",
+    "entryPrice": 2239.1420820000003,
+    "marginUsdt": 30,
+    "leverage": 10,
+    "notionalUsdt": 300,
+    "contracts": 0.13397988560513327,
+    "stopLossPrice": 2272.72921323,
+    "stopLossPct": 1.5,
+    "trailingTriggerPrice": 2205.5549507700002,
+    "trailingTriggerPct": 1.5,
+    "trailingCallbackPct": 0.35,
+    "trailingActive": false,
+    "peakPrice": 2239.1420820000003,
+    "trailingStopPrice": null,
+    "openTime": 1794012625000,
+    "status": "OPEN",
+    "rationale": "🔻 Rechazo en tendencia bajista 1H (<EMA50): RSI 15M (54.2) con mecha de rechazo del 57%"
+  },
+  {
+    "id": "sim_fut_1794012627429",
+    "symbol": "AVAXUSDT",
+    "side": "LONG",
+    "entryPrice": 8.323664399999998,
+    "marginUsdt": 30,
+    "leverage": 6,
+    "notionalUsdt": 180,
+    "contracts": 21.625090987570335,
+    "stopLossPrice": 8.198809433999998,
+    "stopLossPct": 1.5,
+    "trailingTriggerPrice": 8.448519365999998,
+    "trailingTriggerPct": 1.5,
+    "trailingCallbackPct": 0.35,
+    "trailingActive": false,
+    "peakPrice": 8.323664399999998,
+    "trailingStopPrice": null,
+    "openTime": 1794012627429,
+    "status": "OPEN",
+    "rationale": "🔥 Suelo y Absorción 15M: RSI (35.5) con mecha compradora del 56%"
+  }
+]

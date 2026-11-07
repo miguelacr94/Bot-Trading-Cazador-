@@ -527,33 +527,45 @@ export class FuturesEngine {
         // Obtener Funding Rate para protección
         const fundingRate = await this.fetchFundingRate(symbol);
         // --- EVALUACIÓN DE SEÑAL LONG ---
-        const isMacroBullish = curPrice1h >= ema50_1h * 0.995; // Macro neutral a alcista
-        const isRsiOversold = rsi15m <= 42; // Captura cualquier sobreventa válida (incluso < 30)
-        const isLowerAbsorption = lowerWickRatio >= minWickRequired;
+        // Caso A: Tendencia macro alcista (> EMA50 1H) + retroceso a soporte (RSI <= 45)
+        // Caso B: Capitulación y Absorción en el suelo (RSI <= 38 + mecha compradora >= 35%)
+        const isMacroBullish = curPrice1h >= ema50_1h * 0.995;
+        const isFloorAbsorption = rsi15m <= 38 && lowerWickRatio >= minWickRequired;
+        const isTrendPullback = isMacroBullish && rsi15m <= 45 && lowerWickRatio >= (minWickRequired * 0.8);
         const isFundingSafeForLong = fundingRate < 0.0003;
         // Cooldown check
         const cd = this.symbolCooldowns.get(symbol);
         const inCooldown = cd && Date.now() < cd;
-        if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && isMacroBullish && isRsiOversold && isLowerAbsorption && isFundingSafeForLong) {
-            const rationale = `Macro 1H alcista (>EMA50) + RSI 15M (${rsi15m.toFixed(1)}) en sobreventa con mecha de absorción del ${(lowerWickRatio * 100).toFixed(0)}%`;
+        if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && (isFloorAbsorption || isTrendPullback) && isFundingSafeForLong) {
+            const rationale = isFloorAbsorption
+                ? `🔥 Suelo y Absorción 15M: RSI (${rsi15m.toFixed(1)}) con mecha compradora del ${(lowerWickRatio * 100).toFixed(0)}%`
+                : `📈 Pullback en tendencia 1H (>EMA50) + rebote en soporte 15M (RSI: ${rsi15m.toFixed(1)})`;
             await this.openPosition(symbol, "LONG", curPrice, rationale);
         }
         // --- EVALUACIÓN DE SEÑAL SHORT ---
-        const isMacroBearish = curPrice1h <= ema50_1h * 1.005; // Macro neutral a bajista
-        const isRsiOverbought = rsi15m >= 60; // Captura sobrecompra
-        const isUpperRejection = upperWickRatio >= minWickRequired;
+        // Caso A: Tendencia macro bajista (< EMA50 1H) + rebote agotado (RSI >= 50 + mecha de rechazo superior >= 35%)
+        // Caso B: Sobrecompra extrema (RSI >= 65 + mecha de rechazo)
+        const isMacroBearish = curPrice1h <= ema50_1h * 1.005;
+        const isBearishRejection = isMacroBearish && rsi15m >= 50 && upperWickRatio >= minWickRequired;
+        const isOverboughtReversal = rsi15m >= 65 && upperWickRatio >= minWickRequired;
         const isFundingSafeForShort = fundingRate > -0.0003;
-        if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && isMacroBearish && isRsiOverbought && isUpperRejection && isFundingSafeForShort) {
-            const rationale = `Macro 1H bajista (<EMA50) + RSI 15M (${rsi15m.toFixed(1)}) en sobrecompra con rechazo superior del ${(upperWickRatio * 100).toFixed(0)}%`;
+        if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && (isBearishRejection || isOverboughtReversal) && isFundingSafeForShort) {
+            const rationale = isBearishRejection
+                ? `🔻 Rechazo en tendencia bajista 1H (<EMA50): RSI 15M (${rsi15m.toFixed(1)}) con mecha de rechazo del ${(upperWickRatio * 100).toFixed(0)}%`
+                : `⚡ Giro desde sobrecompra extrema (RSI: ${rsi15m.toFixed(1)}) con rechazo superior del ${(upperWickRatio * 100).toFixed(0)}%`;
             await this.openPosition(symbol, "SHORT", curPrice, rationale);
         }
         let statusText = "VIGILANDO";
         if (hasPosition)
             statusText = `POSICIÓN VIVA (${hasPosition.side} ${hasPosition.leverage}x)`;
-        else if (isRsiOversold)
-            statusText = "🟢 ZONA ABSORCIÓN ALCISTA";
-        else if (isRsiOverbought)
-            statusText = "🔴 ZONA RECHAZO BAJISTA";
+        else if (isFloorAbsorption || isTrendPullback)
+            statusText = "🟢 ENTRADA LONG CONFIRMADA";
+        else if (isBearishRejection || isOverboughtReversal)
+            statusText = "🔴 ENTRADA SHORT CONFIRMADA";
+        else if (rsi15m <= 40)
+            statusText = "🟢 ZONA SOBREVENTA (Buscando Suelo)";
+        else if (isMacroBearish && rsi15m >= 48)
+            statusText = "🔴 ZONA REBOTE (Vigilando Rechazo)";
         else if (inCooldown)
             statusText = "⏳ EN COOLDOWN";
         return {
