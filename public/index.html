@@ -3415,62 +3415,82 @@
             </div>
           </div>
 
-          <!-- Presupuesto In-Card -->
-          <div class="strategy-bottom-budget">
-            <div class="strategy-alloc-row">
-              <span class="alloc-badge" id="alloc-futures-badge" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4);">10% Asignado</span>
-              <span class="alloc-amount" id="alloc-futures-amount">-- USDT (Margen)</span>
-              <div class="strategy-slider-ctrl">
-                <span>Base:</span> <b class="slider-ctrl-val" style="color: #a78bfa;" id="slider-futures-val">10%</b>
+          <!-- Panel de Control y Parámetros In-Card -->
+          <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(139, 92, 246, 0.25); border-radius:10px; padding:14px; margin-top:14px;">
+            <!-- Fila 1: Modo de Operación y Estado de Encendido -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:12px; font-weight:700; color:#e2e8f0;">Modo:</span>
+                <div style="display:inline-flex; border:1px solid rgba(255,255,255,0.15); border-radius:6px; overflow:hidden;">
+                  <button id="btn-fut-mode-sim" type="button" style="background:#8b5cf6; color:#fff; border:none; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer;" title="Opera con balance virtual sin riesgo">🧪 Simulación (Paper)</button>
+                  <button id="btn-fut-mode-real" type="button" style="background:transparent; color:#94a3b8; border:none; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer;" title="Opera con balance real de tu cuenta Binance Futuros">⚡ Dinero Real</button>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:11px; color:#94a3b8; font-weight:600;">Interruptor Motor:</span>
+                <span id="card-fut-power-badge" style="font-size:10px; font-weight:800; padding:3px 8px; border-radius:6px; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4);">🟢 ENCENDIDO</span>
               </div>
             </div>
-            <input type="range" class="strat-budget-slider" id="slider-futures" min="0" max="100" step="5" value="15">
-            <div class="alloc-bar-bg"><div class="alloc-bar-fill" id="alloc-futures-bar" style="width:10%; background: linear-gradient(90deg, #8b5cf6, #a78bfa);"></div></div>
-          </div>
 
-          <!-- Selector Simulado / Real y Margen Estándar -->
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-top:14px; background:rgba(255,255,255,0.02); padding:10px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:12px; font-weight:600; color:#e2e8f0;">Modo de Operación:</span>
-              <div style="display:inline-flex; border:1px solid rgba(255,255,255,0.15); border-radius:6px; overflow:hidden;">
-                <button id="btn-fut-mode-sim" type="button" style="background:#8b5cf6; color:#fff; border:none; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer;">🧪 Simulación (Paper)</button>
-                <button id="btn-fut-mode-real" type="button" style="background:transparent; color:#94a3b8; border:none; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer;">⚡ Dinero Real</button>
+            <!-- Fila 2: Inputs de Parámetros Cuantitativos -->
+            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:12px;">
+              <!-- Depósito / Capital Inicial -->
+              <div style="display:flex; align-items:center; gap:5px;">
+                <span style="font-size:11px; font-weight:700; color:#38bdf8;" title="Depósito o capital con el que deseas arrancar la prueba">💰 Depósito/Cap:</span>
+                <input type="number" id="input-fut-capital" min="1" max="10000" step="1" value="10" style="width:58px; background:#0f172a; border:1px solid #38bdf8; color:#38bdf8; font-weight:700; font-size:12px; text-align:center; padding:4px 5px; border-radius:5px;" title="Saldo con el que arranca la prueba">
+                <span style="font-size:10px; color:#94a3b8; font-weight:600;">USDT</span>
               </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:12px; font-weight:600; color:#e2e8f0;">💼 Capital Base:</span>
-                <input type="number" id="input-fut-capital" min="10" max="10000" step="10" value="100" style="width:65px; background:#0f172a; border:1px solid #334155; color:#38bdf8; font-weight:700; font-size:13px; text-align:center; padding:4px 6px; border-radius:4px;">
-                <span style="font-size:11px; color:#94a3b8;">USDT</span>
+
+              <!-- Margen por Orden -->
+              <div style="display:flex; align-items:center; gap:5px;">
+                <span style="font-size:11px; font-weight:700; color:#34d399;" title="Margen asignado a cada operación">⚡ Margen/Orden:</span>
+                <input type="number" id="input-fut-margin" min="1" max="500" step="0.5" value="2.5" style="width:52px; background:#0f172a; border:1px solid #34d399; color:#34d399; font-weight:700; font-size:12px; text-align:center; padding:4px 5px; border-radius:5px;" title="Margen por trade">
+                <span style="font-size:10px; color:#94a3b8; font-weight:600;">USDT</span>
               </div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:12px; font-weight:600; color:#e2e8f0;">⚡ Margen/Trade:</span>
-                <input type="number" id="input-fut-margin" min="5" max="500" step="5" value="15" style="width:55px; background:#0f172a; border:1px solid #334155; color:#34d399; font-weight:700; font-size:13px; text-align:center; padding:4px 6px; border-radius:4px;">
-                <span style="font-size:11px; color:#94a3b8;">USDT</span>
-              </div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:12px; font-weight:600; color:#e2e8f0;">🎯 Apalancamiento:</span>
-                <select id="select-fut-lev" style="background:#0f172a; border:1px solid #334155; color:#a78bfa; font-weight:700; font-size:11px; padding:4px 8px; border-radius:4px;">
-                  <option value="dynamic" selected>🤖 Dinámico (4x BTC/ETH / 3x Alts)</option>
+
+              <!-- Selector de Apalancamiento -->
+              <div style="display:flex; align-items:center; gap:5px;">
+                <span style="font-size:11px; font-weight:700; color:#c4b5fd;">🎯 Lev:</span>
+                <select id="select-fut-lev" style="background:#0f172a; border:1px solid #a78bfa; color:#c4b5fd; font-weight:700; font-size:11px; padding:4px 6px; border-radius:5px;">
+                  <option value="fixed_3" selected>Fijo 3x (Recomendado $10)</option>
+                  <option value="fixed_5">Fijo 5x (Francotirador)</option>
                   <option value="fixed_2">Fijo 2x (Ultra Seguro)</option>
-                  <option value="fixed_3">Fijo 3x (Balanceado)</option>
-                  <option value="fixed_4">Fijo 4x (Rápido)</option>
+                  <option value="dynamic">🤖 Dinámico Institucional (3x-5x)</option>
+                  <option value="fixed_7">Fijo 7x (Agresivo)</option>
+                  <option value="fixed_10">Fijo 10x</option>
                 </select>
               </div>
-              <button id="btn-save-fut-config" type="button" style="background:rgba(16,185,129,0.25); border:1px solid rgba(16,185,129,0.5); color:#34d399; font-size:11px; font-weight:700; padding:5px 14px; border-radius:5px; cursor:pointer;">💾 Aplicar Cambios</button>
-              <button id="btn-reset-fut-100" type="button" style="background:rgba(56,189,248,0.2); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; font-size:11px; font-weight:700; padding:5px 12px; border-radius:5px; cursor:pointer;" title="Reiniciar simulación con $100 USDT limpios">🔄 Iniciar con $100 USDT</button>
+
+              <!-- SL y TP Inputs -->
+              <div style="display:flex; align-items:center; gap:4px;">
+                <span style="font-size:11px; font-weight:700; color:#f87171;">🛡️ SL:</span>
+                <input type="number" id="input-fut-sl" min="0.5" max="10" step="0.1" value="1.5" style="width:45px; background:#0f172a; border:1px solid #f87171; color:#f87171; font-weight:700; font-size:11px; text-align:center; padding:4px 3px; border-radius:5px;">
+                <span style="font-size:10px; color:#94a3b8;">%</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <span style="font-size:11px; font-weight:700; color:#34d399;">🏹 TP:</span>
+                <input type="number" id="input-fut-tp" min="0.5" max="20" step="0.1" value="1.8" style="width:45px; background:#0f172a; border:1px solid #34d399; color:#34d399; font-weight:700; font-size:11px; text-align:center; padding:4px 3px; border-radius:5px;">
+                <span style="font-size:10px; color:#94a3b8;">%</span>
+              </div>
+
+              <!-- Botones de Acción -->
+              <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+                <button id="btn-save-fut-config" type="button" style="background:#10b981; color:#fff; border:none; font-size:11px; font-weight:700; padding:5px 12px; border-radius:6px; cursor:pointer; box-shadow:0 0 10px rgba(16,185,129,0.3);">💾 Guardar Parámetros</button>
+                <button id="btn-reset-fut-custom" type="button" style="background:rgba(239, 68, 68, 0.2); border:1px solid #ef4444; color:#f87171; font-size:11px; font-weight:700; padding:5px 12px; border-radius:6px; cursor:pointer;" title="Borrar historial y arrancar prueba limpia desde cero">🧹 Reiniciar Registros & Balance</button>
+              </div>
             </div>
           </div>
 
-          <div class="strat-sugg-box" id="status-box-futures" style="border-left: 3px solid #8b5cf6;">
+          <!-- Status Box Telemetría en Vivo In-Card -->
+          <div class="strat-sugg-box" id="status-box-futures" style="border-left: 3px solid #8b5cf6; margin-top:12px;">
             <div class="strat-sugg-header">
               <div class="strat-sugg-header-left">
-                <span>🧪 Centinela Futuros:</span>
-                <span class="sugg-status-tag" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">MODO PAPER TRADING</span>
+                <span>⚡ Estado Motor Futuros:</span>
+                <span class="sugg-status-tag" id="futures-card-tag-status" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">MODO PAPER TRADING (ACTIVO)</span>
               </div>
             </div>
             <div class="strat-sugg-desc" id="futures-live-status">
-              💼 Balance Simulado: <b>30.00 USDT</b> | Posiciones abiertas: <b>0 / 2</b> | Riesgo: <b>-$0.12 USDT máx</b>
+              💼 Balance: <b>$10.00 USDT</b> | PnL Hoy: <b>+0.000 USDT</b> | Win Rate: <b>0.0% (0W / 0L)</b> | Posiciones: <b>0 / 3</b>
             </div>
           </div>
         </div>

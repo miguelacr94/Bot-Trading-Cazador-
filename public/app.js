@@ -1577,7 +1577,7 @@
     initCompactUI();
     initAutonomousStrategyControls();
 
-  // Controladores del Laboratorio de Futuros (lab-...)
+  // Controladores Sincronizados de Futuros (Card en Pestaña 1 y Laboratorio en Pestaña 3)
   const labModeSim = document.getElementById("lab-fut-mode-sim");
   const labModeReal = document.getElementById("lab-fut-mode-real");
   const labCapital = document.getElementById("lab-fut-capital");
@@ -1588,8 +1588,66 @@
   const labSaveBtn = document.getElementById("lab-btn-save-cfg");
   const labResetBtn = document.getElementById("lab-btn-reset-custom") || document.getElementById("lab-btn-reset-100");
 
+  const btnModeSim = document.getElementById("btn-fut-mode-sim");
+  const btnModeReal = document.getElementById("btn-fut-mode-real");
+  const inputFutCapital = document.getElementById("input-fut-capital");
+  const inputFutMargin = document.getElementById("input-fut-margin");
+  const selectFutLev = document.getElementById("select-fut-lev");
+  const inputFutSl = document.getElementById("input-fut-sl");
+  const inputFutTp = document.getElementById("input-fut-tp");
+  const btnSaveFutCfg = document.getElementById("btn-save-fut-config");
+  const btnResetFutCustom = document.getElementById("btn-reset-fut-custom") || document.getElementById("btn-reset-fut-100");
+
+  function syncFuturesInputs(source) {
+    if (source === "card") {
+      if (labCapital && inputFutCapital) labCapital.value = inputFutCapital.value;
+      if (labMargin && inputFutMargin) labMargin.value = inputFutMargin.value;
+      if (labLev && selectFutLev) labLev.value = selectFutLev.value;
+      if (labSl && inputFutSl) labSl.value = inputFutSl.value;
+      if (labTp && inputFutTp) labTp.value = inputFutTp.value;
+    } else if (source === "lab") {
+      if (inputFutCapital && labCapital) inputFutCapital.value = labCapital.value;
+      if (inputFutMargin && labMargin) inputFutMargin.value = labMargin.value;
+      if (selectFutLev && labLev) selectFutLev.value = labLev.value;
+      if (inputFutSl && labSl) inputFutSl.value = labSl.value;
+      if (inputFutTp && labTp) inputFutTp.value = labTp.value;
+    }
+  }
+
+  function setFuturesModeUI(isSim) {
+    // UI Card
+    if (btnModeSim && btnModeReal) {
+      if (isSim) {
+        btnModeSim.style.background = "#8b5cf6";
+        btnModeSim.style.color = "#fff";
+        btnModeReal.style.background = "transparent";
+        btnModeReal.style.color = "#94a3b8";
+      } else {
+        btnModeReal.style.background = "#f59e0b";
+        btnModeReal.style.color = "#000";
+        btnModeSim.style.background = "transparent";
+        btnModeSim.style.color = "#94a3b8";
+      }
+    }
+    // UI Lab
+    if (labModeSim && labModeReal) {
+      if (isSim) {
+        labModeSim.style.background = "#8b5cf6";
+        labModeSim.style.color = "#fff";
+        labModeReal.style.background = "transparent";
+        labModeReal.style.color = "#94a3b8";
+      } else {
+        labModeReal.style.background = "#f59e0b";
+        labModeReal.style.color = "#000";
+        labModeSim.style.background = "transparent";
+        labModeSim.style.color = "#94a3b8";
+      }
+    }
+  }
+
   async function executeFuturesConfigChange(isSim, margin, capital, levMode, sl, tp, isReset = false) {
     try {
+      const isEnabled = document.getElementById("toggle-futures")?.checked ?? true;
       const payload = {
         isSimulated: isSim,
         marginPerTrade: margin,
@@ -1598,7 +1656,7 @@
         stopLossPct: sl,
         trailingTriggerPct: tp,
         reset: isReset,
-        enabled: (document.getElementById("toggle-futures")?.checked ?? true)
+        enabled: isEnabled
       };
       const res = await fetch("/api/futures/config", {
         method: "POST",
@@ -1607,9 +1665,16 @@
       });
       const data = await res.json();
       if (data.success) {
-        if (labSaveBtn && !isReset) {
-          labSaveBtn.textContent = "✅ ¡Parámetros Guardados!";
-          setTimeout(() => labSaveBtn.textContent = "💾 Guardar Parámetros", 2000);
+        setFuturesModeUI(isSim);
+        if (!isReset) {
+          if (labSaveBtn) {
+            labSaveBtn.textContent = "✅ ¡Parámetros Guardados!";
+            setTimeout(() => labSaveBtn.textContent = "💾 Guardar Parámetros", 2000);
+          }
+          if (btnSaveFutCfg) {
+            btnSaveFutCfg.textContent = "✅ ¡Guardado!";
+            setTimeout(() => btnSaveFutCfg.textContent = "💾 Guardar Parámetros", 2000);
+          }
         }
         // Actualizar visualmente capital inicial y balance de inmediato
         const initEl = document.getElementById("fut-dev-init-capital");
@@ -1623,6 +1688,14 @@
           if (realPnlEl) { realPnlEl.textContent = "+0.000 USDT"; realPnlEl.style.color = "#34d399"; }
           if (floatPnlEl) { floatPnlEl.textContent = "$0.00 USDT"; floatPnlEl.style.color = "#c4b5fd"; }
           if (wrEl) wrEl.textContent = "0.0% (0W / 0L)";
+          const liveStat = document.getElementById("futures-live-status");
+          if (liveStat) {
+            liveStat.innerHTML = `💼 Balance: <b>$${capital.toFixed(2)} USDT</b> | PnL Hoy: <b>+0.000 USDT</b> | Win Rate: <b>0.0% (0W / 0L)</b> | Posiciones: <b>0 / 3</b>`;
+          }
+          const posTb = document.getElementById("fut-dev-positions-tbody");
+          if (posTb) posTb.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:18px; color:var(--text-muted);">Sin posiciones abiertas. El escáner está buscando el siguiente piso/techo…</td></tr>';
+          const tradeTb = document.getElementById("fut-dev-trades-tbody");
+          if (tradeTb) tradeTb.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:18px; color:var(--text-muted);">Aún no hay operaciones cerradas. Las posiciones vivas están persiguiendo el pico de ganancia.</td></tr>';
         }
       }
     } catch(e) {
@@ -1630,159 +1703,89 @@
     }
   }
 
-  if (labModeSim && labModeReal) {
-    labModeSim.addEventListener("click", () => {
-      labModeSim.style.background = "#8b5cf6";
-      labModeSim.style.color = "#fff";
-      labModeReal.style.background = "transparent";
-      labModeReal.style.color = "#94a3b8";
-      executeFuturesConfigChange(
-        true,
-        parseFloat(labMargin?.value || "2.5"),
-        parseFloat(labCapital?.value || "10"),
-        labLev?.value || "fixed_3",
-        parseFloat(labSl?.value || "1.5"),
-        parseFloat(labTp?.value || "1.8")
-      );
-    });
-
-    labModeReal.addEventListener("click", () => {
-      const margVal = labMargin?.value || "2.5";
+  function handleModeChange(targetSim) {
+    if (targetSim) {
+      setFuturesModeUI(true);
+      const cap = parseFloat(inputFutCapital?.value || labCapital?.value || "10");
+      const marg = parseFloat(inputFutMargin?.value || labMargin?.value || "2.5");
+      const lev = selectFutLev?.value || labLev?.value || "fixed_3";
+      const sl = parseFloat(inputFutSl?.value || labSl?.value || "1.5");
+      const tp = parseFloat(inputFutTp?.value || labTp?.value || "1.8");
+      executeFuturesConfigChange(true, marg, cap, lev, sl, tp);
+    } else {
+      const margVal = inputFutMargin?.value || labMargin?.value || "2.5";
       const ok = confirm("⚠️ ATENCIÓN: Vas a activar el modo REAL de Futuros en Binance.\n\nEl bot operará con dinero real a través de tu cuenta con margen de " + margVal + " USDT por orden.\n\n¿Deseas activar el modo REAL?");
       if (ok) {
-        labModeReal.style.background = "#f59e0b";
-        labModeReal.style.color = "#000";
-        labModeSim.style.background = "transparent";
-        labModeSim.style.color = "#94a3b8";
-        executeFuturesConfigChange(
-          false,
-          parseFloat(labMargin?.value || "2.5"),
-          parseFloat(labCapital?.value || "10"),
-          labLev?.value || "fixed_3",
-          parseFloat(labSl?.value || "1.5"),
-          parseFloat(labTp?.value || "1.8")
-        );
+        setFuturesModeUI(false);
+        const cap = parseFloat(inputFutCapital?.value || labCapital?.value || "10");
+        const marg = parseFloat(inputFutMargin?.value || labMargin?.value || "2.5");
+        const lev = selectFutLev?.value || labLev?.value || "fixed_3";
+        const sl = parseFloat(inputFutSl?.value || labSl?.value || "1.5");
+        const tp = parseFloat(inputFutTp?.value || labTp?.value || "1.8");
+        executeFuturesConfigChange(false, marg, cap, lev, sl, tp);
       }
-    });
-  }
-
-  if (labSaveBtn) {
-    labSaveBtn.addEventListener("click", () => {
-      const isSim = labModeReal ? labModeReal.style.background !== "rgb(245, 158, 11)" : true;
-      executeFuturesConfigChange(
-        isSim,
-        parseFloat(labMargin?.value || "2.5"),
-        parseFloat(labCapital?.value || "10"),
-        labLev?.value || "fixed_3",
-        parseFloat(labSl?.value || "1.5"),
-        parseFloat(labTp?.value || "1.8")
-      );
-    });
-  }
-
-  if (labResetBtn) {
-    labResetBtn.addEventListener("click", async () => {
-      const curCap = parseFloat(labCapital?.value || "10");
-      const curMarg = parseFloat(labMargin?.value || "2.5");
-      const curLev = labLev?.value || "fixed_3";
-      const curSl = parseFloat(labSl?.value || "1.5");
-      const curTp = parseFloat(labTp?.value || "1.8");
-      const ok = confirm(`¿Deseas BORRAR todo el historial de trades y reiniciar la simulación con $${curCap.toFixed(2)} USDT limpios y margen de $${curMarg.toFixed(2)} USDT por trade?`);
-      if (ok) {
-        labResetBtn.textContent = "⏳ Reiniciando...";
-        await executeFuturesConfigChange(true, curMarg, curCap, curLev, curSl, curTp, true);
-        labResetBtn.textContent = `✅ ¡Iniciado en $${curCap}!`;
-        setTimeout(() => labResetBtn.textContent = "🧹 Reiniciar Registros & Balance", 2500);
-      }
-    });
-  }
-
-  const btnReset100 = document.getElementById("btn-reset-fut-100");
-  if (btnReset100) {
-    btnReset100.addEventListener("click", async () => {
-      const curCap = parseFloat(inputFutCapital?.value || labCapital?.value || "100");
-      const curMarg = parseFloat(inputFutMargin?.value || labMargin?.value || "30");
-      const ok = confirm(`¿Deseas reiniciar la simulación de Futuros con $${curCap.toFixed(2)} USDT limpios y margen de $${curMarg.toFixed(2)} USDT?`);
-      if (ok) {
-        try {
-          await fetch("/api/futures/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reset: true, startingBalance: curCap, marginPerTrade: curMarg, leverageMode: "dynamic" })
-          });
-          btnReset100.textContent = `✅ ¡Iniciado en $${curCap}!`;
-          setTimeout(() => btnReset100.textContent = "🔄 Reiniciar Simulación", 2000);
-        } catch(e) {}
-      }
-    });
-  }
-
-
-  // Control de Modo Simulado vs Real y Margen de Futuros
-  const btnModeSim = document.getElementById("btn-fut-mode-sim");
-  const btnModeReal = document.getElementById("btn-fut-mode-real");
-  const inputFutCapital = document.getElementById("input-fut-capital");
-  const inputFutMargin = document.getElementById("input-fut-margin");
-  const selectFutLev = document.getElementById("select-fut-lev");
-  const btnSaveFutCfg = document.getElementById("btn-save-fut-config");
-
-  async function updateFuturesConfig(isSim, margin, capital, levMode, enabled) {
-    try {
-      const payload = {
-        isSimulated: isSim,
-        marginPerTrade: margin,
-        startingBalance: capital,
-        leverageMode: levMode
-      };
-      const res = await fetch("/api/futures/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (btnSaveFutCfg) {
-          btnSaveFutCfg.textContent = "✅ ¡Parámetros Aplicados!";
-          btnSaveFutCfg.style.background = "rgba(16,185,129,0.5)";
-          setTimeout(() => {
-            btnSaveFutCfg.textContent = "💾 Aplicar Cambios";
-            btnSaveFutCfg.style.background = "rgba(16,185,129,0.25)";
-          }, 2500);
-        }
-      }
-    } catch (e) {
-      console.error("Error guardando config de futuros:", e);
     }
   }
 
-  if (btnModeSim && btnModeReal) {
-    btnModeSim.addEventListener("click", () => {
-      btnModeSim.style.background = "#8b5cf6";
-      btnModeSim.style.color = "#fff";
-      btnModeReal.style.background = "transparent";
-      btnModeReal.style.color = "#94a3b8";
-      updateFuturesConfig(true, parseFloat(inputFutMargin?.value || "15"), parseFloat(inputFutCapital?.value || "100"), selectFutLev?.value || "dynamic");
-    });
+  // Eventos Modo Simulado / Real (Card y Lab)
+  btnModeSim?.addEventListener("click", () => handleModeChange(true));
+  labModeSim?.addEventListener("click", () => handleModeChange(true));
+  btnModeReal?.addEventListener("click", () => handleModeChange(false));
+  labModeReal?.addEventListener("click", () => handleModeChange(false));
 
-    btnModeReal.addEventListener("click", () => {
-      const ok = confirm("⚠️ ATENCIÓN: Vas a activar el modo REAL de Futuros en Binance.\n\nEl bot operará con dinero real de tu billetera de Futuros a 2x ISOLATED con margen estándar de " + (inputFutMargin?.value || "10") + " USDT.\n\n¿Deseas activar el modo REAL?");
-      if (ok) {
-        btnModeReal.style.background = "#f59e0b";
-        btnModeReal.style.color = "#000";
-        btnModeSim.style.background = "transparent";
-        btnModeSim.style.color = "#94a3b8";
-        updateFuturesConfig(false, parseFloat(inputFutMargin?.value || "15"), parseFloat(inputFutCapital?.value || "100"), selectFutLev?.value || "dynamic");
+  // Eventos Guardar Parámetros (Card y Lab)
+  btnSaveFutCfg?.addEventListener("click", () => {
+    syncFuturesInputs("card");
+    const isSim = btnModeReal ? btnModeReal.style.background !== "rgb(245, 158, 11)" : true;
+    executeFuturesConfigChange(
+      isSim,
+      parseFloat(inputFutMargin?.value || "2.5"),
+      parseFloat(inputFutCapital?.value || "10"),
+      selectFutLev?.value || "fixed_3",
+      parseFloat(inputFutSl?.value || "1.5"),
+      parseFloat(inputFutTp?.value || "1.8")
+    );
+  });
+
+  labSaveBtn?.addEventListener("click", () => {
+    syncFuturesInputs("lab");
+    const isSim = labModeReal ? labModeReal.style.background !== "rgb(245, 158, 11)" : true;
+    executeFuturesConfigChange(
+      isSim,
+      parseFloat(labMargin?.value || "2.5"),
+      parseFloat(labCapital?.value || "10"),
+      labLev?.value || "fixed_3",
+      parseFloat(labSl?.value || "1.5"),
+      parseFloat(labTp?.value || "1.8")
+    );
+  });
+
+  // Evento Reset (Card y Lab)
+  async function handleResetAction(source) {
+    syncFuturesInputs(source);
+    const curCap = parseFloat((source === "card" ? inputFutCapital?.value : labCapital?.value) || "10");
+    const curMarg = parseFloat((source === "card" ? inputFutMargin?.value : labMargin?.value) || "2.5");
+    const curLev = (source === "card" ? selectFutLev?.value : labLev?.value) || "fixed_3";
+    const curSl = parseFloat((source === "card" ? inputFutSl?.value : labSl?.value) || "1.5");
+    const curTp = parseFloat((source === "card" ? inputFutTp?.value : labTp?.value) || "1.8");
+    const ok = confirm(`¿Deseas BORRAR todo el historial de trades y reiniciar la simulación con $${curCap.toFixed(2)} USDT limpios y margen de $${curMarg.toFixed(2)} USDT por trade?`);
+    if (ok) {
+      if (btnResetFutCustom) btnResetFutCustom.textContent = "⏳ Reiniciando...";
+      if (labResetBtn) labResetBtn.textContent = "⏳ Reiniciando...";
+      await executeFuturesConfigChange(true, curMarg, curCap, curLev, curSl, curTp, true);
+      if (btnResetFutCustom) {
+        btnResetFutCustom.textContent = `✅ ¡Iniciado en $${curCap}!`;
+        setTimeout(() => btnResetFutCustom.textContent = "🧹 Reiniciar Registros & Balance", 2500);
       }
-    });
+      if (labResetBtn) {
+        labResetBtn.textContent = `✅ ¡Iniciado en $${curCap}!`;
+        setTimeout(() => labResetBtn.textContent = "🧹 Reiniciar Registros & Balance", 2500);
+      }
+    }
   }
 
-  if (btnSaveFutCfg) {
-    btnSaveFutCfg.addEventListener("click", () => {
-      const isSim = btnModeSim && btnModeSim.style.background === "rgb(139, 92, 246)";
-      const isEnabled = document.getElementById("toggle-futures") ? document.getElementById("toggle-futures").checked : true;
-      updateFuturesConfig(isSim, parseFloat(inputFutMargin?.value || "15"), parseFloat(inputFutCapital?.value || "100"), selectFutLev?.value || "dynamic", isEnabled);
-    });
-  }
+  btnResetFutCustom?.addEventListener("click", () => handleResetAction("card"));
+  labResetBtn?.addEventListener("click", () => handleResetAction("lab"));
 
   }, 1000);
 
@@ -1794,6 +1797,10 @@
     const stats = fut.stats || {};
     const st = fut.state || {};
 
+    // Sincronizar botones de modo (Simulado vs Real)
+    setFuturesModeUI(st.isSimulated !== false);
+
+    // Inputs en Laboratorio (Pestaña 3)
     if (labCapital && !labCapital.matches(":focus") && !labCapital.dataset.userEdited && st.startingBalanceUsdt) {
       labCapital.value = st.startingBalanceUsdt;
     }
@@ -1808,6 +1815,64 @@
     }
     if (labLev && !labLev.matches(":focus") && !labLev.dataset.userEdited && st.leverageMode) {
       labLev.value = st.leverageMode;
+    }
+
+    // Inputs en Card (Pestaña 1)
+    if (inputFutCapital && !inputFutCapital.matches(":focus") && st.startingBalanceUsdt) {
+      inputFutCapital.value = st.startingBalanceUsdt;
+    }
+    if (inputFutMargin && !inputFutMargin.matches(":focus") && st.defaultMarginPerTrade) {
+      inputFutMargin.value = st.defaultMarginPerTrade;
+    }
+    if (inputFutSl && !inputFutSl.matches(":focus") && st.stopLossPct) {
+      inputFutSl.value = st.stopLossPct;
+    }
+    if (inputFutTp && !inputFutTp.matches(":focus") && st.trailingTriggerPct) {
+      inputFutTp.value = st.trailingTriggerPct;
+    }
+    if (selectFutLev && !selectFutLev.matches(":focus") && st.leverageMode) {
+      selectFutLev.value = st.leverageMode;
+    }
+
+    // Estado de encendido y telemetría en vivo en Card
+    const cardPowerBadge = document.getElementById("card-fut-power-badge");
+    const isEngineActive = st.enabled !== false;
+    if (cardPowerBadge) {
+      cardPowerBadge.textContent = isEngineActive ? "🟢 ENCENDIDO" : "🔴 APAGADO";
+      cardPowerBadge.style.color = isEngineActive ? "#34d399" : "#f87171";
+      cardPowerBadge.style.background = isEngineActive ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)";
+      cardPowerBadge.style.borderColor = isEngineActive ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)";
+    }
+
+    const cardTagStatus = document.getElementById("futures-card-tag-status");
+    if (cardTagStatus) {
+      if (st.isSimulated !== false) {
+        cardTagStatus.textContent = isEngineActive ? "MODO PAPER TRADING (ACTIVO)" : "MODO PAPER TRADING (PAUSADO)";
+        cardTagStatus.style.color = isEngineActive ? "#34d399" : "#f59e0b";
+        cardTagStatus.style.background = isEngineActive ? "rgba(16,185,129,0.2)" : "rgba(245,158,11,0.2)";
+      } else {
+        cardTagStatus.textContent = isEngineActive ? "🔥 DINERO REAL (ACTIVO)" : "🟡 DINERO REAL (PAUSADO)";
+        cardTagStatus.style.color = isEngineActive ? "#34d399" : "#f59e0b";
+        cardTagStatus.style.background = isEngineActive ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.2)";
+      }
+    }
+
+    const cardLiveStatus = document.getElementById("futures-live-status");
+    if (cardLiveStatus) {
+      const pnl = stats.realizedPnlUsdt || 0;
+      const fpnl = stats.floatingPnlUsdt || 0;
+      const pnlSign = pnl >= 0 ? "+" : "";
+      const fpnlSign = fpnl >= 0 ? "+" : "";
+      const wr = stats.winRate || "0.0";
+      const w = stats.wins || 0;
+      const l = stats.losses || 0;
+      const openCount = (fut.positions || []).length;
+      const bal = (stats.virtualBalanceUsdt !== undefined ? stats.virtualBalanceUsdt : 10).toFixed(2);
+      cardLiveStatus.innerHTML = `💼 Balance: <b>$${bal} USDT</b> | ` +
+        `PnL Hoy: <b>${pnlSign}${pnl.toFixed(3)} USDT</b> | ` +
+        `Win Rate: <b>${wr}% (${w}W / ${l}L)</b> | ` +
+        `Posiciones: <b>${openCount} / ${st.maxActivePositions || 3}</b>` +
+        (openCount > 0 ? ` | Floating: <b style="color:${fpnl >= 0 ? '#34d399' : '#f87171'}">${fpnlSign}${fpnl.toFixed(3)} USDT</b>` : '');
     }
 
     const initEl = document.getElementById("fut-dev-init-capital");
