@@ -30,9 +30,11 @@
       "timeframe": "15m",
       "isSimulated": true,
       "stopLossPct": 1.5,
-      "marginPerTrade": 30,
-      "startingBalance": 100,
-      "stopLossEnabled": true
+      "leverageMode": "fixed_3",
+      "marginPerTrade": 2.5,
+      "startingBalance": 10,
+      "stopLossEnabled": true,
+      "trailingTriggerPct": 1.8
     },
     "aiEnabled": false,
     "autoPilot": true,
@@ -70,8 +72,8 @@
       "stopLossEnabled": false
     },
     "trailing_rebound": {
-      "timeframe": "15m",
-      "stopLossPct": 3.5,
+      "timeframe": "1h",
+      "stopLossPct": 4,
       "stopLossEnabled": false
     }
   },
@@ -87,10 +89,10 @@
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1794022368850,
+      "expiresAt": 1794022641009,
       "isCurrent": true,
       "timeframe": "4h",
-      "updatedAt": 1794018768850,
+      "updatedAt": 1794019041009,
       "btcRange24h": 1.9896378592030768,
       "stopLossPct": 6
     },
@@ -104,10 +106,10 @@
         "Compra en el 30% inferior del canal de 6H (rango 0.8% a 2.5%)",
         "Exige vela de soporte (verde o mecha ≥30%) y RSI entre 34 y 46"
       ],
-      "expiresAt": 1794022368850,
+      "expiresAt": 1794022641009,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794018768850,
+      "updatedAt": 1794019041009,
       "btcRange24h": 1.9896378592030768,
       "stopLossPct": 2
     },
@@ -121,28 +123,28 @@
         "Puntaje cuantitativo: Caída + RSI + Banda Inferior Bollinger + Mecha",
         "Confirmación de giro en 5m antes de comprar + Salida en apertura CME"
       ],
-      "expiresAt": 1794022368850,
+      "expiresAt": 1794022641009,
       "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1794018768850,
+      "updatedAt": 1794019041009,
       "btcRange24h": 1.9896378592030768,
       "stopLossPct": 5
     },
     "trailing_rebound": {
       "porQue": "En días donde Bitcoin se mueve en canales planos (< 2.0%), mantener 1H evita compras anticipadas en falsas rupturas, exigiendo confirmación de mecha o giro verde en 5m antes de disparar el Lote Explorador.",
-      "reason": "BTC comprimido (2.0%), pero Memes activas (4.5%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
-      "status": "pending",
+      "reason": "BTC comprimido (2.0%), pero Memes activas (4.7%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
+      "status": "applied",
       "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "criterios": [
         "Rango Macro Bitcoin: 1.99% (Calma y absorción institucional)",
-        "Rango Canasta Memecoins: 4.50% (Líder: PEPE 7.7%)",
+        "Rango Canasta Memecoins: 4.74% (Líder: PEPE 7.7%)",
         "Estrategia Híbrida: 1H + Bandas de Bollinger + Vela 5m de absorción",
         "Blindaje de Doble Llave: 0% ventas en negativo"
       ],
-      "expiresAt": 1794022368850,
-      "isCurrent": false,
+      "expiresAt": 1794022641009,
+      "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1794018768850,
+      "updatedAt": 1794019041009,
       "btcRange24h": 1.9896378592030768,
       "stopLossPct": 4
     }
@@ -186,5 +188,5 @@
     "BONKUSDT",
     "SHIBUSDT"
   ],
-  "updatedAt": 1794018768851
+  "updatedAt": 1794019041010
 }
