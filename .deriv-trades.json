@@ -1,1 +1,18 @@
-[]
+[
+  {
+    "contractId": "19671341199",
+    "symbol": "1HZ75V",
+    "contractType": "MULTDOWN",
+    "stake": 1,
+    "multiplier": 100,
+    "profit": -0.3,
+    "entrySpot": 4692.18,
+    "exitSpot": 4697.16,
+    "entryTime": 1794010395397,
+    "exitTime": 1794010780000,
+    "durationSec": 385,
+    "status": "lost",
+    "exitReason": "STOP_LOSS",
+    "rationale": "📉 Rechazo en EMA(8) en tendencia bajista | RSI: 23.9"
+  }
+]

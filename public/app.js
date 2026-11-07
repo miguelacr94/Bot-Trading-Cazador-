@@ -2222,7 +2222,7 @@
               </div>
               <div style="text-align: right;">
                 <div style="font-size: 16px; font-weight: 800; color: #38bdf8; font-family: monospace;">${(r.price || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</div>
-                <div style="font-size: 10px; color: ${isBullish ? '#34d399' : '#f87171'}; font-weight: 700;">${isBullish ? '▲ EMA 10 > 25 (Alcista)' : '▼ EMA 10 < 25 (Bajista)'}</div>
+                <div style="font-size: 10px; color: ${isBullish ? '#34d399' : '#f87171'}; font-weight: 700;">${isBullish ? '▲ EMA 8 > 20 (Alcista)' : '▼ EMA 8 < 20 (Bajista)'}</div>
               </div>
             </div>
 

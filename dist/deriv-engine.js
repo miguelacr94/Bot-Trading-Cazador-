@@ -239,11 +239,12 @@ export class DerivEngine {
                     this.send({ ticks: sym, subscribe: 1 });
                     console.log(`[DERIV MULTIPLIER] Suscrito a streaming de ${sym}`);
                 }
-                // Si había una posición abierta, resuscribirse a su contrato
+                // Si había una posición abierta, resuscribirse a su contrato con contract_id numérico
                 if (this.positions.length > 0) {
                     const pos = this.positions[0];
-                    console.log(`[DERIV MULTIPLIER] Reconectando a posición abierta ${pos.contractId}...`);
-                    this.send({ proposal_open_contract: 1, contract_id: pos.contractId, subscribe: 1 });
+                    const cIdNum = parseInt(pos.contractId, 10);
+                    console.log(`[DERIV MULTIPLIER] Reconectando a posición abierta ${pos.contractId} (numérico: ${cIdNum})...`);
+                    this.send({ proposal_open_contract: 1, contract_id: cIdNum, subscribe: 1 });
                 }
                 // Keepalive ping cada 30s
                 if (this.pingInterval)
@@ -312,7 +313,22 @@ export class DerivEngine {
                 this.handleBuyResponse(data);
             }
             else if (msgType === "proposal_open_contract") {
-                this.handleContractUpdate(data.proposal_open_contract);
+                if (data.error) {
+                    console.error("[DERIV MULTIPLIER] Error en proposal_open_contract:", data.error.message || data.error);
+                    const reqContractId = data.echo_req?.contract_id;
+                    if (reqContractId) {
+                        const cIdStr = String(reqContractId);
+                        const idx = this.positions.findIndex((p) => p.contractId === cIdStr);
+                        if (idx >= 0) {
+                            console.warn(`[DERIV MULTIPLIER] 🧹 Limpiando posición huérfana/inválida ${cIdStr} tras error devuelto por Deriv.`);
+                            this.positions.splice(idx, 1);
+                            this.savePositions();
+                        }
+                    }
+                }
+                else if (data.proposal_open_contract) {
+                    this.handleContractUpdate(data.proposal_open_contract);
+                }
             }
             else if (msgType === "sell") {
                 this.isSellingContract = false;
