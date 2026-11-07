@@ -3723,33 +3723,47 @@
 
           <!-- Capital Base -->
           <div style="display:flex; align-items:center; gap:6px;">
-            <span style="font-size:12px; font-weight:700; color:#e2e8f0;">💼 Capital Base:</span>
-            <input type="number" id="lab-fut-capital" min="10" max="10000" step="10" value="100" style="width:75px; background:#0f172a; border:1px solid #38bdf8; color:#38bdf8; font-weight:700; font-size:14px; text-align:center; padding:5px 8px; border-radius:6px;">
+            <span style="font-size:12px; font-weight:700; color:#e2e8f0;">💼 Capital Inicial:</span>
+            <input type="number" id="lab-fut-capital" min="5" max="10000" step="1" value="10" style="width:70px; background:#0f172a; border:1px solid #38bdf8; color:#38bdf8; font-weight:700; font-size:13px; text-align:center; padding:5px 6px; border-radius:6px;" title="Saldo con el que deseas arrancar la prueba">
             <span style="font-size:11px; color:#94a3b8; font-weight:600;">USDT</span>
           </div>
 
           <!-- Margen por Orden -->
           <div style="display:flex; align-items:center; gap:6px;">
             <span style="font-size:12px; font-weight:700; color:#e2e8f0;">⚡ Margen/Orden:</span>
-            <input type="number" id="lab-fut-margin" min="5" max="500" step="5" value="15" style="width:65px; background:#0f172a; border:1px solid #34d399; color:#34d399; font-weight:700; font-size:14px; text-align:center; padding:5px 8px; border-radius:6px;">
+            <input type="number" id="lab-fut-margin" min="1" max="500" step="0.5" value="2.5" style="width:65px; background:#0f172a; border:1px solid #34d399; color:#34d399; font-weight:700; font-size:13px; text-align:center; padding:5px 6px; border-radius:6px;" title="Margen asignado a cada operación">
             <span style="font-size:11px; color:#94a3b8; font-weight:600;">USDT</span>
           </div>
 
           <!-- Selector de Apalancamiento -->
           <div style="display:flex; align-items:center; gap:6px;">
             <span style="font-size:12px; font-weight:700; color:#e2e8f0;">🎯 Apalancamiento:</span>
-            <select id="lab-fut-lev" style="background:#0f172a; border:1px solid #a78bfa; color:#c4b5fd; font-weight:700; font-size:12px; padding:6px 10px; border-radius:6px;">
-              <option value="dynamic" selected>🤖 Dinámico (4x BTC/ETH / 3x Alts)</option>
+            <select id="lab-fut-lev" style="background:#0f172a; border:1px solid #a78bfa; color:#c4b5fd; font-weight:700; font-size:12px; padding:6px 8px; border-radius:6px;">
+              <option value="fixed_3" selected>Fijo 3x (Recomendado $10)</option>
+              <option value="fixed_5">Fijo 5x (Francotirador)</option>
               <option value="fixed_2">Fijo 2x (Ultra Seguro)</option>
-              <option value="fixed_3">Fijo 3x (Balanceado)</option>
-              <option value="fixed_4">Fijo 4x (Rápido)</option>
+              <option value="dynamic">🤖 Dinámico Institucional (3x-5x)</option>
+              <option value="fixed_7">Fijo 7x (Agresivo)</option>
+              <option value="fixed_10">Fijo 10x</option>
             </select>
+          </div>
+
+          <!-- SL y TP Inputs -->
+          <div style="display:flex; align-items:center; gap:5px;">
+            <span style="font-size:11px; font-weight:700; color:#f87171;">🛡️ SL:</span>
+            <input type="number" id="lab-fut-sl" min="0.5" max="10" step="0.1" value="1.5" style="width:48px; background:#0f172a; border:1px solid #f87171; color:#f87171; font-weight:700; font-size:12px; text-align:center; padding:5px 4px; border-radius:6px;">
+            <span style="font-size:10px; color:#94a3b8;">%</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:5px;">
+            <span style="font-size:11px; font-weight:700; color:#34d399;">🏹 TP:</span>
+            <input type="number" id="lab-fut-tp" min="0.5" max="20" step="0.1" value="1.8" style="width:48px; background:#0f172a; border:1px solid #34d399; color:#34d399; font-weight:700; font-size:12px; text-align:center; padding:5px 4px; border-radius:6px;">
+            <span style="font-size:10px; color:#94a3b8;">%</span>
           </div>
 
           <!-- Botones de Acción -->
           <div style="display:flex; align-items:center; gap:8px;">
-            <button id="lab-btn-save-cfg" type="button" style="background:#10b981; color:#fff; border:none; font-size:12px; font-weight:700; padding:6px 16px; border-radius:6px; cursor:pointer; box-shadow:0 0 12px rgba(16,185,129,0.3);">💾 Guardar Cambios</button>
-            <button id="lab-btn-reset-100" type="button" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; font-size:12px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer;" title="Reiniciar balance a $100.00 USDT limpios">🔄 Iniciar con $100 USDT</button>
+            <button id="lab-btn-save-cfg" type="button" style="background:#10b981; color:#fff; border:none; font-size:12px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer; box-shadow:0 0 12px rgba(16,185,129,0.3);">💾 Guardar Parámetros</button>
+            <button id="lab-btn-reset-custom" type="button" style="background:rgba(239, 68, 68, 0.2); border:1px solid #ef4444; color:#f87171; font-size:12px; font-weight:700; padding:6px 14px; border-radius:6px; cursor:pointer;" title="Borrar historial y arrancar prueba limpia desde cero">🧹 Reiniciar Registros & Balance</button>
           </div>
 
         </div>

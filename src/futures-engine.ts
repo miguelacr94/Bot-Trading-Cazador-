@@ -274,17 +274,21 @@ export class FuturesEngine {
   
   // Apalancamiento Dinámico Cuantitativo según Volatilidad Institucional
   public getDynamicLeverage(symbol: string): number {
-    if (this.state.leverageMode !== "dynamic") return this.state.defaultLeverage || 7;
+    if (this.state.leverageMode && this.state.leverageMode.startsWith("fixed_")) {
+      const fixed = parseInt(this.state.leverageMode.replace("fixed_", ""), 10);
+      if (!isNaN(fixed) && fixed >= 1) return fixed;
+    }
+    if (this.state.leverageMode !== "dynamic") return this.state.defaultLeverage || 5;
     const levMap: Record<string, number> = {
-      BTCUSDT: 10, // Gigante, baja volatilidad -> 10x
-      ETHUSDT: 10, // Gigante, baja volatilidad -> 10x
-      SOLUSDT: 8,  // Volatilidad media-alta -> 8x
-      BNBUSDT: 8,  // Volatilidad media -> 8x
-      XRPUSDT: 7,  // Volatilidad media -> 7x
-      AVAXUSDT: 6, // Mayor volatilidad -> 6x
-      DOGEUSDT: 5  // Mayor volatilidad -> 5x
+      BTCUSDT: 5,  // Seguro para cuentas pequeñas
+      ETHUSDT: 5,
+      SOLUSDT: 5,
+      BNBUSDT: 4,
+      XRPUSDT: 4,
+      AVAXUSDT: 3,
+      DOGEUSDT: 3
     };
-    return levMap[symbol] !== undefined ? levMap[symbol] : 7;
+    return levMap[symbol] !== undefined ? levMap[symbol] : (this.state.defaultLeverage || 5);
   }
 
   public getState(): FuturesState {
@@ -394,6 +398,7 @@ export class FuturesEngine {
 
   public async updatePositions(): Promise<void> {
     if (!this.isEnabled()) return;
+    this.positions = this.loadPositions();
     if (this.positions.length === 0) return;
 
     for (let i = this.positions.length - 1; i >= 0; i--) {
@@ -575,6 +580,7 @@ export class FuturesEngine {
 
   public async scanMarket(): Promise<void> {
     if (!this.isEnabled()) return;
+    this.positions = this.loadPositions();
     if (this.isScanning) return;
     this.isScanning = true;
 

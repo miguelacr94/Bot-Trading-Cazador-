@@ -1680,17 +1680,22 @@
   const labCapital = document.getElementById("lab-fut-capital");
   const labMargin = document.getElementById("lab-fut-margin");
   const labLev = document.getElementById("lab-fut-lev");
+  const labSl = document.getElementById("lab-fut-sl");
+  const labTp = document.getElementById("lab-fut-tp");
   const labSaveBtn = document.getElementById("lab-btn-save-cfg");
-  const labResetBtn = document.getElementById("lab-btn-reset-100");
+  const labResetBtn = document.getElementById("lab-btn-reset-custom") || document.getElementById("lab-btn-reset-100");
 
-  async function executeFuturesConfigChange(isSim, margin, capital, levMode) {
+  async function executeFuturesConfigChange(isSim, margin, capital, levMode, sl, tp, isReset = false) {
     try {
       const payload = {
         isSimulated: isSim,
         marginPerTrade: margin,
         startingBalance: capital,
         leverageMode: levMode,
-        enabled: enabled !== undefined ? enabled : (document.getElementById("toggle-futures")?.checked ?? true)
+        stopLossPct: sl,
+        trailingTriggerPct: tp,
+        reset: isReset,
+        enabled: (document.getElementById("toggle-futures")?.checked ?? true)
       };
       const res = await fetch("/api/futures/config", {
         method: "POST",
@@ -1699,18 +1704,26 @@
       });
       const data = await res.json();
       if (data.success) {
-        if (labSaveBtn) {
-          labSaveBtn.textContent = "✅ ¡Cambios Guardados!";
-          setTimeout(() => labSaveBtn.textContent = "💾 Guardar Cambios", 2000);
+        if (labSaveBtn && !isReset) {
+          labSaveBtn.textContent = "✅ ¡Parámetros Guardados!";
+          setTimeout(() => labSaveBtn.textContent = "💾 Guardar Parámetros", 2000);
         }
         // Actualizar visualmente capital inicial y balance de inmediato
         const initEl = document.getElementById("fut-dev-init-capital");
         const curEl = document.getElementById("fut-dev-cur-balance");
+        const realPnlEl = document.getElementById("fut-dev-realized-pnl");
+        const floatPnlEl = document.getElementById("fut-dev-floating-pnl");
+        const wrEl = document.getElementById("fut-dev-winrate");
         if (initEl) initEl.textContent = "$" + capital.toFixed(2) + " USDT";
         if (curEl && isSim) curEl.textContent = "$" + capital.toFixed(2) + " USDT";
+        if (isReset) {
+          if (realPnlEl) { realPnlEl.textContent = "+0.000 USDT"; realPnlEl.style.color = "#34d399"; }
+          if (floatPnlEl) { floatPnlEl.textContent = "$0.00 USDT"; floatPnlEl.style.color = "#c4b5fd"; }
+          if (wrEl) wrEl.textContent = "0.0% (0W / 0L)";
+        }
       }
     } catch(e) {
-      console.error("Error guardando:", e);
+      console.error("Error guardando futuros:", e);
     }
   }
 
@@ -1720,47 +1733,63 @@
       labModeSim.style.color = "#fff";
       labModeReal.style.background = "transparent";
       labModeReal.style.color = "#94a3b8";
-      executeFuturesConfigChange(true, parseFloat(labMargin?.value || "15"), parseFloat(labCapital?.value || "100"), labLev?.value || "dynamic");
+      executeFuturesConfigChange(
+        true,
+        parseFloat(labMargin?.value || "2.5"),
+        parseFloat(labCapital?.value || "10"),
+        labLev?.value || "fixed_3",
+        parseFloat(labSl?.value || "1.5"),
+        parseFloat(labTp?.value || "1.8")
+      );
     });
 
     labModeReal.addEventListener("click", () => {
-      const ok = confirm("⚠️ ATENCIÓN: Vas a activar el modo REAL de Futuros en Binance.\n\nEl bot operará con dinero real a 2x-4x ISOLATED con margen de " + (labMargin?.value || "15") + " USDT.\n\n¿Deseas activar el modo REAL?");
+      const margVal = labMargin?.value || "2.5";
+      const ok = confirm("⚠️ ATENCIÓN: Vas a activar el modo REAL de Futuros en Binance.\n\nEl bot operará con dinero real a través de tu cuenta con margen de " + margVal + " USDT por orden.\n\n¿Deseas activar el modo REAL?");
       if (ok) {
         labModeReal.style.background = "#f59e0b";
         labModeReal.style.color = "#000";
         labModeSim.style.background = "transparent";
         labModeSim.style.color = "#94a3b8";
-        executeFuturesConfigChange(false, parseFloat(labMargin?.value || "15"), parseFloat(labCapital?.value || "100"), labLev?.value || "dynamic");
+        executeFuturesConfigChange(
+          false,
+          parseFloat(labMargin?.value || "2.5"),
+          parseFloat(labCapital?.value || "10"),
+          labLev?.value || "fixed_3",
+          parseFloat(labSl?.value || "1.5"),
+          parseFloat(labTp?.value || "1.8")
+        );
       }
     });
   }
 
   if (labSaveBtn) {
     labSaveBtn.addEventListener("click", () => {
-      const isSim = labModeSim && labModeSim.style.background === "rgb(139, 92, 246)";
-      executeFuturesConfigChange(isSim, parseFloat(labMargin?.value || "15"), parseFloat(labCapital?.value || "100"), labLev?.value || "dynamic");
+      const isSim = labModeReal ? labModeReal.style.background !== "rgb(245, 158, 11)" : true;
+      executeFuturesConfigChange(
+        isSim,
+        parseFloat(labMargin?.value || "2.5"),
+        parseFloat(labCapital?.value || "10"),
+        labLev?.value || "fixed_3",
+        parseFloat(labSl?.value || "1.5"),
+        parseFloat(labTp?.value || "1.8")
+      );
     });
   }
 
   if (labResetBtn) {
     labResetBtn.addEventListener("click", async () => {
-      const curCap = parseFloat(labCapital?.value || "100");
-      const curMarg = parseFloat(labMargin?.value || "30");
-      const ok = confirm(`¿Deseas reiniciar la simulación con $${curCap.toFixed(2)} USDT limpios y margen de $${curMarg.toFixed(2)} USDT?`);
+      const curCap = parseFloat(labCapital?.value || "10");
+      const curMarg = parseFloat(labMargin?.value || "2.5");
+      const curLev = labLev?.value || "fixed_3";
+      const curSl = parseFloat(labSl?.value || "1.5");
+      const curTp = parseFloat(labTp?.value || "1.8");
+      const ok = confirm(`¿Deseas BORRAR todo el historial de trades y reiniciar la simulación con $${curCap.toFixed(2)} USDT limpios y margen de $${curMarg.toFixed(2)} USDT por trade?`);
       if (ok) {
-        try {
-          await fetch("/api/futures/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reset: true, startingBalance: curCap, marginPerTrade: curMarg, leverageMode: labLev?.value || "dynamic" })
-          });
-          const initEl = document.getElementById("fut-dev-init-capital");
-          const curEl = document.getElementById("fut-dev-cur-balance");
-          if (initEl) initEl.textContent = "$" + curCap.toFixed(2) + " USDT";
-          if (curEl) curEl.textContent = "$" + curCap.toFixed(2) + " USDT";
-          labResetBtn.textContent = `✅ ¡Iniciado en $${curCap}!`;
-          setTimeout(() => labResetBtn.textContent = "🔄 Reiniciar Simulación", 2000);
-        } catch(e) {}
+        labResetBtn.textContent = "⏳ Reiniciando...";
+        await executeFuturesConfigChange(true, curMarg, curCap, curLev, curSl, curTp, true);
+        labResetBtn.textContent = `✅ ¡Iniciado en $${curCap}!`;
+        setTimeout(() => labResetBtn.textContent = "🧹 Reiniciar Registros & Balance", 2500);
       }
     });
   }
@@ -1860,8 +1889,26 @@
 
     // A. Estadísticas Globales
     const stats = fut.stats || {};
+    const st = fut.state || {};
+
+    if (labCapital && !labCapital.matches(":focus") && !labCapital.dataset.userEdited && st.startingBalanceUsdt) {
+      labCapital.value = st.startingBalanceUsdt;
+    }
+    if (labMargin && !labMargin.matches(":focus") && !labMargin.dataset.userEdited && st.defaultMarginPerTrade) {
+      labMargin.value = st.defaultMarginPerTrade;
+    }
+    if (labSl && !labSl.matches(":focus") && !labSl.dataset.userEdited && st.stopLossPct) {
+      labSl.value = st.stopLossPct;
+    }
+    if (labTp && !labTp.matches(":focus") && !labTp.dataset.userEdited && st.trailingTriggerPct) {
+      labTp.value = st.trailingTriggerPct;
+    }
+    if (labLev && !labLev.matches(":focus") && !labLev.dataset.userEdited && st.leverageMode) {
+      labLev.value = st.leverageMode;
+    }
+
     const initEl = document.getElementById("fut-dev-init-capital");
-    if (initEl) initEl.textContent = "$" + (stats.startingBalanceUsdt || 100).toFixed(2) + " USDT";
+    if (initEl) initEl.textContent = "$" + (stats.startingBalanceUsdt || 10).toFixed(2) + " USDT";
 
     const curEl = document.getElementById("fut-dev-cur-balance");
     if (curEl) curEl.textContent = "$" + (stats.virtualBalanceUsdt || 100).toFixed(2) + " USDT";

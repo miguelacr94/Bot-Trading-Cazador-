@@ -1744,11 +1744,38 @@ export class DashboardServer {
                 controls.strategySettings.futures.startingBalance = b;
               }
             }
+            if (data.stopLossPct !== undefined) {
+              const sl = parseFloat(data.stopLossPct);
+              if (!isNaN(sl) && sl > 0) {
+                futSt.stopLossPct = sl;
+                if (!controls.strategySettings.futures) controls.strategySettings.futures = {};
+                controls.strategySettings.futures.stopLossPct = sl;
+              }
+            }
+            if (data.trailingTriggerPct !== undefined) {
+              const tp = parseFloat(data.trailingTriggerPct);
+              if (!isNaN(tp) && tp > 0) {
+                futSt.trailingTriggerPct = tp;
+                if (!controls.strategySettings.futures) controls.strategySettings.futures = {};
+                controls.strategySettings.futures.trailingTriggerPct = tp;
+              }
+            }
+            if (data.defaultLeverage !== undefined) {
+              const lev = parseInt(data.defaultLeverage, 10);
+              if (!isNaN(lev) && lev >= 1 && lev <= 50) {
+                futSt.defaultLeverage = lev;
+                if (!controls.strategySettings.futures) controls.strategySettings.futures = {};
+                controls.strategySettings.futures.leverage = lev;
+              }
+            }
             if (data.reset) {
-              futSt.virtualBalanceUsdt = futSt.startingBalanceUsdt || 100;
+              futSt.virtualBalanceUsdt = futSt.startingBalanceUsdt || 10;
               // Limpiar posiciones simuladas abiertas al reiniciar
               const futPosF = path.resolve(process.cwd(), ".futures-sim-positions.json");
               try { fs.writeFileSync(futPosF, "[]", "utf-8"); } catch {}
+              // Limpiar trades anteriores al reiniciar registros para balance limpio
+              const futTradesF = path.resolve(process.cwd(), ".futures-sim-trades.json");
+              try { fs.writeFileSync(futTradesF, "[]", "utf-8"); } catch {}
             }
             if (data.leverageMode) {
               futSt.leverageMode = data.leverageMode;
