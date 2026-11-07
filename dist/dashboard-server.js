@@ -1841,6 +1841,9 @@ export class DashboardServer {
                                         derivSt.enabled = newVal;
                                         fs.writeFileSync(derivStateF, JSON.stringify(derivSt, null, 2), "utf-8");
                                     }
+                                    if (derivEngine) {
+                                        derivEngine.setEnabled(newVal);
+                                    }
                                 }
                                 catch { }
                             }

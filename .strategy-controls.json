@@ -1,6 +1,6 @@
 {
   "strategies": {
-    "deriv": true,
+    "deriv": false,
     "futures": true,
     "smart_dca": true,
     "micro_grid": true,
@@ -28,9 +28,9 @@
   "strategySettings": {
     "deriv": {
       "stake": 1,
-      "dailyProfitTarget": 5,
-      "dailyStopLoss": 2,
-      "enabled": true
+      "enabled": false,
+      "dailyStopLoss": 3,
+      "dailyProfitTarget": 4
     },
     "futures": {
       "leverage": 7,
@@ -84,73 +84,74 @@
   },
   "suggestions": {
     "smart_dca": {
-      "timeframe": "4h",
-      "stopLossPct": 6,
+      "porQue": "Como el bot jamás vende en negativo, Smart DCA aplica la Pirámide Invertida Institucional: en lugar de gastar mucho arriba en el Lote 1, guarda la mayor potencia de fuego para los pisos profundos (Lote 2 y Lote 3) una vez que la vela de 15m confirma que la caída ya frenó.",
       "reason": "Pirámide Invertida (Nivel 2: 1.35x | Nivel 3: 1.75x) + Freno en vela 15m.",
+      "status": "applied",
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "criterios": [
         "Nivel 2 (Soporte ≥ -2.5%, RSI ≤ 45): Invierte 1.35x fuerza (~$22-$36 USDT)",
         "Nivel 3 (Capitulación ≥ -5.5%, RSI ≤ 38): Invierte 1.75x fuerza (~$28-$48 USDT)",
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "porQue": "Como el bot jamás vende en negativo, Smart DCA aplica la Pirámide Invertida Institucional: en lugar de gastar mucho arriba en el Lote 1, guarda la mayor potencia de fuego para los pisos profundos (Lote 2 y Lote 3) una vez que la vela de 15m confirma que la caída ya frenó.",
-      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
-      "btcRange24h": 2.0407007798312216,
-      "updatedAt": 1793999659653,
-      "expiresAt": 1794003259653,
+      "expiresAt": 1794013560727,
       "isCurrent": true,
-      "status": "applied"
+      "timeframe": "4h",
+      "updatedAt": 1794009960727,
+      "btcRange24h": 2.0407007798312216,
+      "stopLossPct": 6
     },
     "micro_grid": {
-      "timeframe": "15m",
-      "stopLossPct": 2,
+      "porQue": "En días planos donde no hay tendencias grandes, Micro-Grid compra en la base del canal lateral con lote prudente (máx $20 USDT) y cobra rebotes rápidos (+0.45% a +0.60%), respetando siempre el blindaje de cero ventas en pérdida.",
       "reason": "Día quieto confirmado en Bitcoin (2.0%). Malla lateral activa.",
+      "status": "applied",
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "criterios": [
         "Compresión de volatilidad en Bitcoin: 2.04% (< 2.2%)",
         "Compra en el 30% inferior del canal de 6H (rango 0.8% a 2.5%)",
         "Exige vela de soporte (verde o mecha ≥30%) y RSI entre 34 y 46"
       ],
-      "porQue": "En días planos donde no hay tendencias grandes, Micro-Grid compra en la base del canal lateral con lote prudente (máx $20 USDT) y cobra rebotes rápidos (+0.45% a +0.60%), respetando siempre el blindaje de cero ventas en pérdida.",
-      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
-      "btcRange24h": 2.0407007798312216,
-      "updatedAt": 1793999659653,
-      "expiresAt": 1794003259653,
+      "expiresAt": 1794013560727,
       "isCurrent": true,
-      "status": "applied"
+      "timeframe": "15m",
+      "updatedAt": 1794009960727,
+      "btcRange24h": 2.0407007798312216,
+      "stopLossPct": 2
     },
     "cazador_weekend": {
-      "timeframe": "1h",
-      "stopLossPct": 5,
-      "reason": "En espera hasta el viernes a las 17:00 COT.",
-      "criterios": [
-        "Días hábiles de semana (mercados institucionales de Londres y NY abiertos)",
-        "Presupuesto cedido automáticamente a Cazador Trailing y Smart DCA"
-      ],
-      "porQue": "Entre semana el flujo institucional opera en Londres y Wall Street, por lo que Cazador Weekend descansa y cede su cuota de capital a las estrategias principales hasta el viernes a las 17:00 COT.",
+      "porQue": "Durante el fin de semana los creadores de mercado provocan caídas de bajo volumen. Cazador Weekend selecciona el Top 1 de mayor sobreventa y espera el giro real en 5m para comprar en el piso y vender en el impulso de apertura de futuros CME (domingo noche/lunes).",
+      "reason": "Ventana de fin de semana abierta (Vie 17:00 a Dom 18:00 COT).",
+      "status": "applied",
       "session": "Asia / Tokio (Consolidación y Rango Lateral)",
-      "btcRange24h": 2.0407007798312216,
-      "updatedAt": 1793999659653,
-      "expiresAt": 1794003259653,
+      "criterios": [
+        "Bolsas mundiales cerradas: caza de barridas de liquidez de fin de semana",
+        "Puntaje cuantitativo: Caída + RSI + Banda Inferior Bollinger + Mecha",
+        "Confirmación de giro en 5m antes de comprar + Salida en apertura CME"
+      ],
+      "expiresAt": 1794013560727,
       "isCurrent": true,
-      "status": "applied"
+      "timeframe": "1h",
+      "updatedAt": 1794009960727,
+      "btcRange24h": 2.0407007798312216,
+      "stopLossPct": 5
     },
     "trailing_rebound": {
-      "timeframe": "1h",
-      "stopLossPct": 4,
-      "reason": "Volatilidad equilibrada (BTC 2.0%, Clásicas 3.9%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
+      "porQue": "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario. El bot espera que el precio toque la banda inferior de Bollinger, rebote y confirme absorción en 5m antes de comprar. En Spot rige la regla de Cero Ventas en Pérdida: si la moneda retrocede, Smart DCA inyecta el Nivel 2 en soporte.",
+      "reason": "Volatilidad equilibrada (BTC 2.0%, Clásicas 3.3%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
+      "status": "pending",
+      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "criterios": [
-        "Rango Bitcoin: 2.04% | Promedio Clásicas: 3.93%",
-        "Canasta Memes: 6.49% (Líder PEPE)",
+        "Rango Bitcoin: 2.04% | Promedio Clásicas: 3.32%",
+        "Canasta Memes: 4.68% (Líder PEPE)",
         "Confirmación en Piso: Rebote horario + Vela 5m verde o mecha ≥30%",
         "Pirámide Invertida Nivel 1: Lote Explorador prudente ($18-$25 USDT)"
       ],
-      "porQue": "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario. El bot espera que el precio toque la banda inferior de Bollinger, rebote y confirme absorción en 5m antes de comprar. En Spot rige la regla de Cero Ventas en Pérdida: si la moneda retrocede, Smart DCA inyecta el Nivel 2 en soporte.",
-      "session": "Asia / Tokio (Consolidación y Rango Lateral)",
-      "btcRange24h": 2.0407007798312216,
-      "updatedAt": 1793999659653,
-      "expiresAt": 1794003259653,
+      "expiresAt": 1794013560727,
       "isCurrent": false,
-      "status": "pending"
+      "timeframe": "1h",
+      "updatedAt": 1794009960727,
+      "btcRange24h": 2.0407007798312216,
+      "stopLossPct": 4
     }
   },
   "trailingCallbacks": {
@@ -192,7 +193,5 @@
     "BONKUSDT",
     "SHIBUSDT"
   ],
-  "updatedAt": 1793999659653,
-  "wideGapLotSize": 50,
-  "rejectedSuggestions": {}
+  "updatedAt": 1794009960728
 }

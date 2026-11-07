@@ -1549,6 +1549,13 @@
       const curChecked = document.getElementById("toggle-deriv")?.checked ?? true;
       const next = !curChecked;
       await toggleStrategy("deriv", false, next);
+      await fetch("/api/deriv/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next })
+      });
+      const tDeriv = document.getElementById("toggle-deriv");
+      if (tDeriv) tDeriv.checked = next;
     });
 
     document.getElementById("input-deriv-stake-tab")?.addEventListener("change", async (e) => {
@@ -2072,10 +2079,11 @@
 
     const btnToggle = document.getElementById("btn-toggle-deriv-panel");
     if (btnToggle) {
-      btnToggle.textContent = st.enabled ? "⏸️ Pausar Motor" : "▶️ Reanudar Motor";
-      btnToggle.style.color = st.enabled ? "#f87171" : "#34d399";
-      btnToggle.style.borderColor = st.enabled ? "rgba(239, 68, 68, 0.5)" : "rgba(16, 185, 129, 0.5)";
-      btnToggle.style.background = st.enabled ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.2)";
+      btnToggle.textContent = st.enabled !== false ? "⏸️ Pausar Motor" : "▶️ Reanudar Motor (Activar Disparos)";
+      btnToggle.style.color = st.enabled !== false ? "#f87171" : "#34d399";
+      btnToggle.style.borderColor = st.enabled !== false ? "rgba(239, 68, 68, 0.5)" : "#10b981";
+      btnToggle.style.background = st.enabled !== false ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.3)";
+      btnToggle.style.boxShadow = st.enabled !== false ? "none" : "0 0 14px rgba(16, 185, 129, 0.5)";
     }
 
     const stakeInput = document.getElementById("input-deriv-stake-tab");

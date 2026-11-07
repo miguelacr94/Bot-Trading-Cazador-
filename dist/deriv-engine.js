@@ -306,9 +306,7 @@ export class DerivEngine {
                 }
             }
             else if (msgType === "proposal") {
-                if (data.proposal && data.echo_req?.req_id) {
-                    this.handleProposalResponse(data);
-                }
+                this.handleProposalResponse(data);
             }
             else if (msgType === "buy") {
                 this.handleBuyResponse(data);
@@ -323,6 +321,21 @@ export class DerivEngine {
         }
         catch (e) {
             console.error("[DERIV MULTIPLIER] Error procesando mensaje WS:", e);
+        }
+    }
+    isAnalyzing = false;
+    async triggerAnalysis() {
+        if (this.isAnalyzing || !this.state.enabled || !this.isConnected)
+            return;
+        this.isAnalyzing = true;
+        try {
+            await this.runStrategyAnalysis();
+        }
+        catch (e) {
+            console.error("[DERIV MULTIPLIER] Error analizando tick:", e);
+        }
+        finally {
+            this.isAnalyzing = false;
         }
     }
     lastRadarSave = 0;
@@ -340,6 +353,8 @@ export class DerivEngine {
             this.lastRadarSave = Date.now();
             this.saveRadarSnapshot();
         }
+        // DISPARO REACTIVO EN TIEMPO REAL: Analizar inmediatamente con cada tick
+        this.triggerAnalysis().catch(() => { });
     }
     saveRadarSnapshot() {
         try {
@@ -645,10 +660,15 @@ export class DerivEngine {
         const meta = this.pendingProposals.get(reqId);
         if (!meta)
             return;
-        this.pendingProposals.delete(reqId);
+        if (data.error) {
+            console.error("[DERIV MULTIPLIER] Error en propuesta de Deriv:", data.error.message || data.error);
+            this.pendingProposals.delete(reqId);
+            return;
+        }
         const proposal = data.proposal;
         if (!proposal || !proposal.id) {
-            console.error("[DERIV MULTIPLIER] Propuesta inválida:", data.error || data);
+            console.error("[DERIV MULTIPLIER] Propuesta inválida (sin ID):", data);
+            this.pendingProposals.delete(reqId);
             return;
         }
         console.log(`[DERIV MULTIPLIER] Cotización recibida (ID: ${proposal.id}). Ejecutando compra...`);
@@ -657,17 +677,19 @@ export class DerivEngine {
             price: proposal.ask_price || this.state.defaultStake,
             req_id: reqId
         });
-        // Guardar temporalmente en pendingProposals para handleBuyResponse
-        this.pendingProposals.set(reqId, meta);
     }
     handleBuyResponse(data) {
         const reqId = data.echo_req?.req_id;
         const meta = this.pendingProposals.get(reqId);
         if (meta)
             this.pendingProposals.delete(reqId);
+        if (data.error) {
+            console.error("[DERIV MULTIPLIER] Error comprando contrato en Deriv:", data.error.message || data.error);
+            return;
+        }
         const buy = data.buy;
         if (!buy || !buy.contract_id) {
-            console.error("[DERIV MULTIPLIER] Error comprando contrato:", data.error || data);
+            console.error("[DERIV MULTIPLIER] Error comprando contrato (sin contract_id):", data);
             return;
         }
         const contractId = String(buy.contract_id);

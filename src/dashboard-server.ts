@@ -1982,6 +1982,9 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
                     derivSt.enabled = newVal;
                     fs.writeFileSync(derivStateF, JSON.stringify(derivSt, null, 2), "utf-8");
                   }
+                  if (derivEngine) {
+                    derivEngine.setEnabled(newVal);
+                  }
                 } catch {}
               }
             } else if (data.autoPilot !== undefined) {
