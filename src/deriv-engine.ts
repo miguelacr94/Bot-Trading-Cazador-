@@ -829,7 +829,7 @@ export class DerivEngine {
       contractType,
       stake: this.state.defaultStake,
       multiplier,
-      entrySpot: buy.start_time ? parseFloat(buy.start_time) : 0,
+      entrySpot: (buy.entry_spot || buy.entry_tick) ? parseFloat(buy.entry_spot || buy.entry_tick) : 0,
       currentSpot: 0,
       entryTime: Date.now(),
       currentProfit: 0,
@@ -994,7 +994,7 @@ export class DerivEngine {
       const pos = this.positions[posIndex];
       pos.currentProfit = profit;
       pos.currentSpot = currentSpot;
-      if (entrySpot > 0 && pos.entrySpot === 0) pos.entrySpot = entrySpot;
+      if (entrySpot > 0) pos.entrySpot = entrySpot;
 
       // Actualizar pico máximo de ganancia
       if (profit > pos.peakProfit) {
