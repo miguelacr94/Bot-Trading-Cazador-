@@ -944,6 +944,7 @@ export class DerivEngine {
     }
     clearTrades() {
         this.trades = [];
+        this.positions = [];
         this.state.winsCount = 0;
         this.state.lossesCount = 0;
         this.state.winRatePct = 0;
@@ -952,9 +953,10 @@ export class DerivEngine {
         this.state.consecutiveLosses = 0;
         this.state.pauseUntil = 0;
         this.saveTrades();
+        this.savePositions();
         this.saveState();
-        console.log("[DERIV MULTIPLIER] 🧹 Historial de trades y estadísticas reiniciados a cero.");
-        return { success: true, message: "Historial de Deriv reiniciado correctamente a 0." };
+        console.log("[DERIV MULTIPLIER] 🧹 Historial de trades, posiciones y estadísticas reiniciados a cero.");
+        return { success: true, message: "Historial de Deriv y posiciones reiniciados correctamente a 0." };
     }
     isEnabled() {
         return this.state.enabled;
