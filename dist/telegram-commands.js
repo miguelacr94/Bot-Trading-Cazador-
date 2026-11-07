@@ -40,15 +40,6 @@ export class TelegramCommands {
                 { command: "viabilidad_futuros", description: "🎯 Diagnóstico de viabilidad en vivo" },
                 { command: "reporte_futuros", description: "📊 Informe cuantitativo de Futuros" },
                 { command: "toggle_futuros", description: "⚡ Activar / Pausar motor de Futuros" },
-                // Deriv Sintéticos (Índices de Volatilidad)
-                { command: "deriv", description: "🎰 Estado y ganancias de Deriv Sintéticos" },
-                { command: "deriv_real", description: "🔥 Cambiar Deriv a dinero REAL (ROT92884781)" },
-                { command: "deriv_demo", description: "🧪 Cambiar Deriv a DEMO oficial (DOT95084693)" },
-                { command: "deriv_trades", description: "📜 Historial de operaciones en Deriv" },
-                { command: "deriv_stake", description: "💵 Ajustar monto de trade (ej: /deriv_stake 0.50)" },
-                { command: "deriv_pausa", description: "⏸️ Pausar motor Deriv Sintéticos" },
-                { command: "deriv_reanudar", description: "▶️ Reanudar motor y limpiar bloqueos" },
-                { command: "deriv_reset_pnl", description: "🔄 Resetear contador de pérdida diaria" },
                 // Estrategias y Operación
                 { command: "estrategias", description: "⚙️ Panel y switches de estrategias" },
                 { command: "alpha", description: "🤖 Centinela Alpha (Recuperación autónoma)" },

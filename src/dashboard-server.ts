@@ -1,5 +1,4 @@
 import { supabaseDb } from "./supabase-db.js";
-import { derivEngine } from "./deriv-engine.js";
 import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
@@ -791,93 +790,6 @@ export class DashboardServer {
       }
     };
 
-    // TELEMETRÍA DE DERIV SINTÉTICOS (ÍNDICES DE VOLATILIDAD)
-    let derivState = {
-      enabled: true,
-      isSimulated: true,
-      accountId: process.env.DERIV_ACCOUNT_ID || "DOT95084693",
-      balanceUsdt: 10000.0,
-      startingBalanceUsdt: 10000.0,
-      totalProfitUsdt: 0.0,
-      winsCount: 0,
-      lossesCount: 0,
-      winRatePct: 0.0,
-      defaultStake: 10.0,
-      defaultDurationTicks: 5,
-      dailyRealizedPnl: 0.0,
-      dailyProfitTarget: 50.0,
-      activeSymbols: ["R_75", "R_100", "1HZ75V"]
-    };
-    try {
-      const f = path.resolve(process.cwd(), ".deriv-state.json");
-      if (fs.existsSync(f)) derivState = { ...derivState, ...JSON.parse(fs.readFileSync(f, "utf-8")) };
-    } catch {}
-
-    let derivPositions: any[] = [];
-    try {
-      const f = path.resolve(process.cwd(), ".deriv-positions.json");
-      if (fs.existsSync(f)) derivPositions = JSON.parse(fs.readFileSync(f, "utf-8"));
-    } catch {}
-
-    let derivTrades: any[] = [];
-    try {
-      const f = path.resolve(process.cwd(), ".deriv-trades.json");
-      if (fs.existsSync(f)) derivTrades = JSON.parse(fs.readFileSync(f, "utf-8"));
-    } catch {}
-
-    let derivRadar: any[] = [];
-    try {
-      const f = path.resolve(process.cwd(), ".deriv-radar.json");
-      if (fs.existsSync(f)) derivRadar = JSON.parse(fs.readFileSync(f, "utf-8"));
-    } catch {}
-
-    let derivTelemetry: any = null;
-    try {
-      if (derivEngine) {
-        const tel = derivEngine.getTelemetry();
-        derivTelemetry = {
-          state: tel.state,
-          positions: tel.openPositions,
-          trades: tel.recentTrades,
-          radar: tel.radar,
-          stats: {
-            balanceUsdt: tel.metrics.balance,
-            totalProfitUsdt: tel.metrics.totalProfit,
-            dailyProfitUsdt: tel.metrics.dailyProfit,
-            wins: tel.metrics.wins,
-            losses: tel.metrics.losses,
-            winRate: tel.metrics.winRate,
-            activePositionsCount: tel.metrics.openPositionsCount
-          },
-          operationalStatus: tel.operationalStatus,
-          connected: tel.connected,
-          lastTickReceived: (tel as any).lastTickReceived,
-          secondsSinceLastTick: (tel as any).secondsSinceLastTick,
-          cooldownRemainingSec: (tel as any).cooldownRemainingSec,
-          isReal: (tel as any).isReal,
-          environmentLabel: (tel as any).environmentLabel
-        };
-      }
-    } catch {}
-
-    if (!derivTelemetry) {
-      derivTelemetry = {
-        state: derivState,
-        positions: derivPositions,
-        trades: derivTrades.slice(0, 15),
-        radar: derivRadar,
-        stats: {
-          balanceUsdt: derivState.balanceUsdt,
-          totalProfitUsdt: derivState.totalProfitUsdt,
-          dailyProfitUsdt: derivState.dailyRealizedPnl,
-          wins: derivState.winsCount,
-          losses: derivState.lossesCount,
-          winRate: derivState.winRatePct,
-          activePositionsCount: derivPositions.length
-        }
-      };
-    }
-
     const cash = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
     const total = positionsValue + cash;
     const p = this.pnl;
@@ -1047,7 +959,6 @@ export class DashboardServer {
           : null,
       recentCycles: allMergedCycles.slice(-70).reverse(),
       futuresTelemetry,
-      derivTelemetry,
       recoveryTracker: (() => {
         const baseTracker = this.cachedRecoveryTracker || this.getRecoveryTracker() || { targetUsdt: 100.00, recoveredUsdt: 0, tradesCount: 0 };
         const debtTarget = baseTracker.targetUsdt || 100.00;
@@ -1798,126 +1709,6 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
         return;
       }
 
-      if (
-        parsedUrl.pathname === "/api/deriv/config" &&
-        req.method === "POST"
-      ) {
-        let body = "";
-        req.on("data", (chunk) => (body += chunk));
-        req.on("end", async () => {
-          try {
-            const data = JSON.parse(body || "{}");
-            const derivStateF = path.resolve(process.cwd(), ".deriv-state.json");
-            const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-
-            let derivSt: any = {
-              enabled: true,
-              isSimulated: true,
-              accountId: process.env.DERIV_ACCOUNT_ID || "DOT95084693",
-              appId: process.env.DERIV_APP_ID || "",
-              balanceUsdt: 10000,
-              startingBalanceUsdt: 10000,
-              totalProfitUsdt: 0,
-              winsCount: 0,
-              lossesCount: 0,
-              winRatePct: 0,
-              defaultStake: 10,
-              defaultDurationTicks: 5,
-              maxConcurrentTrades: 1,
-              dailyProfitTarget: 50,
-              dailyStopLoss: 30,
-              dailyRealizedPnl: 0,
-              lastDailyReset: new Date().toISOString().split("T")[0],
-              activeSymbols: ["R_75", "R_100", "1HZ75V"],
-              lastTradeTime: 0
-            };
-            if (fs.existsSync(derivStateF)) {
-              try { derivSt = JSON.parse(fs.readFileSync(derivStateF, "utf-8")); } catch {}
-            }
-
-            let controls: any = {};
-            if (fs.existsSync(ctrlFile)) {
-              try { controls = JSON.parse(fs.readFileSync(ctrlFile, "utf-8")); } catch {}
-            }
-            if (!controls.strategies) controls.strategies = {};
-
-            if (data.isSimulated !== undefined) {
-              const isSim = !!data.isSimulated;
-              derivSt.isSimulated = isSim;
-              const demoAcc = process.env.DERIV_DEMO_ACCOUNT_ID || "DOT95084693";
-              const realAcc = process.env.DERIV_REAL_ACCOUNT_ID || "ROT92884781";
-              derivSt.accountId = isSim ? demoAcc : realAcc;
-              derivEngine.setEnvironment(!isSim).catch(() => {});
-            }
-            if (data.enabled !== undefined) {
-              derivSt.enabled = !!data.enabled;
-              controls.strategies.deriv = !!data.enabled;
-              derivEngine.setEnabled(!!data.enabled);
-            }
-            if (data.stake !== undefined) {
-              const s = parseFloat(data.stake);
-              if (!isNaN(s) && s >= 0.35 && s <= 100) {
-                derivSt.defaultStake = s;
-                derivEngine.setStake(s);
-              }
-            }
-            if (data.dailyProfitTarget !== undefined) {
-              const dpt = parseFloat(data.dailyProfitTarget);
-              if (!isNaN(dpt) && dpt > 0) {
-                derivSt.dailyProfitTarget = dpt;
-                derivEngine.setDailyProfitTarget(dpt);
-              }
-            }
-            if (data.dailyStopLoss !== undefined) {
-              const dsl = parseFloat(data.dailyStopLoss);
-              if (!isNaN(dsl) && dsl > 0) {
-                derivSt.dailyStopLoss = dsl;
-                derivEngine.setDailyStopLoss(dsl);
-              }
-            }
-            if (data.reset) {
-              derivSt.totalProfitUsdt = 0;
-              derivSt.winsCount = 0;
-              derivSt.lossesCount = 0;
-              derivSt.winRatePct = 0;
-              derivSt.dailyRealizedPnl = 0;
-            }
-
-            if (!controls.strategySettings) controls.strategySettings = {};
-            controls.strategySettings.deriv = {
-              stake: derivSt.defaultStake,
-              dailyProfitTarget: derivSt.dailyProfitTarget,
-              dailyStopLoss: derivSt.dailyStopLoss,
-              enabled: derivSt.enabled
-            };
-
-            controls.updatedAt = Date.now();
-            fs.writeFileSync(derivStateF, JSON.stringify(derivSt, null, 2), "utf-8");
-            fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
-            supabaseDb.saveStrategyControls(controls).catch(() => {});
-
-            res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-            res.end(JSON.stringify({ success: true, state: derivSt, controls: controls.strategies }));
-          } catch (e: any) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ success: false, error: e.message }));
-          }
-        });
-        return;
-      }
-
-      if (parsedUrl.pathname === "/api/deriv/clear-trades" && req.method === "POST") {
-        try {
-          const result = derivEngine ? derivEngine.clearTrades() : { success: true, message: "Trades limpiados." };
-          res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify(result));
-        } catch (e: any) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ success: false, error: e.message }));
-        }
-        return;
-      }
-
       if (parsedUrl.pathname === "/api/strategies/toggle" &&
         req.method === "POST"
       ) {
@@ -1997,20 +1788,6 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
                     const futSt = JSON.parse(fs.readFileSync(futStateF, "utf-8"));
                     futSt.enabled = newVal;
                     fs.writeFileSync(futStateF, JSON.stringify(futSt, null, 2), "utf-8");
-                  }
-                } catch {}
-              }
-
-              if (data.strategy === "deriv") {
-                try {
-                  const derivStateF = path.resolve(process.cwd(), ".deriv-state.json");
-                  if (fs.existsSync(derivStateF)) {
-                    const derivSt = JSON.parse(fs.readFileSync(derivStateF, "utf-8"));
-                    derivSt.enabled = newVal;
-                    fs.writeFileSync(derivStateF, JSON.stringify(derivSt, null, 2), "utf-8");
-                  }
-                  if (derivEngine) {
-                    derivEngine.setEnabled(newVal);
                   }
                 } catch {}
               }

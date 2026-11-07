@@ -1,7 +1,6 @@
 import { supabaseDb } from "./supabase-db.js";
 import crypto from "crypto";
 import { FuturesEngine } from "./futures-engine.js";
-import { derivEngine, DerivEngine } from "./deriv-engine.js";
 import { DashboardServer } from "./dashboard-server.js";
 import { Spot } from "@binance/connector";
 import { AiCopilot, BotContextSnapshot } from "./ai-copilot.js";
@@ -343,7 +342,6 @@ export class TrailingMasterBot {
   private notifier: TelegramNotifier;
   private telegramCommands: TelegramCommands;
   private futuresEngine: FuturesEngine;
-  private derivEngine: DerivEngine;
   private isProcessing = false;
   private autoPilot = true;
   private minUsdtToTrade = 10;
@@ -657,7 +655,6 @@ export class TrailingMasterBot {
     this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
     this.notifier = new TelegramNotifier();
     this.futuresEngine = new FuturesEngine();
-    this.derivEngine = derivEngine;
     this.telegramCommands = new TelegramCommands((cmd) => this.handleTelegramCommand(cmd));
     this.loadTrailingPositions();
     this.loadBuyWatches();
@@ -769,17 +766,6 @@ export class TrailingMasterBot {
       if (!this.controls.strategySettings) this.controls.strategySettings = {};
       this.controls.strategySettings.coreWatchlist = this.controls.coreWatchlist;
       this.controls.strategySettings.memeWatchlist = this.controls.memeWatchlist;
-      if (this.derivEngine) {
-        const tel = this.derivEngine.getTelemetry();
-        if (tel?.state) {
-          (this.controls.strategySettings as any).deriv = {
-            stake: tel.state.defaultStake,
-            dailyProfitTarget: tel.state.dailyProfitTarget,
-            dailyStopLoss: tel.state.dailyStopLoss,
-            enabled: tel.state.enabled
-          };
-        }
-      }
       fs.writeFileSync(path.resolve(process.cwd(), ".strategy-controls.json"), JSON.stringify(this.controls, null, 2));
       // Sincronización en la nube Supabase
       supabaseDb.saveStrategyControls(this.controls).catch(() => {});
@@ -3362,163 +3348,8 @@ export class TrailingMasterBot {
           `👉 Activar Simulación: /futuros_sim`;
       }
 
-      if (cmd === "/deriv" || cmd === "deriv" || cmd === "/deriv_status" || cmd === "deriv_status") {
-        const tel = this.derivEngine.getTelemetry();
-        const st = tel.state;
-        const icon = tel.connected ? "🟢 CONECTADO" : "🔴 RECONECTANDO";
-        const pnlSign = st.totalProfitUsdt >= 0 ? "+" : "";
-        const envLabel = st.isSimulated ? "🧪 DEMO OFICIAL (PROTECCIÓN TOTAL)" : "🔥 REAL";
-        const pos = tel.openPositions.length > 0 ? (tel.openPositions[0] as any) : null;
-
-        let msg = `🎰 <b>ESTADO MOTOR DERIV MULTIPLICADORES</b> 🚀\n\n` +
-          `• <b>Conexión WebSocket:</b> ${icon}\n` +
-          `• <b>Entorno Activo:</b> <b>${envLabel}</b>\n` +
-          `• <b>Cuenta ID:</b> <code>${st.accountId}</code>\n` +
-          `• <b>Balance Actual:</b> <b>$${st.balanceUsdt.toFixed(2)} USD</b>\n` +
-          `• <b>Estado Operativo:</b> ${tel.operationalStatus.message}\n` +
-          `• <b>Stake por Trade:</b> $${st.defaultStake.toFixed(2)} USD\n` +
-          `• <b>Gestión de Riesgo:</b> SL: -$${(st as any).defaultStopLoss || 0.30} | TP: +$${(st as any).defaultTakeProfit || 0.80} USD\n` +
-          `• <b>Trailing Take Profit:</b> Activa en +$${(st as any).trailingTriggerProfit || 0.35} (callback: $${(st as any).trailingCallback || 0.15})\n` +
-          `• <b>Posiciones Abiertas:</b> ${tel.openPositions.length} / ${st.maxConcurrentTrades}\n`;
-
-        if (pos) {
-          const posSign = pos.currentProfit >= 0 ? "+" : "";
-          const trailTag = pos.trailingActivated ? " | 🏹 <b>Trailing Activo</b>" : "";
-          msg += `\n🎯 <b>POSICIÓN VIVA:</b>\n` +
-            `  • <code>${pos.symbol}</code> (${pos.contractType} x${pos.multiplier})\n` +
-            `  • PnL en Vivo: <b>${posSign}$${pos.currentProfit.toFixed(2)} USD</b> (Pico: +$${pos.peakProfit.toFixed(2)})${trailTag}\n` +
-            `  • <i>${pos.rationale}</i>\n`;
-        }
-
-        msg += `\n• <b>Efectividad (Win Rate):</b> ${st.winRatePct.toFixed(1)}% (${st.winsCount}W / ${st.lossesCount}L)\n` +
-          `• <b>PnL Neto Hoy:</b> ${st.dailyRealizedPnl >= 0 ? "+" : ""}$${st.dailyRealizedPnl.toFixed(2)} USD (Meta: +$${st.dailyProfitTarget.toFixed(2)} USD)\n` +
-          `• <b>Stop-Loss Diario:</b> -$${st.dailyStopLoss.toFixed(2)} USD\n` +
-          `• <b>PnL Histórico Acumulado:</b> <b>${pnlSign}$${st.totalProfitUsdt.toFixed(2)} USD</b>\n` +
-          `• <b>Índices en Radar:</b> ${st.activeSymbols.join(", ")}\n\n` +
-          `👉 Ver historial: /deriv_trades\n` +
-          `👉 Cambiar entorno: /deriv_demo o /deriv_real\n` +
-          `👉 Reanudar motor: /deriv_reanudar\n` +
-          `👉 Pausar: /deriv_pausa`;
-        return msg;
-      }
-
-      if (cmd === "/deriv_trades" || cmd === "deriv_trades") {
-        const tel = this.derivEngine.getTelemetry();
-        if (tel.recentTrades.length === 0) {
-          return `📜 <b>HISTORIAL DERIV MULTIPLICADORES</b>\n\nNo hay operaciones registradas aún. El motor está vigilando breakouts y rebotes en soportes.`;
-        }
-        let msg = `📜 <b>ÚLTIMAS ${Math.min(5, tel.recentTrades.length)} OPERACIONES EN MULTIPLICADORES:</b>\n\n`;
-        for (const t of tel.recentTrades.slice(0, 5) as any[]) {
-          const icon = t.status === "won" ? "🟢 GANADA" : "🔴 PERDIDA";
-          const sign = t.profit >= 0 ? "+" : "";
-          const dur = t.durationSec ? `${t.durationSec}s` : "";
-          const reasonTag = t.exitReason === "TRAILING_TP"
-            ? "🏹 Trailing TP"
-            : t.exitReason === "TAKE_PROFIT"
-            ? "🎯 Take Profit"
-            : t.exitReason === "STOP_LOSS"
-            ? "🛡️ Stop Loss"
-            : "Mercado";
-
-          msg += `• <b>${t.symbol}</b> (${t.contractType} x${t.multiplier}) | ${icon}\n` +
-                 `  PnL: <b>${sign}$${t.profit.toFixed(2)} USD</b> (${reasonTag} en ${dur})\n` +
-                 `  <i>${(t.rationale || "").slice(0, 60)}</i>\n\n`;
-        }
-        return msg;
-      }
-
-      if (cmd === "/deriv_stake" || cmd === "deriv_stake") {
-        const amount = parseFloat(arg1);
-        if (isNaN(amount) || amount < 1.0 || amount > 100) {
-          return `⚠️ Monto inválido. En Multiplicadores el stake mínimo es $1.00 USD.\nEjemplo: <code>/deriv_stake 1</code>`;
-        }
-        this.derivEngine.setStake(amount);
-        this.saveStrategyControls();
-        return `✅ <b>Monto por operación en Deriv Multiplicadores actualizado a: $${amount.toFixed(2)} USD</b>\nSincronizado con Supabase Cloud DB y panel de control web.`;
-      }
-
-      if (cmd === "/deriv_meta" || cmd === "deriv_meta" || cmd === "/deriv_target" || cmd === "deriv_target") {
-        const amount = parseFloat(arg1);
-        if (isNaN(amount) || amount <= 0) {
-          return `⚠️ Monto inválido. Ingresa un valor en USD.\nEjemplo: <code>/deriv_meta 4</code>`;
-        }
-        this.derivEngine.setDailyProfitTarget(amount);
-        this.saveStrategyControls();
-        return `🎯 <b>Meta diaria de ganancias Deriv actualizada a: +$${amount.toFixed(2)} USD</b>\nSincronizado con Supabase Cloud DB. Al alcanzarla, el bot asegurará ganancias y pausará hasta el día siguiente.`;
-      }
-
-      if (cmd === "/deriv_stop" || cmd === "deriv_stop" || cmd === "/deriv_stoploss" || cmd === "deriv_stoploss") {
-        const amount = parseFloat(arg1);
-        if (isNaN(amount) || amount <= 0) {
-          return `⚠️ Monto inválido. Ingresa un valor positivo en USD.\nEjemplo: <code>/deriv_stop 3</code>`;
-        }
-        this.derivEngine.setDailyStopLoss(amount);
-        this.saveStrategyControls();
-        return `🛑 <b>Stop-Loss diario Deriv actualizado a: -$${amount.toFixed(2)} USD</b>\nSincronizado con Supabase Cloud DB. Si las pérdidas del día alcanzan este límite, el motor se pausará automáticamente para proteger tu capital.`;
-      }
-
-      if (cmd === "/deriv_pausa" || cmd === "deriv_pausa") {
-        this.derivEngine.setEnabled(false);
-        if (!this.controls.strategies) this.controls.strategies = {} as any;
-        (this.controls.strategies as any).deriv = false;
-        this.saveStrategyControls();
-        return `⏸️ <b>Motor Deriv Sintéticos pausado.</b> No se ejecutarán nuevos contratos. (Sincronizado con DB y panel web)`;
-      }
-
-      if (cmd === "/deriv_real" || cmd === "deriv_real") {
-        const envRes = await this.derivEngine.setEnvironment(true);
-        if (!envRes.success) {
-          return `⚠️ No se puede cambiar a REAL mientras haya un contrato abierto. Intenta en unos segundos.`;
-        }
-        this.saveStrategyControls();
-        return `🔥 <b>Deriv cambiado a ENTORNO REAL</b> 💸\n\n` +
-          `• Cuenta: <code>ROT92884781</code>\n` +
-          `• Saldo Real: $${this.derivEngine.getTelemetry().state.balanceUsdt.toFixed(2)} USD\n` +
-          `• Stake por Trade: $${this.derivEngine.getTelemetry().state.defaultStake.toFixed(2)} USD\n` +
-          `• Meta Diaria: +$${this.derivEngine.getTelemetry().state.dailyProfitTarget.toFixed(2)} USD\n` +
-          `• Stop Diario: -$${this.derivEngine.getTelemetry().state.dailyStopLoss.toFixed(2)} USD\n\n` +
-          `⚠️ <i>Operando en mercado real. Para regresar a demo escribe: /deriv_demo</i>`;
-      }
-
-      if (cmd === "/deriv_demo" || cmd === "deriv_demo" || cmd === "/deriv_sim" || cmd === "deriv_sim") {
-        await this.derivEngine.setEnvironment(false);
-        this.saveStrategyControls();
-        return `🧪 <b>Deriv cambiado a ENTORNO DEMO</b> 🛡️\n\n` +
-          `• Cuenta: <code>DOT95084693</code>\n` +
-          `• Saldo Demo: $${this.derivEngine.getTelemetry().state.balanceUsdt.toFixed(2)} USD\n\n` +
-          `👉 Para volver a real escribe: /deriv_real`;
-      }
-
-      if (cmd === "/deriv_reanudar" || cmd === "deriv_reanudar") {
-        this.derivEngine.setEnabled(true);
-        if (!this.controls.strategies) this.controls.strategies = {} as any;
-        (this.controls.strategies as any).deriv = true;
-        this.saveStrategyControls();
-        const op = this.derivEngine.getTelemetry().operationalStatus;
-        return `▶️ <b>Motor Deriv Sintéticos reanudado.</b>\n\n` +
-          `• <b>Estado Operativo:</b> ${op.message}\n` +
-          `• Enfriamientos previos y bloqueos de stop loss reseteados para una sesión limpia.\n` +
-          `• Buscando oportunidades con 15 ticks y stake de $${this.derivEngine.getTelemetry().state.defaultStake.toFixed(2)} USD.\n\n` +
-          `👉 Consulta estado: /deriv`;
-      }
-
-      if (cmd === "/deriv_reset_pnl" || cmd === "deriv_reset_pnl") {
-        this.derivEngine.resetDailyPnl();
-        return `🔄 <b>Contador diario de PnL Deriv reseteado a $0.00 USD.</b>\n` +
-          `• Bloqueos de stop loss y enfriamiento levantados.\n` +
-          `• Margen diario completo disponible (-$${this.derivEngine.getTelemetry().state.dailyStopLoss.toFixed(2)} USD).`;
-      }
-
-      if (cmd === "/toggle_deriv" || cmd === "toggle_deriv") {
-        const cur = (this.controls.strategies as any)?.deriv !== false && this.derivEngine.isEnabled();
-        const next = !cur;
-        this.derivEngine.setEnabled(next);
-        if (!this.controls.strategies) this.controls.strategies = {} as any;
-        (this.controls.strategies as any).deriv = next;
-        this.saveStrategyControls();
-        return `🎰 <b>Deriv Índices Sintéticos:</b> ${next ? "🟢 <b>ACTIVADO</b>" : "🔴 <b>PAUSADO</b>"}.\n\n` +
-          `• Sincronizado dinámicamente con DB (Supabase) y panel de control web.\n` +
-          `👉 Consulta estado: /deriv`;
+      if (cmd === "/deriv" || cmd === "deriv" || cmd === "/toggle_deriv" || cmd === "toggle_deriv" || cmd?.startsWith("/deriv_")) {
+        return `ℹ️ <b>El motor Deriv Sintéticos ha sido retirado permanentemente</b> por configuración del usuario.\nTodos los recursos están 100% enfocados en Binance Spot y Binance Futuros USD-M.`;
       }
 
       if (cmd === "/liquidez" || cmd === "liquidez") {
@@ -3734,12 +3565,7 @@ export class TrailingMasterBot {
         msg += `  <i>Opera de Viernes 17:00 a Domingo 18:00 COT cazando descuentos de fin de semana (Bollinger + Mecha) para vender en la apertura institucional de futuros CME.</i>\n`;
         msg += `  👉 /toggle_weekend | /weekend\n\n`;
 
-        const isDerivActive = (c as any).deriv !== false && this.derivEngine.isEnabled();
-        msg += `• <b>5. 🎰 Deriv Índices Sintéticos (24/7):</b> ${isDerivActive ? "🟢 <b>ACTIVO (Demo DOT)</b>" : "🔴 <i>PAUSADO</i>"}\n`;
-        msg += `  <i>Opera Volatility 75 / 100 con micro-momentum y RSI en contratos de 5 ticks. Saldo 100% independiente de Binance Spot y Futuros.</i>\n`;
-        msg += `  👉 /toggle_deriv | /deriv\n\n`;
-
-        msg += `• <b>6. ⏱️ Brújula Multitemporal:</b> <b>${tfVal}</b> ${tfVal === "1H" ? "(Base Institucional)" : ""}\n`;
+        msg += `• <b>5. ⏱️ Brújula Multitemporal:</b> <b>${tfVal}</b> ${tfVal === "1H" ? "(Base Institucional)" : ""}\n`;
         msg += `  <i>Sincronizada con el horario de bolsas (Londres 03:00, NY 08:30, Cosecha 17:00, Noche 20:00 COT).</i>\n`;
         msg += `  👉 /timeframe\n\n`;
 
@@ -6177,15 +6003,6 @@ export class TrailingMasterBot {
       if (dbCtrl && dbCtrl.strategies) {
         this.controls = dbCtrl;
         this.autoPilot = this.controls.autoPilot !== false;
-        if (typeof (this.controls.strategies as any)?.deriv === "boolean") {
-          this.derivEngine.setEnabled((this.controls.strategies as any).deriv);
-        }
-        const derivSettings = (this.controls.strategySettings as any)?.deriv;
-        if (derivSettings) {
-          if (typeof derivSettings.stake === "number") this.derivEngine.setStake(derivSettings.stake);
-          if (typeof derivSettings.dailyProfitTarget === "number") this.derivEngine.setDailyProfitTarget(derivSettings.dailyProfitTarget);
-          if (typeof derivSettings.dailyStopLoss === "number") this.derivEngine.setDailyStopLoss(derivSettings.dailyStopLoss);
-        }
         console.log(`☁️ [SUPABASE DB] Controles cargados exitosamente desde la nube.`);
         console.log(`🎯 [SUPABASE DB] Meta de Deuda: ${(this.controls.recoveryTracker?.targetUsdt || 100).toFixed(2)} USDT | Recuperado: +${(this.controls.recoveryTracker?.recoveredUsdt || 0).toFixed(2)} USDT`);
         console.log(`🛡️ [SUPABASE DB] Stop-Loss Spot: ${this.controls.stopLossEnabled ? "Activo" : "DESACTIVADO (Blindaje Seguro)"}`);
@@ -6227,9 +6044,6 @@ export class TrailingMasterBot {
 
     await this.telegramCommands.start();
     this.futuresEngine.start(4000);
-    if (process.env.DERIV_KEY && process.env.DERIV_APP_ID) {
-      this.derivEngine.start().catch((e) => console.error("[DERIV] Error iniciando DerivEngine:", e));
-    }
     console.log(`📱 Telegram listo para recibir órdenes por chat.`);
 
     await this.syncOrphanPositions();

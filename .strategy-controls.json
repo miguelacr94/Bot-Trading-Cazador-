@@ -1,6 +1,5 @@
 {
   "strategies": {
-    "deriv": false,
     "futures": true,
     "smart_dca": true,
     "micro_grid": true,
@@ -26,12 +25,6 @@
     "trailing_rebound": 50
   },
   "strategySettings": {
-    "deriv": {
-      "stake": 1,
-      "enabled": false,
-      "dailyStopLoss": 3,
-      "dailyProfitTarget": 4
-    },
     "futures": {
       "leverage": 7,
       "timeframe": "15m",
@@ -94,11 +87,11 @@
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1794013560727,
+      "expiresAt": 1794021209315,
       "isCurrent": true,
       "timeframe": "4h",
-      "updatedAt": 1794009960727,
-      "btcRange24h": 2.0407007798312216,
+      "updatedAt": 1794017609315,
+      "btcRange24h": 1.9896378592030768,
       "stopLossPct": 6
     },
     "micro_grid": {
@@ -107,15 +100,15 @@
       "status": "applied",
       "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "criterios": [
-        "Compresión de volatilidad en Bitcoin: 2.04% (< 2.2%)",
+        "Compresión de volatilidad en Bitcoin: 1.99% (< 2.2%)",
         "Compra en el 30% inferior del canal de 6H (rango 0.8% a 2.5%)",
         "Exige vela de soporte (verde o mecha ≥30%) y RSI entre 34 y 46"
       ],
-      "expiresAt": 1794013560727,
+      "expiresAt": 1794021209315,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794009960727,
-      "btcRange24h": 2.0407007798312216,
+      "updatedAt": 1794017609315,
+      "btcRange24h": 1.9896378592030768,
       "stopLossPct": 2
     },
     "cazador_weekend": {
@@ -128,29 +121,29 @@
         "Puntaje cuantitativo: Caída + RSI + Banda Inferior Bollinger + Mecha",
         "Confirmación de giro en 5m antes de comprar + Salida en apertura CME"
       ],
-      "expiresAt": 1794013560727,
+      "expiresAt": 1794021209315,
       "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1794009960727,
-      "btcRange24h": 2.0407007798312216,
+      "updatedAt": 1794017609315,
+      "btcRange24h": 1.9896378592030768,
       "stopLossPct": 5
     },
     "trailing_rebound": {
-      "porQue": "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario. El bot espera que el precio toque la banda inferior de Bollinger, rebote y confirme absorción en 5m antes de comprar. En Spot rige la regla de Cero Ventas en Pérdida: si la moneda retrocede, Smart DCA inyecta el Nivel 2 en soporte.",
-      "reason": "Volatilidad equilibrada (BTC 2.0%, Clásicas 3.3%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
+      "porQue": "En días donde Bitcoin se mueve en canales planos (< 2.0%), mantener 1H evita compras anticipadas en falsas rupturas, exigiendo confirmación de mecha o giro verde en 5m antes de disparar el Lote Explorador.",
+      "reason": "BTC comprimido (2.0%), pero Memes activas (4.5%). Sesión Asia / Tokio (Consolidación y Rango Lateral).",
       "status": "pending",
       "session": "Asia / Tokio (Consolidación y Rango Lateral)",
       "criterios": [
-        "Rango Bitcoin: 2.04% | Promedio Clásicas: 3.32%",
-        "Canasta Memes: 4.68% (Líder PEPE)",
-        "Confirmación en Piso: Rebote horario + Vela 5m verde o mecha ≥30%",
-        "Pirámide Invertida Nivel 1: Lote Explorador prudente ($18-$25 USDT)"
+        "Rango Macro Bitcoin: 1.99% (Calma y absorción institucional)",
+        "Rango Canasta Memecoins: 4.50% (Líder: PEPE 7.7%)",
+        "Estrategia Híbrida: 1H + Bandas de Bollinger + Vela 5m de absorción",
+        "Blindaje de Doble Llave: 0% ventas en negativo"
       ],
-      "expiresAt": 1794013560727,
+      "expiresAt": 1794021209315,
       "isCurrent": false,
       "timeframe": "1h",
-      "updatedAt": 1794009960727,
-      "btcRange24h": 2.0407007798312216,
+      "updatedAt": 1794017609315,
+      "btcRange24h": 1.9896378592030768,
       "stopLossPct": 4
     }
   },
@@ -193,5 +186,5 @@
     "BONKUSDT",
     "SHIBUSDT"
   ],
-  "updatedAt": 1794009960728
+  "updatedAt": 1794017609316
 }

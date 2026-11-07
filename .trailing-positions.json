@@ -30,33 +30,56 @@
     }
   ],
   [
-    "XRPUSDT_lot_1",
+    "SOLUSDT",
     {
-      "symbol": "XRPUSDT",
-      "lotId": "XRPUSDT_lot_1",
-      "lotIndex": 1,
-      "buyPrice": 1.3329,
-      "qty": 15.88300561,
-      "investedUsdt": 21.1705,
-      "highestPrice": 1.3329,
+      "symbol": "SOLUSDT",
+      "buyPrice": 93.37,
+      "qty": 0.2088783,
+      "investedUsdt": 19.502966870999998,
+      "highestPrice": 93.37,
       "activated": false,
-      "buyTime": 1793179021405,
-      "strategy": "trailing_rebound"
+      "buyTime": 1793639359184
     }
   ],
   [
-    "XRPUSDT_lot_2",
+    "PEPEUSDT",
+    {
+      "symbol": "PEPEUSDT",
+      "buyPrice": 0.00000468,
+      "qty": 4936395.88,
+      "investedUsdt": 23.1023327184,
+      "highestPrice": 0.00000486,
+      "activated": true,
+      "buyTime": 1793692990384
+    }
+  ],
+  [
+    "XRPUSDT",
     {
       "symbol": "XRPUSDT",
-      "lotId": "XRPUSDT_lot_2",
-      "lotIndex": 2,
+      "lotId": "XRPUSDT",
+      "lotIndex": 1,
       "buyPrice": 1.2416,
       "qty": 81.8451,
       "investedUsdt": 101.62,
-      "highestPrice": 1.2494,
-      "activated": false,
+      "highestPrice": 1.3083,
+      "activated": true,
       "buyTime": 1793387121867,
-      "strategy": "smart_dca"
+      "strategy": "smart_dca",
+      "customCallbackPct": 0.3,
+      "partialProfitTaken": false
+    }
+  ],
+  [
+    "NEARUSDT",
+    {
+      "symbol": "NEARUSDT",
+      "buyPrice": 3.749,
+      "qty": 23.00000007,
+      "investedUsdt": 86.22700026243,
+      "highestPrice": 3.749,
+      "activated": false,
+      "buyTime": 1794002623681
     }
   ]
 ]
