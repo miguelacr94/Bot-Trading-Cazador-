@@ -447,62 +447,13 @@ export class DerivEngine {
       const curPrice = quotes.length > 0 ? quotes[quotes.length - 1] : 0;
       const prevPrice = quotes.length > 1 ? quotes[quotes.length - 2] : curPrice;
       const rsi = quotes.length >= 14 ? this.calculateRSI(quotes, 14) : 50;
-      const emaFast = quotes.length >= 10 ? this.calculateEMA(quotes, 10) : curPrice;
-      const emaSlow = quotes.length >= 25 ? this.calculateEMA(quotes, 25) : curPrice;
+      const emaFast = quotes.length >= 8 ? this.calculateEMA(quotes, 8) : curPrice;
+      const emaSlow = quotes.length >= 20 ? this.calculateEMA(quotes, 20) : curPrice;
 
       const isUptrend = emaFast > emaSlow;
       const isDowntrend = emaFast < emaSlow;
       const trend = isUptrend ? "ALCISTA (UP)" : isDowntrend ? "BAJISTA (DOWN)" : "LATERAL";
       const changeTick = curPrice - prevPrice;
-
-      let status = "Esperando señal";
-      let statusBadge = "VIGILANDO";
-      let statusColor = "#94a3b8";
-
-      if (isUptrend && rsi >= 50 && rsi <= 72) {
-        status = "Fuerte impulso alcista (MULTUP potencial)";
-        statusBadge = "BULLISH";
-        statusColor = "#10b981";
-      } else if (isDowntrend && rsi >= 28 && rsi <= 50) {
-        status = "Fuerte impulso bajista (MULTDOWN potencial)";
-        statusBadge = "BEARISH";
-        statusColor = "#ef4444";
-      }
-
-      // 📊 BARRA DE PROGRESO DE CONVERGENCIA HACIA EL DISPARO (0% a 100%)
-      let readinessScore = 0;
-      let readinessReason = "Acumulando ticks...";
-
-      if (quotes.length < 25) {
-        readinessScore = Math.min(60, Math.round((quotes.length / 25) * 60));
-        readinessReason = `Acumulando buffer (${quotes.length}/25 ticks)`;
-      } else {
-        let score = 25; // Base buffer cumplido (25%)
-        if (isUptrend || isDowntrend) score += 30; // Tendencia definida (+30%)
-
-        // Alineación de RSI (+25%)
-        if ((isUptrend && rsi >= 44 && rsi <= 72) || (isDowntrend && rsi >= 28 && rsi <= 56)) {
-          score += 25;
-        } else if (rsi >= 35 && rsi <= 65) {
-          score += 15;
-        }
-
-        // Proximidad al gatillo (+20%)
-        if (isUptrend && curPrice > prevPrice) score += 20;
-        else if (isDowntrend && curPrice < prevPrice) score += 20;
-
-        readinessScore = Math.min(100, Math.max(20, score));
-
-        if (readinessScore >= 90) {
-          readinessReason = `🔥 ¡Convergencia casi total! Esperando gatillo (${readinessScore}%)`;
-        } else if (readinessScore >= 70) {
-          readinessReason = `📈 Tendencia y RSI alineados (${readinessScore}%)`;
-        } else if (readinessScore >= 50) {
-          readinessReason = `🔍 En formación, vigilando RSI (${readinessScore}%)`;
-        } else {
-          readinessReason = `⏳ Mercado lateral o consolidando (${readinessScore}%)`;
-        }
-      }
 
       // 🎯 CÁLCULO DE RACHA DE TICKS CONSECUTIVOS (STREAK EN VIVO)
       let consecutiveCount = 0;
@@ -540,10 +491,70 @@ export class DerivEngine {
         };
       });
 
-      // Racha requerida para disparo (mínimo 2 ticks consecutivos confirmados en tendencia)
-      const requiredConsecutiveMet =
-        (isUptrend && consecutiveDirection === "UP" && consecutiveCount >= 2) ||
-        (isDowntrend && consecutiveDirection === "DOWN" && consecutiveCount >= 2);
+      // Racha requerida para disparo (mínimo 2 ticks en tendencia)
+      const isUpStreak = isUptrend && consecutiveDirection === "UP";
+      const isDownStreak = isDowntrend && consecutiveDirection === "DOWN";
+      const requiredConsecutiveMet = (isUpStreak || isDownStreak) && consecutiveCount >= 2;
+
+      // Estado cualitativo
+      let status = "Esperando señal";
+      let statusBadge = "VIGILANDO";
+      let statusColor = "#94a3b8";
+
+      if (isUptrend && rsi >= 45 && rsi <= 78) {
+        status = requiredConsecutiveMet ? "🔥 Gatillo MULTUP confirmado" : "Impulso alcista en formación (MULTUP)";
+        statusBadge = requiredConsecutiveMet ? "DISPARO" : "BULLISH";
+        statusColor = "#10b981";
+      } else if (isDowntrend && rsi >= 22 && rsi <= 55) {
+        status = requiredConsecutiveMet ? "🔥 Gatillo MULTDOWN confirmado" : "Impulso bajista en formación (MULTDOWN)";
+        statusBadge = requiredConsecutiveMet ? "DISPARO" : "BEARISH";
+        statusColor = "#ef4444";
+      }
+
+      // 📊 BARRA DE PROGRESO DE CONVERGENCIA HACIA EL DISPARO (0% a 100%)
+      let readinessScore = 0;
+      let readinessReason = "Acumulando ticks...";
+
+      if (quotes.length < 20) {
+        readinessScore = Math.min(30, Math.round((quotes.length / 20) * 30));
+        readinessReason = `Acumulando buffer (${quotes.length}/20 ticks)`;
+      } else {
+        let score = 30; // 1. Base buffer cumplido (30%)
+
+        // 2. Tendencia definida (+30%)
+        if (isUptrend || isDowntrend) {
+          score += 30;
+        }
+
+        // 3. RSI en zona de momentum (+20%)
+        const rsiInZone = (isUptrend && rsi >= 45 && rsi <= 78) || (isDowntrend && rsi >= 22 && rsi <= 55);
+        if (rsiInZone) {
+          score += 20;
+        } else if (rsi >= 35 && rsi <= 65) {
+          score += 10;
+        }
+
+        // 4. Ticks de confirmación (+10% por 1er tick, +20% por 2º tick)
+        if (isUpStreak || isDownStreak) {
+          if (consecutiveCount >= 2) {
+            score += 20; // 100% ➔ DISPARO INMINENTE
+          } else if (consecutiveCount === 1) {
+            score += 10; // 90%
+          }
+        }
+
+        readinessScore = Math.min(100, Math.max(25, score));
+
+        if (readinessScore >= 95) {
+          readinessReason = `🔥 ¡Gatillo listo! (2 ticks en tendencia, disparando)`;
+        } else if (readinessScore >= 80) {
+          readinessReason = `⚡ Esperando confirmación de 2º tick (${consecutiveCount}/2 ticks)`;
+        } else if (readinessScore >= 60) {
+          readinessReason = `📈 Tendencia definida, esperando ticks de impulso`;
+        } else {
+          readinessReason = `⏳ Mercado lateral o consolidando`;
+        }
+      }
 
       return {
         symbol: sym,
@@ -617,12 +628,12 @@ export class DerivEngine {
       if (Date.now() < cooldown) continue;
 
       const ticks = this.tickHistory.get(symbol);
-      if (!ticks || ticks.length < 25) continue;
+      if (!ticks || ticks.length < 20) continue;
 
       const signal = this.calculateSignal(symbol, ticks);
       if (signal) {
         console.log(`[DERIV MULTIPLIER] 🎯 Señal confirmada en ${symbol}: ${signal.type} | ${signal.rationale}`);
-        this.symbolCooldowns.set(symbol, Date.now() + 90000); // 90s de descanso en el mismo símbolo
+        this.symbolCooldowns.set(symbol, Date.now() + 60000); // 60s de descanso en el mismo símbolo
         await this.executeMultiplierTrade(symbol, signal.type, signal.rationale);
         break;
       }
@@ -632,7 +643,7 @@ export class DerivEngine {
   private calculateSignal(symbol: string, ticks: TickData[]): { type: "MULTUP" | "MULTDOWN"; rationale: string } | null {
     const quotes = ticks.map((t) => t.quote);
     const n = quotes.length;
-    if (n < 25) return null;
+    if (n < 20) return null;
 
     const currentPrice = quotes[n - 1];
     const prevPrice = quotes[n - 2];
@@ -641,48 +652,46 @@ export class DerivEngine {
     // Momentum RSI (período 14 ticks)
     const rsi = this.calculateRSI(quotes, 14);
 
-    // Medias Móviles Institucionales: Rápida (EMA 10) vs Lenta (EMA 25)
-    const emaFast = this.calculateEMA(quotes, 10);
-    const emaSlow = this.calculateEMA(quotes, 25);
-    const isUptrend = emaFast > emaSlow && currentPrice >= emaSlow;
-    const isDowntrend = emaFast < emaSlow && currentPrice <= emaSlow;
+    // Medias Móviles Institucionales: Rápida (EMA 8) vs Lenta (EMA 20)
+    const emaFast = this.calculateEMA(quotes, 8);
+    const emaSlow = this.calculateEMA(quotes, 20);
+    const isUptrend = emaFast > emaSlow;
+    const isDowntrend = emaFast < emaSlow;
 
-    // === ESTRATEGIA 1: MULTUP (REBOTE EN SOPORTE EN TENDENCIA ALCISTA) ===
-    if (isUptrend && rsi >= 44 && rsi <= 64) {
-      const touchedFast = quotes.slice(n - 4, n).some((p) => p <= emaFast * 1.0003);
-      if (touchedFast && currentPrice > prevPrice) {
+    // === ESTRATEGIA 1: MULTUP (ALZA) ===
+    if (isUptrend && rsi >= 45 && rsi <= 78) {
+      // Gatillo A: 2 ticks verdes consecutivos en dirección alcista
+      if (currentPrice > prevPrice && prevPrice >= prev2Price) {
         return {
           type: "MULTUP",
-          rationale: `🚀 Rebote en Soporte EMA(10) en tendencia alcista con RSI saludable (${rsi.toFixed(1)})`
+          rationale: `🚀 Impulso Alcista: 2 ticks verdes en tendencia EMA(8 > 20) | RSI: ${rsi.toFixed(1)}`
+        };
+      }
+      // Gatillo B: Rebote en EMA Rápida
+      if (currentPrice > emaFast && prevPrice <= emaFast * 1.0008) {
+        return {
+          type: "MULTUP",
+          rationale: `📈 Rebote en EMA(8) en tendencia alcista | RSI: ${rsi.toFixed(1)}`
         };
       }
     }
 
-    // === ESTRATEGIA 2: MULTUP (IMPULSO BREAKOUT ALCISTA) ===
-    if (isUptrend && currentPrice > prevPrice && prevPrice > prev2Price && currentPrice > emaFast && rsi >= 52 && rsi <= 72) {
-      return {
-        type: "MULTUP",
-        rationale: `🔥 Impulso Breakout: Aceleración de 2 ticks verdes sobre EMA 10/25 con RSI en expansión (${rsi.toFixed(1)})`
-      };
-    }
-
-    // === ESTRATEGIA 3: MULTDOWN (RECHAZO EN RESISTENCIA EN TENDENCIA BAJISTA) ===
-    if (isDowntrend && rsi >= 36 && rsi <= 56) {
-      const touchedFast = quotes.slice(n - 4, n).some((p) => p >= emaFast * 0.9997);
-      if (touchedFast && currentPrice < prevPrice) {
+    // === ESTRATEGIA 2: MULTDOWN (BAJA) ===
+    if (isDowntrend && rsi >= 22 && rsi <= 55) {
+      // Gatillo A: 2 ticks rojos consecutivos en dirección bajista
+      if (currentPrice < prevPrice && prevPrice <= prev2Price) {
         return {
           type: "MULTDOWN",
-          rationale: `🔻 Rechazo en Resistencia EMA(10) en tendencia bajista con RSI (${rsi.toFixed(1)})`
+          rationale: `🔻 Cascada Bajista: 2 ticks rojos en tendencia EMA(8 < 20) | RSI: ${rsi.toFixed(1)}`
         };
       }
-    }
-
-    // === ESTRATEGIA 4: MULTDOWN (CASCADA BAJISTA CONFIRMADA) ===
-    if (isDowntrend && currentPrice < prevPrice && prevPrice < prev2Price && currentPrice < emaFast && rsi >= 28 && rsi <= 48) {
-      return {
-        type: "MULTDOWN",
-        rationale: `📉 Cascada Bajista: Aceleración de 2 ticks rojos bajo EMA 10/25 con RSI (${rsi.toFixed(1)})`
-      };
+      // Gatillo B: Rechazo en EMA Rápida
+      if (currentPrice < emaFast && prevPrice >= emaFast * 0.9992) {
+        return {
+          type: "MULTDOWN",
+          rationale: `📉 Rechazo en EMA(8) en tendencia bajista | RSI: ${rsi.toFixed(1)}`
+        };
+      }
     }
 
     return null;
