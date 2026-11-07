@@ -597,16 +597,13 @@ export class DerivEngine {
 
   // --- STRATEGY ENGINE & QUANTITATIVE SIGNALS ---
   private async runStrategyAnalysis(): Promise<void> {
-    // Sincronización con .strategy-controls.json
+    // Sincronización con .deriv-state.json
     try {
-      const ctrlFile = path.resolve(process.cwd(), ".strategy-controls.json");
-      if (fs.existsSync(ctrlFile)) {
-        const ctrls = JSON.parse(fs.readFileSync(ctrlFile, "utf8"));
-        if (ctrls?.strategies && typeof ctrls.strategies.deriv === "boolean") {
-          if (this.state.enabled !== ctrls.strategies.deriv) {
-            this.state.enabled = ctrls.strategies.deriv;
-            this.saveState();
-          }
+      const stateF = path.resolve(process.cwd(), ".deriv-state.json");
+      if (fs.existsSync(stateF)) {
+        const diskState = JSON.parse(fs.readFileSync(stateF, "utf8"));
+        if (typeof diskState.enabled === "boolean" && this.state.enabled !== diskState.enabled) {
+          this.state.enabled = diskState.enabled;
         }
       }
     } catch {}
