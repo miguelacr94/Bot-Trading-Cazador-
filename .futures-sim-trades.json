@@ -106,5 +106,41 @@
     "feesUsdt": 0.008827123700000002,
     "netPnlUsdt": -0.14057972370000044,
     "roePct": -4.813688643240473
+  },
+  {
+    "id": "fut_real_105763684513",
+    "symbol": "DOGEUSDT",
+    "side": "SHORT",
+    "entryPrice": 0.06979,
+    "exitPrice": 0.07086,
+    "marginUsdt": 3.33574481,
+    "leverage": 3,
+    "notionalUsdt": 10.4685,
+    "openTime": 1794235031086,
+    "closeTime": 1794239203799,
+    "durationMin": 70,
+    "exitReason": "STOP_LOSS",
+    "grossPnlUsdt": -0.16050000000000023,
+    "feesUsdt": 0.010548750000000003,
+    "netPnlUsdt": -0.17104875000000022,
+    "roePct": -5.127752863085478
+  },
+  {
+    "id": "fut_real_256957372297",
+    "symbol": "SOLUSDT",
+    "side": "SHORT",
+    "entryPrice": 87.87,
+    "exitPrice": 86.53,
+    "marginUsdt": 3.2219,
+    "leverage": 3,
+    "notionalUsdt": 9.6657,
+    "openTime": 1794240008157,
+    "closeTime": 1794246484672,
+    "durationMin": 108,
+    "exitReason": "TRAILING_TP",
+    "grossPnlUsdt": 0.1474,
+    "feesUsdt": 0.00959,
+    "netPnlUsdt": 0.13781,
+    "roePct": 4.277
   }
 ]
