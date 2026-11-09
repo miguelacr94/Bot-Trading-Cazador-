@@ -1,0 +1,29 @@
+{
+  "balance": 1000,
+  "initialBalance": 1000,
+  "realizedPnl": 0,
+  "fees": 0,
+  "positions": [],
+  "history": [],
+  "drawnLines": {
+    "BTCUSDT": {
+      "piso": null,
+      "techo": null
+    },
+    "SOLUSDT": {
+      "piso": 88.73,
+      "techo": 91.62
+    },
+    "ETHUSDT": {
+      "piso": null,
+      "techo": null
+    }
+  },
+  "stats": {
+    "totalTrades": 0,
+    "wins": 0,
+    "losses": 0,
+    "winRate": 0,
+    "averageScore": 0
+  }
+}

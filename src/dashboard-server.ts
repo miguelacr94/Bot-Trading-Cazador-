@@ -32,14 +32,29 @@ export class DashboardServer {
   }
 
   public getWalletSplit(totalFreeUsdt = 0): { manualUsdt: number; botUsdt: number; totalFreeUsdt: number; copRate: number; manualCop: number; botCop: number } {
-    let manualUsdt = 0.0; // por defecto 100% disponible para el bot salvo reserva manual explícita
+    let manualUsdt = 0.0;
+    let lastKnown = 0.0;
+    let autoQuarantine = true;
     try {
       const f = path.resolve(process.cwd(), ".wallet-split.json");
       if (fs.existsSync(f)) {
         const data = JSON.parse(fs.readFileSync(f, "utf-8"));
         if (typeof data.manualUsdt === "number") manualUsdt = data.manualUsdt;
+        if (typeof data.lastKnownTotalFreeUsdt === "number") lastKnown = data.lastKnownTotalFreeUsdt;
+        if (typeof data.autoQuarantineDeposits === "boolean") autoQuarantine = data.autoQuarantineDeposits;
       }
     } catch {}
+
+    // 🛡️ Auto-quarantine: si entra un depósito nuevo a Binance Spot, se asigna 100% al Fondo Manual
+    if (totalFreeUsdt > 0 && lastKnown > 0 && (totalFreeUsdt - lastKnown) > 0.15 && autoQuarantine) {
+      const delta = totalFreeUsdt - lastKnown;
+      manualUsdt += delta;
+      lastKnown = totalFreeUsdt;
+      this.saveWalletSplit(manualUsdt, totalFreeUsdt);
+    } else if (totalFreeUsdt > 0 && lastKnown === 0) {
+      lastKnown = totalFreeUsdt;
+      this.saveWalletSplit(manualUsdt, totalFreeUsdt);
+    }
 
     if (totalFreeUsdt > 0) {
       manualUsdt = Math.max(0, Math.min(totalFreeUsdt, manualUsdt));
@@ -58,10 +73,21 @@ export class DashboardServer {
     };
   }
 
-  public saveWalletSplit(manualUsdt: number) {
+  public saveWalletSplit(manualUsdt: number, lastKnownTotalFreeUsdt?: number) {
     try {
       const f = path.resolve(process.cwd(), ".wallet-split.json");
-      fs.writeFileSync(f, JSON.stringify({ manualUsdt, lastUpdated: Date.now() }, null, 2), "utf-8");
+      let prev: any = {};
+      if (fs.existsSync(f)) {
+        try { prev = JSON.parse(fs.readFileSync(f, "utf-8")); } catch {}
+      }
+      const data = {
+        ...prev,
+        manualUsdt,
+        lastKnownTotalFreeUsdt: lastKnownTotalFreeUsdt !== undefined ? lastKnownTotalFreeUsdt : (prev.lastKnownTotalFreeUsdt || 0),
+        autoQuarantineDeposits: true,
+        lastUpdated: Date.now()
+      };
+      fs.writeFileSync(f, JSON.stringify(data, null, 2), "utf-8");
     } catch (e: any) {
       console.error("Error guardando wallet-split:", e.message);
     }
@@ -1039,6 +1065,50 @@ export class DashboardServer {
     every("pnlFull", 120000, () => this.refreshPnl());
   }
 
+  // ---------- MÓDULO ACADEMIA & SIMULADOR DE VELAS EN TIEMPO REAL ----------
+  private getPracticeStateFile(): string {
+    return path.resolve(process.cwd(), ".practice-trades.json");
+  }
+
+  public getPracticeState(): any {
+    const f = this.getPracticeStateFile();
+    if (fs.existsSync(f)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(f, "utf-8"));
+        if (parsed && typeof parsed.balance === "number") return parsed;
+      } catch {}
+    }
+    return {
+      balance: 1000.0,
+      initialBalance: 1000.0,
+      realizedPnl: 0.0,
+      fees: 0.0,
+      positions: [],
+      history: [],
+      drawnLines: {
+        BTCUSDT: { piso: null, techo: null },
+        SOLUSDT: { piso: null, techo: null },
+        ETHUSDT: { piso: null, techo: null }
+      },
+      stats: {
+        totalTrades: 0,
+        wins: 0,
+        losses: 0,
+        winRate: 0,
+        averageScore: 0
+      }
+    };
+  }
+
+  public savePracticeState(state: any): void {
+    const f = this.getPracticeStateFile();
+    try {
+      fs.writeFileSync(f, JSON.stringify(state, null, 2), "utf-8");
+    } catch (e: any) {
+      console.error("Error guardando practice state:", e.message);
+    }
+  }
+
   start() {
     this.startRefreshLoops();
 
@@ -1056,6 +1126,150 @@ export class DashboardServer {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: e.message }));
         }
+        return;
+      }
+
+      // --- APIS DE ACADEMIA & SIMULADOR DE VELAS ---
+      if (parsedUrl.pathname === "/api/practice/state" && req.method === "GET") {
+        try {
+          const state = this.getPracticeState();
+          res.writeHead(200, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(JSON.stringify(state));
+        } catch (e: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/practice/klines" && req.method === "GET") {
+        try {
+          const symbol = (parsedUrl.searchParams.get("symbol") || "SOLUSDT").toUpperCase();
+          const interval = parsedUrl.searchParams.get("interval") || "1m";
+          const limit = parsedUrl.searchParams.get("limit") || "150";
+          const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+          const response = await fetch(url);
+          const data = await response.json();
+          res.writeHead(200, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          });
+          res.end(JSON.stringify(data));
+        } catch (e: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/practice/lines" && req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => (body += chunk));
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const state = this.getPracticeState();
+            if (!state.drawnLines) state.drawnLines = {};
+            if (data.symbol) {
+              state.drawnLines[data.symbol] = {
+                piso: data.piso !== undefined ? data.piso : (state.drawnLines[data.symbol]?.piso ?? null),
+                techo: data.techo !== undefined ? data.techo : (state.drawnLines[data.symbol]?.techo ?? null)
+              };
+            }
+            this.savePracticeState(state);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, state }));
+          } catch (e: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/practice/reset" && req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => (body += chunk));
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const initialBal = parseFloat(data.initialBalance) || 1000.0;
+            const state = {
+              balance: initialBal,
+              initialBalance: initialBal,
+              realizedPnl: 0.0,
+              fees: 0.0,
+              positions: [],
+              history: [],
+              drawnLines: {},
+              stats: {
+                totalTrades: 0,
+                wins: 0,
+                losses: 0,
+                winRate: 0,
+                averageScore: 0
+              }
+            };
+            this.savePracticeState(state);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, state }));
+          } catch (e: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/practice/trade" && req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => (body += chunk));
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const state = this.getPracticeState();
+            
+            if (data.type === "OPEN") {
+              const trade = data.trade;
+              state.balance = Math.max(0, state.balance - trade.amount);
+              state.fees = (state.fees || 0) + (trade.entryFee || 0);
+              if (!state.positions) state.positions = [];
+              state.positions.push(trade);
+            } else if (data.type === "CLOSE") {
+              const closed = data.trade;
+              state.positions = (state.positions || []).filter((p: any) => p.id !== closed.id);
+              state.balance = (state.balance || 0) + closed.returnedAmount;
+              state.realizedPnl = (state.realizedPnl || 0) + closed.pnl;
+              state.fees = (state.fees || 0) + (closed.exitFee || 0);
+              if (!state.history) state.history = [];
+              state.history.unshift(closed);
+              if (state.history.length > 50) state.history.pop();
+              
+              // Recalcular estadísticas
+              const total = state.history.length;
+              const wins = state.history.filter((h: any) => h.pnl > 0).length;
+              const losses = state.history.filter((h: any) => h.pnl < 0).length;
+              const winRate = total > 0 ? parseFloat(((wins / total) * 100).toFixed(1)) : 0;
+              const scores = state.history.filter((h: any) => typeof h.evaluation?.score === "number").map((h: any) => h.evaluation.score);
+              const avgScore = scores.length > 0 ? parseFloat((scores.reduce((a: number, b: number) => a + b, 0) / scores.length).toFixed(1)) : 0;
+              state.stats = { totalTrades: total, wins, losses, winRate, averageScore: avgScore };
+            } else if (data.type === "EVALUATE_ONLY") {
+              if (!state.evaluations) state.evaluations = [];
+              state.evaluations.unshift(data.evaluation);
+              if (state.evaluations.length > 30) state.evaluations.pop();
+            }
+
+            this.savePracticeState(state);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, state }));
+          } catch (e: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
         return;
       }
 
@@ -1867,7 +2081,7 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
               newManual -= toMove;
             }
 
-            this.saveWalletSplit(newManual);
+            this.saveWalletSplit(newManual, freeUsdt);
             const updated = this.getWalletSplit(freeUsdt);
             res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: true, walletSplit: updated }));

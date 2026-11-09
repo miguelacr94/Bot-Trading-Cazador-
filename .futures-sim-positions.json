@@ -1,1 +1,44 @@
-[]
+[
+  {
+    "id": "sim_fut_1794230881368",
+    "symbol": "ETHUSDT",
+    "side": "SHORT",
+    "entryPrice": 2117.7063740000003,
+    "marginUsdt": 2.5,
+    "leverage": 3,
+    "notionalUsdt": 7.5,
+    "contracts": 0.0035415674675586535,
+    "stopLossPrice": 2149.47196961,
+    "stopLossPct": 1.5,
+    "trailingTriggerPrice": 2079.587659268,
+    "trailingTriggerPct": 1.8,
+    "trailingCallbackPct": 0.35,
+    "trailingActive": false,
+    "peakPrice": 2117.7063740000003,
+    "trailingStopPrice": null,
+    "openTime": 1794230881368,
+    "status": "OPEN",
+    "rationale": "🔻 Rechazo en tendencia bajista 1H (<EMA50): RSI 15M (50.1) con mecha de rechazo del 52%"
+  },
+  {
+    "id": "sim_fut_1794230885048",
+    "symbol": "DOGEUSDT",
+    "side": "SHORT",
+    "entryPrice": 0.069646068,
+    "marginUsdt": 2.5,
+    "leverage": 3,
+    "notionalUsdt": 7.5,
+    "contracts": 107.68734280878569,
+    "stopLossPrice": 0.07069075902,
+    "stopLossPct": 1.5,
+    "trailingTriggerPrice": 0.068392438776,
+    "trailingTriggerPct": 1.8,
+    "trailingCallbackPct": 0.35,
+    "trailingActive": false,
+    "peakPrice": 0.069646068,
+    "trailingStopPrice": null,
+    "openTime": 1794230885048,
+    "status": "OPEN",
+    "rationale": "🔻 Rechazo en tendencia bajista 1H (<EMA50): RSI 15M (59.5) con mecha de rechazo del 54%"
+  }
+]

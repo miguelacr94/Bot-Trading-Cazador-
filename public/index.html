@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/lightweight-charts.js"></script>
   <style>
     :root {
       --bg-main: #080B11;
@@ -26,6 +27,23 @@
       --text-dim: #64748B;
       --font-ui: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    .pulse-green-btn {
+      animation: pulse-green-glow 1.5s infinite !important;
+    }
+    .pulse-red-btn {
+      animation: pulse-red-glow 1.5s infinite !important;
+    }
+    @keyframes pulse-green-glow {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); transform: scale(1); }
+      50% { box-shadow: 0 0 24px 8px rgba(16, 185, 129, 0.6); transform: scale(1.02); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); transform: scale(1); }
+    }
+    @keyframes pulse-red-glow {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); transform: scale(1); }
+      50% { box-shadow: 0 0 24px 8px rgba(239, 68, 68, 0.6); transform: scale(1.02); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); transform: scale(1); }
     }
 
     * {
@@ -2710,6 +2728,11 @@
         <span class="tab-icon">📊</span>
         <span class="tab-label">Análisis & Sesiones COT</span>
       </button>
+      <button class="main-tab-btn" data-tab="tab-practice" id="btn-tab-practice">
+        <span class="tab-icon">🎯</span>
+        <span class="tab-label">Academia & Simulador</span>
+        <span class="tab-badge green" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4);">VIVO</span>
+      </button>
     </div>
   
 
@@ -3906,6 +3929,354 @@
         </div>
       </div>
     </div>
+
+    <!-- TAB 5: ACADEMIA & SIMULADOR DE VELAS EN TIEMPO REAL -->
+    <div class="tab-content" id="tab-practice">
+      <!-- Encabezado & Control de Activo -->
+      <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 18px 22px; margin-bottom: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+          <div>
+            <h2 style="font-size:18px; font-weight:800; color:#f1f5f9; margin:0 0 4px 0; display:flex; align-items:center; gap:10px;">
+              <span>🎯</span> Academia & Laboratorio de Velas en Vivo
+              <span style="background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#34d399; font-size:11px; padding:3px 8px; border-radius:20px; font-weight:700;">TIEMPO REAL</span>
+            </h2>
+            <p style="font-size:12px; color:#94a3b8; margin:0;">
+              Practica identificar Pisos, Techos, Mechas y Agotamiento de velas con datos oficiales de Binance y evaluación pedagógica instantánea.
+            </p>
+          </div>
+
+          <!-- Selector de Criptomoneda y Temporalidad -->
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:6px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:4px 8px;">
+              <span style="font-size:11px; color:#94a3b8; font-weight:700;">PAR:</span>
+              <select id="prac-symbol-select" style="background:transparent; border:none; color:#f1f5f9; font-weight:800; font-size:13px; cursor:pointer;" onchange="window.practiceSim?.changeSymbol(this.value)">
+                <option value="SOLUSDT">SOL / USDT</option>
+                <option value="BTCUSDT">BTC / USDT</option>
+                <option value="ETHUSDT">ETH / USDT</option>
+                <option value="DOGEUSDT">DOGE / USDT</option>
+                <option value="BNBUSDT">BNB / USDT</option>
+              </select>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:4px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:3px 6px;">
+              <button type="button" class="prac-tf-btn active" data-tf="1m" onclick="window.practiceSim?.changeTimeframe('1m')" style="background:rgba(16,185,129,0.25); border:1px solid #10b981; color:#34d399; font-size:11px; font-weight:700; padding:4px 8px; border-radius:5px; cursor:pointer;">1m</button>
+              <button type="button" class="prac-tf-btn" data-tf="5m" onclick="window.practiceSim?.changeTimeframe('5m')" style="background:transparent; border:none; color:#94a3b8; font-size:11px; font-weight:700; padding:4px 8px; border-radius:5px; cursor:pointer;">5m</button>
+              <button type="button" class="prac-tf-btn" data-tf="15m" onclick="window.practiceSim?.changeTimeframe('15m')" style="background:transparent; border:none; color:#94a3b8; font-size:11px; font-weight:700; padding:4px 8px; border-radius:5px; cursor:pointer;">15m</button>
+              <button type="button" class="prac-tf-btn" data-tf="1h" onclick="window.practiceSim?.changeTimeframe('1h')" style="background:transparent; border:none; color:#94a3b8; font-size:11px; font-weight:700; padding:4px 8px; border-radius:5px; cursor:pointer;">1h</button>
+            </div>
+
+            <div id="prac-ws-status" style="display:flex; align-items:center; gap:6px; font-size:11px; color:#34d399; font-weight:700; background:rgba(16,185,129,0.08); padding:5px 10px; border-radius:6px; border:1px solid rgba(16,185,129,0.2);">
+              <span style="display:inline-block; width:8px; height:8px; background:#10b981; border-radius:50%; box-shadow:0 0 8px #10b981;"></span>
+              Conectado Binance WS
+            </div>
+          </div>
+        </div>
+
+        <!-- KPIs de la Cuenta de Práctica -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-top:16px;">
+          <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
+              <span>💰 Balance Simulado</span>
+              <button type="button" onclick="window.practiceSim?.resetBalancePrompt()" style="background:none; border:none; color:#38bdf8; cursor:pointer; font-size:11px;" title="Resetear balance">⚙️ Reset</button>
+            </div>
+            <div style="font-size:18px; font-weight:800; color:#f1f5f9; margin-top:2px;">
+              $<span id="prac-balance-val">1,000.00</span> <span style="font-size:11px; color:#94a3b8;">USDT</span>
+            </div>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600;">📈 PnL Realizado</div>
+            <div id="prac-pnl-val" style="font-size:18px; font-weight:800; color:#34d399; margin-top:2px;">
+              +$0.00 <span style="font-size:11px; font-weight:600;">(0.0%)</span>
+            </div>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600;">🎯 Operaciones / Acierto</div>
+            <div style="font-size:18px; font-weight:800; color:#f1f5f9; margin-top:2px;">
+              <span id="prac-trades-count">0</span> <span style="font-size:12px; color:#a78bfa; font-weight:700;">(<span id="prac-winrate-val">0%</span> Win)</span>
+            </div>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600;">🧾 Comisiones Binance</div>
+            <div style="font-size:18px; font-weight:800; color:#cbd5e1; margin-top:2px;">
+              -$<span id="prac-fees-val">0.00</span> <span style="font-size:11px; color:#94a3b8;">USDT</span>
+            </div>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:11px; color:#94a3b8; font-weight:600;">⭐ Calificación Mentor</div>
+            <div style="font-size:18px; font-weight:800; color:#fbbf24; margin-top:2px;">
+              <span id="prac-avg-score">--</span> <span style="font-size:11px; color:#94a3b8;">/ 10</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de Herramientas de Dibujo y Niveles -->
+      <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span style="font-size:12px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Herramientas:</span>
+          
+          <button type="button" onclick="window.practiceSim?.tracePisoAtCurrent()" style="background:rgba(16,185,129,0.15); border:1px solid #10b981; color:#34d399; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+            <span>🟢</span> Trazar Piso (Soporte)
+          </button>
+
+          <button type="button" onclick="window.practiceSim?.traceTechoAtCurrent()" style="background:rgba(239,68,68,0.15); border:1px solid #ef4444; color:#f87171; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px;">
+            <span>🔴</span> Trazar Techo (Resistencia)
+          </button>
+
+          <button type="button" onclick="window.practiceSim?.autoDetectPisoTecho()" style="background:rgba(139,92,246,0.15); border:1px solid #8b5cf6; color:#c084fc; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:6px;" title="Detecta automáticamente el mínimo y máximo de las velas visibles">
+            <span>📐</span> Auto-Detectar
+          </button>
+
+          <button type="button" onclick="window.practiceSim?.clearLines()" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#94a3b8; font-size:12px; font-weight:600; padding:6px 12px; border-radius:6px; cursor:pointer;">
+            <span>🧹</span> Limpiar
+          </button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:14px; font-size:12px; font-weight:700;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="color:#10b981;">Piso:</span>
+            <input type="number" step="0.01" id="prac-input-piso" placeholder="Sin trazar" style="background:rgba(0,0,0,0.4); border:1px solid rgba(16,185,129,0.4); border-radius:6px; padding:4px 8px; color:#34d399; width:95px; font-size:12px; font-weight:700;" onchange="window.practiceSim?.setManualLine('piso', this.value)" />
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="color:#ef4444;">Techo:</span>
+            <input type="number" step="0.01" id="prac-input-techo" placeholder="Sin trazar" style="background:rgba(0,0,0,0.4); border:1px solid rgba(239,68,68,0.4); border-radius:6px; padding:4px 8px; color:#f87171; width:95px; font-size:12px; font-weight:700;" onchange="window.practiceSim?.setManualLine('techo', this.value)" />
+          </div>
+          <div style="color:#94a3b8; font-size:11px;">
+            Precio Actual: <b id="prac-live-price" style="color:#f1f5f9; font-size:13px;">--</b>
+          </div>
+        </div>
+      </div>
+
+      <!-- PLAN DE ACCIÓN EXACTO & SEMÁFORO EN TIEMPO REAL -->
+      <div id="prac-action-plan-card" style="background: linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border: 2px solid rgba(56,189,248,0.4); border-radius: 14px; padding: 16px 20px; margin-bottom: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:18px;">🎯</span>
+            <span style="font-size:13px; font-weight:800; color:#f1f5f9; text-transform:uppercase; letter-spacing:0.5px;">Plan de Acción Institucional (Niveles de Entrada y Salida)</span>
+          </div>
+          <div style="font-size:11px; color:#94a3b8; display:flex; align-items:center; gap:6px;">
+            <span>Líneas trazadas en tu gráfica:</span>
+            <span style="color:#10b981; font-weight:700;">🟢 Compra</span> •
+            <span style="color:#ef4444; font-weight:700;">🔴 Venta</span> •
+            <span style="color:#f43f5e; font-weight:700;">🛑 Stop Loss</span>
+          </div>
+        </div>
+
+        <!-- Grid de los 3 Puntos Clave -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:12px; margin-bottom:12px;">
+          <!-- Punto de Compra -->
+          <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:10px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#34d399;">🟢 DÓNDE COMPRAR (LONG)</span>
+              <span style="font-size:10px; color:#94a3b8;">Zona Piso / Rebote</span>
+            </div>
+            <div style="font-size:22px; font-weight:900; color:#10b981; margin:4px 0 2px 0;" id="prac-plan-buy-price">--</div>
+            <div style="font-size:11px; color:#cbd5e1;" id="prac-plan-buy-desc">Espera a que el precio toque este nivel con mecha abajo.</div>
+          </div>
+
+          <!-- Punto de Venta -->
+          <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:10px; padding:10px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#f87171;">🔴 DÓNDE VENDER (TP / SHORT)</span>
+              <span style="font-size:10px; color:#94a3b8;">Zona Techo / Cierre</span>
+            </div>
+            <div style="font-size:22px; font-weight:900; color:#ef4444; margin:4px 0 2px 0;" id="prac-plan-sell-price">--</div>
+            <div style="font-size:11px; color:#cbd5e1;" id="prac-plan-sell-desc">Toma de ganancias antes de que el techo rechace el precio.</div>
+          </div>
+
+          <!-- Stop Loss -->
+          <div style="background:rgba(244,63,94,0.08); border:1px solid rgba(244,63,94,0.3); border-radius:10px; padding:10px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#fb7185;">🛑 STOP LOSS TÉCNICO</span>
+              <span style="font-size:10px; color:#94a3b8;">Salida de Emergencia</span>
+            </div>
+            <div style="font-size:22px; font-weight:900; color:#f43f5e; margin:4px 0 2px 0;" id="prac-plan-sl-price">--</div>
+            <div style="font-size:11px; color:#cbd5e1;">Justo debajo del piso. Si rompe aquí, la tesis falló.</div>
+          </div>
+        </div>
+
+        <!-- EL GRAN SEMÁFORO EN TIEMPO REAL: ¿QUÉ HAGO EXACTAMENTE AHORA? -->
+        <div id="prac-live-action-semaforo" style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span id="prac-semaforo-badge" style="font-size:13px; font-weight:900; padding:6px 14px; border-radius:20px; background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid #f59e0b; display:flex; align-items:center; gap:6px;">
+              <span>⏳</span> ACCIÓN ACTUAL: ESPERAR
+            </span>
+            <div>
+              <div id="prac-semaforo-title" style="font-size:13px; font-weight:800; color:#f1f5f9;">El precio está a mitad de camino entre Piso y Techo.</div>
+              <div id="prac-semaforo-instruction" style="font-size:11px; color:#94a3b8;">NO compres ni vendas aquí. Espera a que el precio caiga al Punto de Compra o suba al Punto de Venta.</div>
+            </div>
+          </div>
+
+          <div style="font-size:11px; color:#38bdf8; font-weight:700; background:rgba(56,189,248,0.1); padding:6px 12px; border-radius:6px; border:1px solid rgba(56,189,248,0.2);">
+            Ratio Riesgo/Beneficio: <b id="prac-plan-rr" style="color:#fff; font-size:13px;">1 : 2.5</b>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gráfico de Velas Interactivo Principal -->
+      <div style="background: #0d111a; border: 1px solid var(--border-subtle); border-radius: 14px; padding: 12px; margin-bottom: 20px; position:relative;">
+        <div id="practice-chart-container" style="width:100%; height:480px; position:relative;"></div>
+      </div>
+
+      <!-- Radar de Velas en Vivo & Diagnóstico de Patrones -->
+      <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 18px 22px; margin-bottom: 20px;">
+        <div style="font-size:12px; font-weight:800; color:#38bdf8; text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span>🧠</span> Radar de Velas en Tiempo Real & Diagnóstico
+        </div>
+
+        <!-- Alerta de Probabilidad Dinámica -->
+        <div id="prac-pattern-alert" style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:12px 16px; margin-bottom:14px; display:flex; align-items:center; gap:12px;">
+          <span style="font-size:24px;" id="prac-pattern-icon">🔍</span>
+          <div>
+            <div id="prac-pattern-title" style="font-size:14px; font-weight:800; color:#34d399;">Analizando movimiento de la vela en curso...</div>
+            <div id="prac-pattern-desc" style="font-size:12px; color:#cbd5e1; margin-top:2px;">El sistema escanea mechas, volumen y cercanía a tus niveles de Piso y Techo.</div>
+          </div>
+        </div>
+
+        <!-- Métricas Físicas de la Vela Actual -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; font-size:12px;">
+          <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px;">
+            <span style="color:#94a3b8; font-size:11px; display:block;">Mecha Superior (Rechazo arriba):</span>
+            <span id="prac-wick-top" style="color:#f87171; font-weight:800; font-size:14px;">0.0%</span>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px;">
+            <span style="color:#94a3b8; font-size:11px; display:block;">Cuerpo de la Vela:</span>
+            <span id="prac-candle-body" style="color:#f1f5f9; font-weight:800; font-size:14px;">0.0% (Neutro)</span>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px;">
+            <span style="color:#94a3b8; font-size:11px; display:block;">Mecha Inferior (Rechazo abajo):</span>
+            <span id="prac-wick-bottom" style="color:#34d399; font-weight:800; font-size:14px;">0.0%</span>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px;">
+            <span style="color:#94a3b8; font-size:11px; display:block;">Distancia al Piso:</span>
+            <span id="prac-dist-piso" style="color:#38bdf8; font-weight:800; font-size:14px;">Sin trazar</span>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px;">
+            <span style="color:#94a3b8; font-size:11px; display:block;">Distancia al Techo:</span>
+            <span id="prac-dist-techo" style="color:#fbbf24; font-weight:800; font-size:14px;">Sin trazar</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel de Ejecución de Práctica & Mentor AI -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:20px;">
+        <!-- Card 1: Botones de Compra / Venta Simulada -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 20px;">
+          <h3 style="font-size:15px; font-weight:800; color:#f1f5f9; margin:0 0 14px 0; display:flex; align-items:center; gap:8px;">
+            <span>🎮</span> Ejecutar Operación de Práctica
+          </h3>
+
+          <div style="margin-bottom:14px;">
+            <label style="font-size:11px; color:#94a3b8; font-weight:700; text-transform:uppercase; display:block; margin-bottom:6px;">Monto a Invertir (USDT):</label>
+            <input type="number" id="prac-order-amount" value="50" min="5" step="5" style="width:100%; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15); border-radius:8px; padding:10px 14px; color:#fff; font-size:16px; font-weight:800;" />
+            <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+              <button type="button" onclick="window.practiceSim?.setOrderAmount(10)" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; font-size:11px; padding:4px 8px; border-radius:5px; cursor:pointer;">$10</button>
+              <button type="button" onclick="window.practiceSim?.setOrderAmount(25)" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; font-size:11px; padding:4px 8px; border-radius:5px; cursor:pointer;">$25</button>
+              <button type="button" onclick="window.practiceSim?.setOrderAmount(50)" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; font-size:11px; padding:4px 8px; border-radius:5px; cursor:pointer;">$50</button>
+              <button type="button" onclick="window.practiceSim?.setOrderAmount(100)" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:#cbd5e1; font-size:11px; padding:4px 8px; border-radius:5px; cursor:pointer;">$100</button>
+              <button type="button" onclick="window.practiceSim?.setOrderAmountPercent(0.5)" style="background:rgba(139,92,246,0.15); border:1px solid #8b5cf6; color:#c084fc; font-size:11px; padding:4px 8px; border-radius:5px; cursor:pointer;">50% Saldo</button>
+            </div>
+          </div>
+
+          <!-- Botones Principales de Acción -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <button type="button" id="btn-prac-buy" onclick="window.practiceSim?.executeTrade('BUY')" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:#fff; padding:14px; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; box-shadow:0 4px 15px rgba(16,185,129,0.3); display:flex; flex-direction:column; align-items:center; gap:2px;">
+              <span>🟢 COMPRAR (LONG)</span>
+              <span style="font-size:10px; opacity:0.85; font-weight:500;">Esperando subida desde piso</span>
+            </button>
+
+            <button type="button" id="btn-prac-sell" onclick="window.practiceSim?.executeTrade('SELL')" style="background:linear-gradient(135deg, #ef4444, #dc2626); border:none; color:#fff; padding:14px; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; box-shadow:0 4px 15px rgba(239,68,68,0.3); display:flex; flex-direction:column; align-items:center; gap:2px;">
+              <span>🔴 VENDER (SHORT)</span>
+              <span style="font-size:10px; opacity:0.85; font-weight:500;">Esperando caída desde techo</span>
+            </button>
+          </div>
+
+          <button type="button" onclick="window.practiceSim?.evaluateCurrentPointOnly()" style="width:100%; background:rgba(56,189,248,0.12); border:1px solid #38bdf8; color:#38bdf8; padding:10px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+            <span>🎓</span> Solo Evaluar este Punto (Sin abrir orden)
+          </button>
+
+          <!-- Tarjeta de Posición Abierta Activa -->
+          <div id="prac-open-pos-card" style="display:none; margin-top:16px; background:rgba(0,0,0,0.35); border:1px solid rgba(56,189,248,0.3); border-radius:10px; padding:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span id="prac-pos-side" style="font-size:12px; font-weight:800; padding:3px 8px; border-radius:4px; background:#10b981; color:#fff;">LONG</span>
+              <span style="font-size:11px; color:#94a3b8;">Monto: $<span id="prac-pos-amount">0.00</span></span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px;">
+              <div>
+                <span style="font-size:11px; color:#94a3b8;">Entrada: </span>
+                <span id="prac-pos-entry" style="font-size:13px; font-weight:700; color:#f1f5f9;">$0.00</span>
+              </div>
+              <div>
+                <span style="font-size:11px; color:#94a3b8;">PnL Flotante: </span>
+                <span id="prac-pos-floating-pnl" style="font-size:16px; font-weight:800; color:#34d399;">+$0.00 (+0.0%)</span>
+              </div>
+            </div>
+            <button type="button" onclick="window.practiceSim?.closeCurrentPosition()" style="width:100%; background:linear-gradient(135deg, #f59e0b, #d97706); border:none; color:#fff; padding:10px; border-radius:8px; font-weight:800; font-size:13px; cursor:pointer;">
+              ⚡ Cerrar Posición Ahora
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 2: Evaluación Pedagógica del Mentor AI -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 20px;">
+          <h3 style="font-size:15px; font-weight:800; color:#f1f5f9; margin:0 0 14px 0; display:flex; align-items:center; gap:8px;">
+            <span>🎓</span> Mentor Pedagógico: Evaluación de tu Decisión
+          </h3>
+
+          <div id="prac-eval-box" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; min-height:220px; display:flex; flex-direction:column; justify-content:center;">
+            <div style="text-align:center; color:#94a3b8; font-size:13px;">
+              <div style="font-size:32px; margin-bottom:8px;">🎯</div>
+              <b>Aún no has ejecutado ninguna operación en esta sesión.</b><br>
+              Traza tu Piso o Techo, observa la mecha y pulsa <b>COMPRAR</b>, <b>VENDER</b> o <b>EVALUAR</b> para recibir feedback inmediato del profesor.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de Historial de Operaciones de Práctica -->
+      <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h3 style="font-size:15px; font-weight:800; color:#f1f5f9; margin:0; display:flex; align-items:center; gap:8px;">
+            <span>📜</span> Historial de Práctica y Aprendizaje
+          </h3>
+          <span style="font-size:11px; color:#94a3b8;">Guardado automático en <code>.practice-trades.json</code></span>
+        </div>
+
+        <div class="table-responsive">
+          <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+            <thead>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.08); color:#94a3b8;">
+                <th style="padding:10px;">Hora</th>
+                <th style="padding:10px;">Par</th>
+                <th style="padding:10px;">Tipo</th>
+                <th style="padding:10px;">Entrada</th>
+                <th style="padding:10px;">Salida</th>
+                <th style="padding:10px;">PnL Bruto</th>
+                <th style="padding:10px;">Comisión</th>
+                <th style="padding:10px;">PnL Neto</th>
+                <th style="padding:10px;">Nota Mentor</th>
+                <th style="padding:10px;">Feedback</th>
+              </tr>
+            </thead>
+            <tbody id="prac-history-table-body">
+              <tr>
+                <td colspan="10" style="padding:20px; text-align:center; color:#64748b;">
+                  No hay operaciones registradas aún. ¡Haz tu primer trade simulado arriba!
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   
 
 <!-- Footer -->
@@ -3916,6 +4287,7 @@
   </div>
 
   <script src="/app.js?v=20261104_quant_wknd"></script>
+  <script src="/practice-simulator.js?v=20261107_edu"></script>
 <!-- MODAL DE TRANSFERENCIA DE SALDO (BOT <-> MANUAL) -->
   <div id="wallet-transfer-modal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(6px); z-index: 99999; align-items: center; justify-content: center; padding: 20px;">
     <div style="background: linear-gradient(135deg, #0f172a, #1e293b); border: 1px solid rgba(139, 92, 246, 0.4); border-radius: 14px; width: 100%; max-width: 440px; padding: 22px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">

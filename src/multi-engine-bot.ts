@@ -612,20 +612,28 @@ export class TrailingMasterBot {
     }
   }
   private activeTrailingPositions: Map<string, ActivePosition> = new Map();
-  private walletSplit: { manualUsdt: number; lastUpdated: number } = { manualUsdt: 0.0, lastUpdated: 0 };
+  private walletSplit: { manualUsdt: number; lastKnownTotalFreeUsdt: number; autoQuarantineDeposits: boolean; lastUpdated: number } = {
+    manualUsdt: 0.0,
+    lastKnownTotalFreeUsdt: 0.0,
+    autoQuarantineDeposits: true,
+    lastUpdated: 0
+  };
+  private lastBotSaleTime = 0;
 
   private loadWalletSplit() {
-    if (this.controls?.strategySettings?.walletSplit?.manualUsdt !== undefined) {
-      this.walletSplit.manualUsdt = parseFloat(this.controls.strategySettings.walletSplit.manualUsdt || "0");
-      return;
-    }
     try {
       const f = path.resolve(process.cwd(), ".wallet-split.json");
       if (fs.existsSync(f)) {
         const d = JSON.parse(fs.readFileSync(f, "utf-8"));
         if (typeof d.manualUsdt === "number") this.walletSplit.manualUsdt = d.manualUsdt;
+        if (typeof d.lastKnownTotalFreeUsdt === "number") this.walletSplit.lastKnownTotalFreeUsdt = d.lastKnownTotalFreeUsdt;
+        if (typeof d.autoQuarantineDeposits === "boolean") this.walletSplit.autoQuarantineDeposits = d.autoQuarantineDeposits;
+        return;
       }
     } catch {}
+    if (this.controls?.strategySettings?.walletSplit?.manualUsdt !== undefined) {
+      this.walletSplit.manualUsdt = parseFloat(this.controls.strategySettings.walletSplit.manualUsdt || "0");
+    }
   }
 
   private saveWalletSplit() {
@@ -637,6 +645,57 @@ export class TrailingMasterBot {
       const f = path.resolve(process.cwd(), ".wallet-split.json");
       fs.writeFileSync(f, JSON.stringify(this.walletSplit, null, 2), "utf-8");
     } catch {}
+  }
+
+  /**
+   * 🛡️ BLINDAJE DE DEPÓSITOS ENTRANTE:
+   * Cuando el usuario deposita USDT nuevo en Binance, el 100% del ingreso
+   * se acredita automáticamente al SALDO MANUAL. El bot NO lo tocará ni
+   * abrirá operaciones a menos que el usuario lo transfiera explícitamente.
+   */
+  public checkAndQuarantineDeposits(totalFreeUsdt: number): void {
+    this.loadWalletSplit();
+    const lastKnown = this.walletSplit.lastKnownTotalFreeUsdt;
+
+    // Si es primera ejecución o no hay registro previo, fijar saldo inicial
+    if (lastKnown === undefined || lastKnown === null || lastKnown === 0) {
+      this.walletSplit.lastKnownTotalFreeUsdt = totalFreeUsdt;
+      this.saveWalletSplit();
+      return;
+    }
+
+    const delta = totalFreeUsdt - lastKnown;
+
+    // Si el saldo libre aumentó (Depósito entrante)
+    if (delta > 0.15) {
+      const justSold = (Date.now() - this.lastBotSaleTime) < 30000;
+      if (!justSold && this.walletSplit.autoQuarantineDeposits !== false) {
+        // Asignar el 100% del depósito entrante al SALDO MANUAL
+        this.walletSplit.manualUsdt = Math.max(0, this.walletSplit.manualUsdt) + delta;
+        this.walletSplit.lastKnownTotalFreeUsdt = totalFreeUsdt;
+        this.saveWalletSplit();
+
+        const botSpendable = Math.max(0, totalFreeUsdt - this.walletSplit.manualUsdt);
+        console.log(`🛡️ [DEPÓSITO PROTEGIDO] Ingreso de +$${delta.toFixed(2)} USDT detectado. Asignado 100% al FONDO MANUAL.`);
+        console.log(`   • 👤 Saldo Manual Protegido: $${this.walletSplit.manualUsdt.toFixed(2)} USDT | 🤖 Saldo Bot: $${botSpendable.toFixed(2)} USDT`);
+
+        this.notifier.send(
+          `📥 <b>DEPÓSITO BLINDADO EN FONDO MANUAL</b> 🛡️\n\n` +
+          `• Monto ingresado: <b>+$${delta.toFixed(2)} USDT</b>\n` +
+          `• 👤 <b>Saldo Manual Protegido:</b> $${this.walletSplit.manualUsdt.toFixed(2)} USDT\n` +
+          `• 🤖 <b>Saldo del Bot (Intacto):</b> $${botSpendable.toFixed(2)} USDT\n\n` +
+          `🔒 <i>El bot NO tocará este depósito. Si deseas asignarle presupuesto al bot para cazar caídas, usa /pasar_bot o el botón de transferencia en el Dashboard.</i>`
+        ).catch(() => {});
+        return;
+      }
+    }
+
+    // Si el saldo disminuyó o fue venta del bot
+    this.walletSplit.lastKnownTotalFreeUsdt = totalFreeUsdt;
+    if (totalFreeUsdt < this.walletSplit.manualUsdt) {
+      this.walletSplit.manualUsdt = Math.max(0, totalFreeUsdt);
+    }
+    this.saveWalletSplit();
   }
 
   public deductFromManualWallet(amount: number) {
@@ -2115,6 +2174,7 @@ export class TrailingMasterBot {
         newOrderRespType: "FULL",
         recvWindow: 60000
       });
+      this.lastBotSaleTime = Date.now();
 
       const grossUsdt = parseFloat(sellRes.data.cummulativeQuoteQty);
       const sellFee = this.feesToUsdt(sellRes.data.fills, asset);
@@ -2273,6 +2333,7 @@ export class TrailingMasterBot {
         newOrderRespType: "FULL",
         recvWindow: 60000
       });
+      this.lastBotSaleTime = Date.now();
 
       const grossUsdt = parseFloat(sellRes.data.cummulativeQuoteQty);
       const sellFee = this.feesToUsdt(sellRes.data.fills, asset);
@@ -3661,6 +3722,7 @@ export class TrailingMasterBot {
           return "⚠️ Saldo insuficiente en el bot para transferir. El bot solo tiene $" + maxAvail.toFixed(2) + " USDT libres.";
         }
         this.walletSplit.manualUsdt += toTransfer;
+        this.walletSplit.lastKnownTotalFreeUsdt = freeUsdt;
         this.saveWalletSplit();
         const newBot = Math.max(0, freeUsdt - this.walletSplit.manualUsdt);
         return "✅ <b>TRANSFERENCIA EXITOSA</b>\n\n" +
@@ -3683,6 +3745,7 @@ export class TrailingMasterBot {
           return "⚠️ No tienes saldo manual para transferir al bot. Saldo manual actual: $" + this.walletSplit.manualUsdt.toFixed(2) + " USDT.";
         }
         this.walletSplit.manualUsdt = Math.max(0, this.walletSplit.manualUsdt - toTransfer);
+        this.walletSplit.lastKnownTotalFreeUsdt = freeUsdt;
         this.saveWalletSplit();
         const newBot = Math.max(0, freeUsdt - this.walletSplit.manualUsdt);
         return "✅ <b>TRANSFERENCIA EXITOSA</b>\n\n" +
@@ -4477,6 +4540,7 @@ export class TrailingMasterBot {
             `Si de verdad quieres asumirla: <code>/forzar_venta_perdida ${asset} CONFIRMAR</code> o el botón rojo del Dashboard.`;
         }
         const res = await this.client.newOrder(symbol, "SELL", "MARKET", { quantity: sellQtyStr, recvWindow: 60000 });
+        this.lastBotSaleTime = Date.now();
         const soldQuote = parseFloat(res.data.cummulativeQuoteQty);
         return `✅ <b>Venta ejecutada:</b> Se vendieron ${sellQtyStr} ${asset} por $${soldQuote.toFixed(2)} USDT.`;
       }
@@ -4532,6 +4596,7 @@ export class TrailingMasterBot {
         const qtyDec = Math.max(0, Math.round(-Math.log10(stepSize)));
         const sellQtyStr = (Math.floor(bal / stepSize) * stepSize).toFixed(qtyDec);
         const res = await this.client.newOrder(symbol, "SELL", "MARKET", { quantity: sellQtyStr, recvWindow: 60000 });
+        this.lastBotSaleTime = Date.now();
         return `🛑 <b>Venta forzada ejecutada:</b> Se vendieron ${sellQtyStr} ${asset} por $${parseFloat(res.data.cummulativeQuoteQty).toFixed(2)} USDT.`;
       }
 
@@ -5764,6 +5829,9 @@ export class TrailingMasterBot {
       const acc = await this.client.account({ recvWindow: 60000 });
       const usdt = parseFloat(acc.data.balances.find((b: any) => b.asset === "USDT")?.free || "0");
       const time = new Date().toLocaleTimeString();
+
+      // 🛡️ Blindaje de depósitos automáticos en Billetera Manual
+      this.checkAndQuarantineDeposits(usdt);
 
       // Orquestador Autónomo de Liquidez y Sesiones (COT)
       this.loadWalletSplit();

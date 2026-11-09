@@ -503,6 +503,24 @@ export class FuturesEngine {
     this.positions.splice(index, 1);
     this.savePositions();
 
+    // En Modo Real: Cerrar contrato en Binance Futures
+    if (!this.state.isSimulated) {
+      try {
+        const roundedQty = this.roundLotSize(pos.symbol, pos.contracts);
+        const closeSide = pos.side === "LONG" ? "SELL" : "BUY";
+        await this.privateFuturesRequest("/fapi/v1/order", "POST", {
+          symbol: pos.symbol,
+          side: closeSide,
+          type: "MARKET",
+          quantity: roundedQty,
+          reduceOnly: "true"
+        });
+        console.log(`⚡ [FUTUROS REAL] Posición cerrada en Binance: ${pos.symbol} ${closeSide} ${roundedQty}`);
+      } catch (err: any) {
+        console.error(`❌ [FUTUROS REAL] Error cerrando ${pos.symbol}:`, err.message);
+      }
+    }
+
     // Cálculo PnL
     let grossPnl = 0;
     if (pos.side === "LONG") {
@@ -548,27 +566,28 @@ export class FuturesEngine {
 
     // Notificación Telegram (solo si el motor de Futuros está activo)
     if (!this.isEnabled()) return;
+    const modeLabel = this.state.isSimulated ? "SIMULACIÓN" : "REAL";
     if (reason === "TRAILING_TP") {
       await this.notifier.send(
-        `🏆 [FUTUROS SIMULACIÓN: GANANCIA COBRADA] 🎉\n\n` +
+        `🏆 [FUTUROS ${modeLabel}: GANANCIA COBRADA] 🎉\n\n` +
         `• Moneda: <b>${pos.symbol}</b> (${pos.side} ${pos.leverage}x)\n` +
         `• Precio Entrada: ${pos.entryPrice.toFixed(4)}\n` +
         `• Precio Salida: <b>${exitPrice.toFixed(4)}</b>\n` +
         `• Duración: ${durationMin} min\n` +
         `• Comisiones estimadas: ${feesUsdt.toFixed(4)} USDT\n` +
         `• 💵 Ganancia Líquida: 🟢 <b>+${netPnlUsdt.toFixed(3)} USDT</b> (+${roePct.toFixed(2)}% ROE)\n\n` +
-        `💼 Balance Simulado: <b>${this.state.virtualBalanceUsdt.toFixed(2)} USDT</b>\n` +
+        `💼 Balance ${modeLabel === "REAL" ? "en Cartera" : "Simulado"}: <b>${this.state.virtualBalanceUsdt.toFixed(2)} USDT</b>\n` +
         `📊 Escribe /reporte_futuros para ver el balance acumulado.`
       );
     } else {
       await this.notifier.send(
-        `🛡️ [FUTUROS SIMULACIÓN: STOP-LOSS EJECUTADO] 🛑\n\n` +
+        `🛡️ [FUTUROS ${modeLabel}: STOP-LOSS EJECUTADO] 🛑\n\n` +
         `• Moneda: <b>${pos.symbol}</b> (${pos.side} ${pos.leverage}x)\n` +
         `• Entrada: ${pos.entryPrice.toFixed(4)} | Salida Stop: ${exitPrice.toFixed(4)}\n` +
         `• Duración: ${durationMin} min\n` +
         `• 💵 Pérdida Controlada: 🔴 <b>${netPnlUsdt.toFixed(3)} USDT</b> (${roePct.toFixed(2)}% ROE)\n` +
         `• Capital protegido: ${(pos.marginUsdt + netPnlUsdt).toFixed(2)} USDT devueltos al margen.\n\n` +
-        `💼 Balance Simulado: <b>${this.state.virtualBalanceUsdt.toFixed(2)} USDT</b>`
+        `💼 Balance ${modeLabel === "REAL" ? "en Cartera" : "Simulado"}: <b>${this.state.virtualBalanceUsdt.toFixed(2)} USDT</b>`
       );
     }
   }
@@ -729,8 +748,40 @@ export class FuturesEngine {
       ? entryPrice * (1 + trailingTriggerPct / 100)
       : entryPrice * (1 - trailingTriggerPct / 100);
 
+    let realOrderId: any = null;
+    if (!this.state.isSimulated) {
+      try {
+        try {
+          await this.privateFuturesRequest("/fapi/v1/marginType", "POST", { symbol, marginType: "ISOLATED" });
+        } catch {}
+        try {
+          await this.privateFuturesRequest("/fapi/v1/leverage", "POST", { symbol, leverage });
+        } catch {}
+
+        const roundedQty = this.roundLotSize(symbol, contracts);
+        const orderSide = side === "LONG" ? "BUY" : "SELL";
+        const res = await this.privateFuturesRequest("/fapi/v1/order", "POST", {
+          symbol,
+          side: orderSide,
+          type: "MARKET",
+          quantity: roundedQty
+        });
+        if (res.orderId) {
+          realOrderId = res.orderId;
+          console.log(`⚡ [FUTUROS REAL] Orden abierta en Binance: ${symbol} ${orderSide} ${roundedQty} (ID: ${res.orderId})`);
+        } else if (res.code) {
+          console.error(`❌ [FUTUROS REAL ERROR] ${res.msg} (code: ${res.code})`);
+          await this.notifier.send(`⚠️ <b>[FUTUROS REAL] Error abriendo ${symbol}:</b>\n${res.msg}`);
+          return;
+        }
+      } catch (err: any) {
+        console.error(`❌ [FUTUROS REAL] Error en orden de ${symbol}:`, err.message);
+        return;
+      }
+    }
+
     const newPos: FuturesPosition = {
-      id: `sim_fut_${Date.now()}`,
+      id: realOrderId ? `fut_real_${realOrderId}` : `sim_fut_${Date.now()}`,
       symbol,
       side,
       entryPrice,
@@ -757,9 +808,10 @@ export class FuturesEngine {
     if (!this.isEnabled()) return;
     const maxRiskUsdt = (margin * (stopLossPct / 100) * leverage);
     const sideEmoji = side === "LONG" ? "🟢 LONG" : "🔴 SHORT";
+    const modeLabel = this.state.isSimulated ? "SIMULACIÓN" : "REAL";
 
     await this.notifier.send(
-      `🧪 [FUTUROS SIMULACIÓN: ENTRADA ${sideEmoji}] 🎯\n\n` +
+      `🧪 [FUTUROS ${modeLabel}: ENTRADA ${sideEmoji}] 🎯\n\n` +
       `• Moneda: <b>${symbol}</b>\n` +
       `• Margen asignado: <b>${margin.toFixed(2)} USDT</b> (${leverage}x ISOLATED)\n` +
       `• Tamaño posición: <b>${notional.toFixed(2)} USDT</b> (~${contracts.toFixed(4)} contratos)\n` +

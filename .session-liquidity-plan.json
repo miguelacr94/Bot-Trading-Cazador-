@@ -1,12 +1,12 @@
 {
-  "sessionKey": "NOCTURNO_DRENAJE",
-  "sessionTitle": "🌙 Drenaje Nocturno (Caza de Stops / Vacío de Liquidez)",
-  "totalFreeUsdt": 0.29987042,
-  "reservedUsdt": 0.29987042,
+  "sessionKey": "NY_IMPULSO",
+  "sessionTitle": "🗽 Impulso Wall Street (Máxima Liquidez y Volumen)",
+  "totalFreeUsdt": 0.324973,
+  "reservedUsdt": 0.324973,
   "spendableUsdt": 0,
-  "lotFractionPct": 0.2,
-  "trailingBounceTrigger": 0.45,
-  "reason": "Bajo volumen y alto riesgo de caza de stops (Win Rate 38%-43%). El 50% de la caja queda CONGELADA para aprovechar los suelos de Londres a las 03:00 COT.",
-  "recommendation": "🌙 Mantener reserva congelada. Compras bloqueadas salvo pánico extremo (RSI <= 26 con vela de rechazo).",
-  "updatedAt": 1794017639920
+  "lotFractionPct": 0.5,
+  "trailingBounceTrigger": 0.35,
+  "reason": "Mayor volumen del día. Se opera la expansión manteniendo el 25% en caja protegida.",
+  "recommendation": "🗽 Dejar correr posiciones con Trailing Take Profit y guardar el 25% para retrocesos.",
+  "updatedAt": 1794231027104
 }

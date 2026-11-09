@@ -94,6 +94,9 @@
       if (targetId === "tab-spot" && pnlChart) {
         try { pnlChart.resize(); } catch(e) {}
       }
+      if (targetId === "tab-practice") {
+        try { window.practiceSim?.onTabActivated?.(); } catch(e) {}
+      }
     }
 
     tabBtns.forEach(btn => {
