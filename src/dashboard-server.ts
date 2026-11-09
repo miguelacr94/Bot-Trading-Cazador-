@@ -2,6 +2,7 @@ import { supabaseDb } from "./supabase-db.js";
 import * as http from "http";
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
 import * as dotenv from "dotenv";
 import { Spot } from "@binance/connector";
 import { computeRealizedPnl, PNL_SYMBOLS, PnlSummary } from "./pnl.js";
@@ -98,6 +99,8 @@ export class DashboardServer {
   private radarMeta: Record<string, { rsi: number; dropPct: number }> = {};
   private usdtFree: number | null = null;
   private usdtEarn: number | null = null;
+  private futuresBalance: number | null = null;
+  private futuresAvailable: number | null = null;
   private pnl: PnlSummary | null = null;
   private lastPriceOk = 0;
   private authError: string | null = null;
@@ -297,6 +300,26 @@ export class DashboardServer {
     this.usdtEarn = parseFloat(
       b.find((x: any) => x.asset === "LDUSDT")?.free || "0",
     );
+
+    // Sincronizar Billetera de Futuros USD-M en Binance en tiempo real
+    try {
+      const apiKey = process.env.BINANCE_API_KEY || "";
+      const secret = process.env.BINANCE_API_SECRET || "";
+      if (apiKey && secret) {
+        const timestamp = Date.now();
+        const query = `timestamp=${timestamp}&recvWindow=60000`;
+        const signature = crypto.createHmac("sha256", secret).update(query).digest("hex");
+        const url = `https://fapi.binance.com/fapi/v2/account?${query}&signature=${signature}`;
+        const res = await fetch(url, { headers: { "X-MBX-APIKEY": apiKey } });
+        if (res.ok) {
+          const fAcc: any = await res.json();
+          this.futuresBalance = parseFloat(fAcc.totalWalletBalance || "0");
+          this.futuresAvailable = parseFloat(fAcc.availableBalance || "0");
+        }
+      }
+    } catch (e: any) {
+      console.error("Error sincronizando saldo de Futuros en dashboard:", e.message);
+    }
 
     // Sincronizar automáticamente posiciones activas desde Binance (incluye Spot y Simple Earn LD*)
     try {
@@ -800,14 +823,21 @@ export class DashboardServer {
     const futRealizedPnl = rawFutTrades.reduce((acc: number, t: any) => acc + (t.netPnlUsdt || 0), 0);
     const futFloatingPnl = enrichedFutPositions.reduce((acc: number, p: any) => acc + (p.floatingPnlUsdt || 0), 0);
 
+    const isSim = futuresState.isSimulated !== false;
+    const realFutBal = this.futuresBalance !== null ? this.futuresBalance : (futuresState.virtualBalanceUsdt || 14.57);
+    const displayedBalance = isSim ? (futuresState.virtualBalanceUsdt || 10) : realFutBal;
+
     const futuresTelemetry = {
       state: futuresState,
+      isSimulated: isSim,
+      futuresBalance: realFutBal,
+      futuresAvailable: this.futuresAvailable !== null ? this.futuresAvailable : realFutBal,
       positions: enrichedFutPositions,
-      trades: rawFutTrades.slice(-15).reverse(),
+      trades: rawFutTrades.slice(-25).reverse(),
       radar: futuresRadar,
       stats: {
-        startingBalanceUsdt: futuresState.startingBalanceUsdt,
-        virtualBalanceUsdt: futuresState.virtualBalanceUsdt,
+        startingBalanceUsdt: isSim ? futuresState.startingBalanceUsdt : 14.57,
+        virtualBalanceUsdt: displayedBalance,
         realizedPnlUsdt: futRealizedPnl,
         floatingPnlUsdt: futFloatingPnl,
         wins: futWins,
@@ -816,8 +846,9 @@ export class DashboardServer {
       }
     };
 
-    const cash = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
-    const total = positionsValue + cash;
+    const spotCash = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
+    const futCash = !isSim ? realFutBal : 0;
+    const total = positionsValue + spotCash + futCash;
     const p = this.pnl;
     // SINCRONIZACIÓN HÍBRIDA: Fusionar trades locales del bot con la auditoría de Binance
     let localLedger: any[] = this.cachedDbTrades && this.cachedDbTrades.length > 0 ? this.cachedDbTrades : [];
@@ -926,6 +957,7 @@ export class DashboardServer {
         p2pCopRate: 4200,
         usdtFree: this.usdtFree,
         usdtEarn: this.usdtEarn,
+        usdtFutures: this.futuresBalance !== null ? this.futuresBalance : 0,
         totalInvested,
         openPositionsCount: uniqueOpenCoins,
         totalLotsCount: positions.length,
@@ -958,7 +990,7 @@ export class DashboardServer {
             if (Date.now() - (data.updatedAt || 0) < 60000) return data;
           }
         } catch(e) {}
-        return this.computeSessionPlan(cash);
+        return this.computeSessionPlan(spotCash);
       })(),
       projections:
         allMergedCycles.length > 0

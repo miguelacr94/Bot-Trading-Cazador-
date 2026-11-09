@@ -2682,10 +2682,10 @@
       <div class="kpi-card blue">
         <div class="kpi-header">
           <span class="kpi-title">Saldo USDT Disponible</span>
-          <span class="kpi-badge">Spot + Earn</span>
+          <span class="kpi-badge" id="kpi-cash-badge">Spot + Futuros</span>
         </div>
         <div class="kpi-value"><span id="kpi-free-usdt-num">—</span> <span class="kpi-unit">USDT</span></div>
-        <div class="kpi-sub" id="kpi-slots">&nbsp;</div>
+        <div class="kpi-sub" id="kpi-cash-breakdown">Cargando saldos…</div>
       </div>
 
       <div class="kpi-card purple">
@@ -3637,23 +3637,23 @@
     <div class="futures-dev-panel" id="futures-dev-panel" style="margin-top: 24px; background: rgba(18, 20, 29, 0.95); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 14px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
       <div class="futures-dev-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:16px;">
         <div style="display:flex; align-items:center; gap:10px;">
-          <span style="font-size:24px;">🧪</span>
+          <span style="font-size:24px;">⚡</span>
           <div>
             <div style="font-size:16px; font-weight:700; color:#fff; display:flex; align-items:center; gap:8px;">
-              Laboratorio de Futuros Cuantitativo
-              <span style="font-size:11px; background:rgba(139, 92, 246, 0.25); color:#c4b5fd; padding:3px 8px; border-radius:6px; border:1px solid rgba(139, 92, 246, 0.4); font-weight:600;">MODO DEV / SIMULACIÓN</span>
+              Motor Cuantitativo de Futuros
+              <span id="fut-dev-mode-badge" style="font-size:11px; background:rgba(16, 185, 129, 0.25); color:#34d399; padding:3px 8px; border-radius:6px; border:1px solid rgba(16, 185, 129, 0.4); font-weight:600;">🔥 DINERO REAL</span>
             </div>
-            <div style="font-size:12px; color:var(--text-muted);">Monitoreo tick a tick en tiempo real con precios oficiales de Binance Futures USDⓈ-M</div>
+            <div style="font-size:12px; color:var(--text-muted);">Monitoreo tick a tick en tiempo real con fondos reales en Binance Futures USDⓈ-M</div>
           </div>
         </div>
         <div style="display:flex; gap:16px; flex-wrap:wrap;">
           <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 14px; text-align:center;">
-            <div style="font-size:11px; color:var(--text-muted);">Capital Inicial</div>
-            <b id="fut-dev-init-capital" style="font-size:14px; color:#fff;">$100.00 USDT</b>
+            <div style="font-size:11px; color:var(--text-muted);">Capital Asignado</div>
+            <b id="fut-dev-init-capital" style="font-size:14px; color:#fff;">$14.57 USDT</b>
           </div>
           <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 14px; text-align:center;">
-            <div style="font-size:11px; color:var(--text-muted);">Balance Simulado</div>
-            <b id="fut-dev-cur-balance" style="font-size:14px; color:#34d399;">$30.00 USDT</b>
+            <div id="fut-dev-cur-balance-title" style="font-size:11px; color:var(--text-muted);">Saldo Real en Binance</div>
+            <b id="fut-dev-cur-balance" style="font-size:14px; color:#34d399;">$14.57 USDT</b>
           </div>
           <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 14px; text-align:center;">
             <div style="font-size:11px; color:var(--text-muted);">Ganancia Cobrada</div>

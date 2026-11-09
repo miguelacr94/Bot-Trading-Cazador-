@@ -168,7 +168,20 @@
     setText($("kpi-total-cop"), `≈ ${cop(pf.totalEstimatedCop)} COP (@ ${Math.round(COP_PER_USDT)} Binance)`);
 
     if (d.accountAvailable) {
-      setText($("kpi-free-usdt-num"), `$${fmt((pf.usdtFree || 0) + (pf.usdtEarn || 0))}`);
+      const spotFree = (pf.usdtFree || 0) + (pf.usdtEarn || 0);
+      const isFutReal = d.futuresTelemetry?.state?.isSimulated === false;
+      const futFree = d.futuresTelemetry?.futuresBalance || pf.usdtFutures || (isFutReal ? (d.futuresTelemetry?.stats?.virtualBalanceUsdt || 14.57) : 0);
+      const totalLiquidCash = spotFree + (isFutReal ? futFree : 0);
+
+      setText($("kpi-free-usdt-num"), `$${fmt(totalLiquidCash)}`);
+      const breakdownEl = $("kpi-cash-breakdown");
+      if (breakdownEl) {
+        if (isFutReal) {
+          breakdownEl.innerHTML = `Spot: <b>$${fmt(spotFree)}</b> | Futuros (Real): <b style="color:#34d399">$${fmt(futFree)} USDT</b>`;
+        } else {
+          breakdownEl.innerHTML = `Spot: <b>$${fmt(spotFree)} USDT</b> | Futuros: (Simulado)`;
+        }
+      }
     }
     const totalLots = pf.totalLotsCount || pf.openPositionsCount || 0;
     setText($("kpi-slots"), `Monedas: ${pf.openPositionsCount} / ${pf.maxSlots || 7} (${totalLots} lotes)`);
@@ -1803,6 +1816,27 @@
     // Sincronizar botones de modo (Simulado vs Real)
     setFuturesModeUI(st.isSimulated !== false);
 
+    const isRealMode = st.isSimulated === false;
+    const modeBadge = document.getElementById("fut-dev-mode-badge");
+    if (modeBadge) {
+      if (isRealMode) {
+        modeBadge.textContent = "🔥 DINERO REAL (FONDOS EN BINANCE)";
+        modeBadge.style.background = "rgba(16, 185, 129, 0.25)";
+        modeBadge.style.color = "#34d399";
+        modeBadge.style.borderColor = "rgba(16, 185, 129, 0.5)";
+      } else {
+        modeBadge.textContent = "🧪 MODO DEV / SIMULACIÓN";
+        modeBadge.style.background = "rgba(139, 92, 246, 0.25)";
+        modeBadge.style.color = "#c4b5fd";
+        modeBadge.style.borderColor = "rgba(139, 92, 246, 0.4)";
+      }
+    }
+
+    const titleEl = document.getElementById("fut-dev-cur-balance-title");
+    if (titleEl) {
+      titleEl.textContent = isRealMode ? "Saldo Real en Binance" : "Balance Simulado";
+    }
+
     // Inputs en Laboratorio (Pestaña 3)
     if (labCapital && !labCapital.matches(":focus") && !labCapital.dataset.userEdited && st.startingBalanceUsdt) {
       labCapital.value = st.startingBalanceUsdt;
@@ -2618,9 +2652,11 @@
       const futBadge = $("tab-futures-badge");
       if (futBadge) {
         const isSim = d.futuresTelemetry?.state?.isSimulated !== false;
-        futBadge.textContent = isSim ? "🧪 SIM" : "⚡ REAL";
-        futBadge.style.background = isSim ? "rgba(139, 92, 246, 0.2)" : "rgba(16, 185, 129, 0.2)";
+        const realBal = d.futuresTelemetry?.futuresBalance || d.futuresTelemetry?.stats?.virtualBalanceUsdt || 14.57;
+        futBadge.textContent = isSim ? "🧪 SIM" : `⚡ REAL ($${fmt(realBal)})`;
+        futBadge.style.background = isSim ? "rgba(139, 92, 246, 0.2)" : "rgba(16, 185, 129, 0.25)";
         futBadge.style.color = isSim ? "#c4b5fd" : "#34d399";
+        futBadge.style.fontWeight = "700";
       }
 
       renderPositions(d.positions);

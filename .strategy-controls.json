@@ -49,10 +49,10 @@
       "stopLossEnabled": false
     },
     "walletSplit": {
-      "manualUsdt": 0,
+      "manualUsdt": 0.006573,
       "lastKnownTotalFreeUsdt": 0.006573,
       "autoQuarantineDeposits": true,
-      "lastUpdated": 1794234388849
+      "lastUpdated": 1794235094147
     },
     "maxPositions": 8,
     "coreWatchlist": [
@@ -95,10 +95,10 @@
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1794237947403,
+      "expiresAt": 1794238624479,
       "isCurrent": true,
       "timeframe": "4h",
-      "updatedAt": 1794234347403,
+      "updatedAt": 1794235024479,
       "btcRange24h": 3.51696367841111,
       "stopLossPct": 6
     },
@@ -111,10 +111,10 @@
         "Rango Bitcoin: 3.52% (Mercado con ondas direccionales)",
         "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
       ],
-      "expiresAt": 1794237947403,
+      "expiresAt": 1794238624479,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794234347403,
+      "updatedAt": 1794235024479,
       "btcRange24h": 3.51696367841111,
       "stopLossPct": 2
     },
@@ -127,10 +127,10 @@
         "Días hábiles de semana (mercados institucionales de Londres y NY abiertos)",
         "Presupuesto cedido automáticamente a Cazador Trailing y Smart DCA"
       ],
-      "expiresAt": 1794237947403,
+      "expiresAt": 1794238624479,
       "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1794234347403,
+      "updatedAt": 1794235024479,
       "btcRange24h": 3.51696367841111,
       "stopLossPct": 5
     },
@@ -145,10 +145,10 @@
         "Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m",
         "Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)"
       ],
-      "expiresAt": 1794237947403,
+      "expiresAt": 1794238624479,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794234347403,
+      "updatedAt": 1794235024479,
       "btcRange24h": 3.51696367841111,
       "stopLossPct": 3.5
     }
@@ -193,6 +193,6 @@
     "BONKUSDT",
     "SHIBUSDT"
   ],
-  "updatedAt": 1794234388849,
+  "updatedAt": 1794235094147,
   "wideGapLotSize": 50
 }

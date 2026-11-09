@@ -19,5 +19,26 @@
     "openTime": 1794234352370,
     "status": "OPEN",
     "rationale": "⚡ Giro desde sobrecompra extrema (RSI: 75.9) con rechazo superior del 49%"
+  },
+  {
+    "id": "fut_real_105763684513",
+    "symbol": "DOGEUSDT",
+    "side": "SHORT",
+    "entryPrice": 0.06977604200000001,
+    "marginUsdt": 3.4888021000000005,
+    "leverage": 3,
+    "notionalUsdt": 10.466406300000001,
+    "contracts": 150,
+    "stopLossPrice": 0.07082268263000001,
+    "stopLossPct": 1.5,
+    "trailingTriggerPrice": 0.06852007324400002,
+    "trailingTriggerPct": 1.8,
+    "trailingCallbackPct": 0.35,
+    "trailingActive": false,
+    "peakPrice": 0.06977604200000001,
+    "trailingStopPrice": null,
+    "openTime": 1794235031148,
+    "status": "OPEN",
+    "rationale": "🔻 Rechazo en tendencia bajista 1H (<EMA50): RSI 15M (58.3) con mecha de rechazo del 43%"
   }
 ]
