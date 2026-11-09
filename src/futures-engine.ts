@@ -404,9 +404,99 @@ export class FuturesEngine {
   }
 
   // --- MOTOR DE MONITOREO DE POSICIONES ABIERTAS ---
+  private lastBinanceSync = 0;
+
+  public async syncRealPositionsFromBinance(): Promise<void> {
+    if (this.state.isSimulated) return;
+    // Evitar sobrecargar la API: sincronizar como máximo cada 4 segundos
+    if (Date.now() - this.lastBinanceSync < 4000) return;
+    this.lastBinanceSync = Date.now();
+
+    try {
+      const livePositionsRaw = await this.privateFuturesRequest("/fapi/v2/positionRisk", "GET");
+      if (!Array.isArray(livePositionsRaw)) return;
+
+      const activeOnBinance = livePositionsRaw.filter((p: any) => Math.abs(parseFloat(p.positionAmt || "0")) > 0);
+      const activeSymbols = new Set(activeOnBinance.map((p: any) => p.symbol));
+
+      let changed = false;
+      this.positions = this.loadPositions();
+
+      // 1. Si alguna posición local ya no existe en Binance, removerla de activas
+      const initialLen = this.positions.length;
+      this.positions = this.positions.filter(p => activeSymbols.has(p.symbol));
+      if (this.positions.length !== initialLen) changed = true;
+
+      // 2. Agregar o actualizar cada posición activa de Binance
+      for (const p of activeOnBinance) {
+        const symbol = p.symbol;
+        const amt = parseFloat(p.positionAmt);
+        const side: "LONG" | "SHORT" = amt > 0 ? "LONG" : "SHORT";
+        const contracts = Math.abs(amt);
+        const entryPrice = parseFloat(p.entryPrice);
+        const leverage = parseInt(p.leverage, 10) || 3;
+        const marginUsdt = parseFloat(p.isolatedMargin || "0") || parseFloat(p.isolatedWallet || "0") || ((contracts * entryPrice) / leverage);
+        const notionalUsdt = contracts * entryPrice;
+
+        let existing = this.positions.find(pos => pos.symbol === symbol);
+        if (existing) {
+          if (existing.contracts !== contracts || Math.abs(existing.entryPrice - entryPrice) > 0.0001) {
+            existing.contracts = contracts;
+            existing.entryPrice = entryPrice;
+            existing.marginUsdt = marginUsdt;
+            existing.notionalUsdt = notionalUsdt;
+            existing.leverage = leverage;
+            existing.side = side;
+            changed = true;
+          }
+        } else {
+          const stopLossPct = this.state.stopLossPct || 1.5;
+          const trailingTriggerPct = this.state.trailingTriggerPct || 1.8;
+          const stopLossPrice = side === "LONG"
+            ? entryPrice * (1 - stopLossPct / 100)
+            : entryPrice * (1 + stopLossPct / 100);
+          const trailingTriggerPrice = side === "LONG"
+            ? entryPrice * (1 + trailingTriggerPct / 100)
+            : entryPrice * (1 - trailingTriggerPct / 100);
+
+          this.positions.push({
+            id: `fut_real_${symbol}_${p.updateTime || Date.now()}`,
+            symbol,
+            side,
+            entryPrice,
+            marginUsdt,
+            leverage,
+            notionalUsdt,
+            contracts,
+            stopLossPrice,
+            stopLossPct,
+            trailingTriggerPrice,
+            trailingTriggerPct,
+            trailingCallbackPct: this.state.trailingCallbackPct || 0.35,
+            trailingActive: false,
+            peakPrice: entryPrice,
+            trailingStopPrice: null,
+            openTime: parseInt(p.updateTime, 10) || Date.now(),
+            status: "OPEN",
+            rationale: `⚡ Posición real ejecutada en Binance (${side} ${leverage}x Isolated)`
+          });
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        this.savePositions();
+      }
+    } catch (e: any) {
+      console.error("Error sincronizando posiciones reales de Binance Futures:", e.message);
+    }
+  }
 
   public async updatePositions(): Promise<void> {
     if (!this.isEnabled()) return;
+    if (!this.state.isSimulated) {
+      await this.syncRealPositionsFromBinance();
+    }
     this.positions = this.loadPositions();
     if (this.positions.length === 0) return;
 
@@ -1023,6 +1113,10 @@ export class FuturesEngine {
     if (this.intervalHandle) return;
     const mode = this.state.isSimulated ? "Simulación Estricta" : "REAL (Fondos en Binance)";
     console.log(`🚀 Motor Cuantitativo de Futuros (${mode}) INICIADO.`);
+
+    if (!this.state.isSimulated) {
+      this.syncRealPositionsFromBinance().catch(() => {});
+    }
 
     this.intervalHandle = setInterval(async () => {
       try {

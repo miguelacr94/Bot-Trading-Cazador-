@@ -309,6 +309,69 @@ export class DashboardServer {
                     this.futuresBalance = parseFloat(fAcc.totalWalletBalance || "0");
                     this.futuresAvailable = parseFloat(fAcc.availableBalance || "0");
                 }
+                // Sincronizar posiciones de futuros reales para el dashboard
+                const fPosUrl = `https://fapi.binance.com/fapi/v2/positionRisk?${query}&signature=${signature}`;
+                const fPosRes = await fetch(fPosUrl, { headers: { "X-MBX-APIKEY": apiKey } });
+                if (fPosRes.ok) {
+                    const livePos = await fPosRes.json();
+                    if (Array.isArray(livePos)) {
+                        const activePos = livePos.filter(p => Math.abs(parseFloat(p.positionAmt || "0")) > 0);
+                        const pFile = path.resolve(process.cwd(), ".futures-sim-positions.json");
+                        let existing = [];
+                        try {
+                            if (fs.existsSync(pFile))
+                                existing = JSON.parse(fs.readFileSync(pFile, "utf-8"));
+                        }
+                        catch { }
+                        const activeSyms = new Set(activePos.map(p => p.symbol));
+                        existing = existing.filter(p => activeSyms.has(p.symbol));
+                        for (const p of activePos) {
+                            const sym = p.symbol;
+                            const amt = parseFloat(p.positionAmt);
+                            const side = amt > 0 ? "LONG" : "SHORT";
+                            const contracts = Math.abs(amt);
+                            const entry = parseFloat(p.entryPrice);
+                            const lev = parseInt(p.leverage, 10) || 3;
+                            const margin = parseFloat(p.isolatedMargin || "0") || parseFloat(p.isolatedWallet || "0") || ((contracts * entry) / lev);
+                            let found = existing.find(e => e.symbol === sym);
+                            if (found) {
+                                found.contracts = contracts;
+                                found.entryPrice = entry;
+                                found.marginUsdt = margin;
+                                found.notionalUsdt = contracts * entry;
+                                found.leverage = lev;
+                                found.side = side;
+                            }
+                            else {
+                                existing.push({
+                                    id: `fut_real_${sym}_${p.updateTime || Date.now()}`,
+                                    symbol: sym,
+                                    side,
+                                    entryPrice: entry,
+                                    marginUsdt: margin,
+                                    leverage: lev,
+                                    notionalUsdt: contracts * entry,
+                                    contracts,
+                                    stopLossPrice: side === "LONG" ? entry * 0.985 : entry * 1.015,
+                                    stopLossPct: 1.5,
+                                    trailingTriggerPrice: side === "LONG" ? entry * 1.018 : entry * 0.982,
+                                    trailingTriggerPct: 1.8,
+                                    trailingCallbackPct: 0.35,
+                                    trailingActive: false,
+                                    peakPrice: entry,
+                                    trailingStopPrice: null,
+                                    openTime: parseInt(p.updateTime, 10) || Date.now(),
+                                    status: "OPEN",
+                                    rationale: `⚡ Posición real ejecutada en Binance (${side} ${lev}x Isolated)`
+                                });
+                            }
+                        }
+                        try {
+                            fs.writeFileSync(pFile, JSON.stringify(existing, null, 2), "utf-8");
+                        }
+                        catch { }
+                    }
+                }
             }
         }
         catch (e) {

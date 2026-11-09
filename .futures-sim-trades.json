@@ -88,5 +88,23 @@
     "feesUsdt": 0.007879855847012417,
     "netPnlUsdt": 0.751831838177819,
     "roePct": 30.07327352711276
+  },
+  {
+    "id": "fut_real_41501117943",
+    "symbol": "AVAXUSDT",
+    "side": "SHORT",
+    "entryPrice": 8.7612474,
+    "exitPrice": 8.893,
+    "marginUsdt": 2.9204158000000002,
+    "leverage": 3,
+    "notionalUsdt": 8.7612474,
+    "openTime": 1794234352370,
+    "closeTime": 1794235522285,
+    "durationMin": 19,
+    "exitReason": "STOP_LOSS",
+    "grossPnlUsdt": -0.13175260000000044,
+    "feesUsdt": 0.008827123700000002,
+    "netPnlUsdt": -0.14057972370000044,
+    "roePct": -4.813688643240473
   }
 ]
