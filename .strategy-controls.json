@@ -50,9 +50,9 @@
     },
     "walletSplit": {
       "manualUsdt": 0,
-      "lastKnownTotalFreeUsdt": 0.324973,
+      "lastKnownTotalFreeUsdt": 0.006573,
       "autoQuarantineDeposits": true,
-      "lastUpdated": 1794231027101
+      "lastUpdated": 1794234351484
     },
     "maxPositions": 8,
     "coreWatchlist": [
@@ -78,85 +78,86 @@
       "stopLossEnabled": false
     },
     "trailing_rebound": {
-      "timeframe": "1h",
-      "stopLossPct": 4,
+      "timeframe": "15m",
+      "stopLossPct": 3.5,
       "stopLossEnabled": false
     }
   },
   "suggestions": {
     "smart_dca": {
-      "porQue": "Como el bot jamás vende en negativo, Smart DCA aplica la Pirámide Invertida Institucional: en lugar de gastar mucho arriba en el Lote 1, guarda la mayor potencia de fuego para los pisos profundos (Lote 2 y Lote 3) una vez que la vela de 15m confirma que la caída ya frenó.",
+      "timeframe": "4h",
+      "stopLossPct": 6,
       "reason": "Pirámide Invertida (Nivel 2: 1.35x | Nivel 3: 1.75x) + Freno en vela 15m.",
-      "status": "applied",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "criterios": [
         "Nivel 2 (Soporte ≥ -2.5%, RSI ≤ 45): Invierte 1.35x fuerza (~$22-$36 USDT)",
         "Nivel 3 (Capitulación ≥ -5.5%, RSI ≤ 38): Invierte 1.75x fuerza (~$28-$48 USDT)",
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1794234583759,
-      "isCurrent": true,
-      "timeframe": "4h",
-      "updatedAt": 1794230983759,
+      "porQue": "Como el bot jamás vende en negativo, Smart DCA aplica la Pirámide Invertida Institucional: en lugar de gastar mucho arriba en el Lote 1, guarda la mayor potencia de fuego para los pisos profundos (Lote 2 y Lote 3) una vez que la vela de 15m confirma que la caída ya frenó.",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 3.51696367841111,
-      "stopLossPct": 6
+      "updatedAt": 1794234347403,
+      "expiresAt": 1794237947403,
+      "isCurrent": true,
+      "status": "applied"
     },
     "micro_grid": {
-      "porQue": "Cuando el mercado tiene volatilidad amplia (≥ 2.2%), Micro-Grid se pausa automáticamente y cede su cuota de capital a Cazador Trailing y Smart DCA para capturar recorridos más grandes (+0.8% a +3.5%).",
+      "timeframe": "15m",
+      "stopLossPct": 2,
       "reason": "Mercado direccional activo (3.5%). Presupuesto en Cazador Trailing.",
-      "status": "applied",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "criterios": [
         "Rango Bitcoin: 3.52% (Mercado con ondas direccionales)",
         "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
       ],
-      "expiresAt": 1794234583759,
-      "isCurrent": true,
-      "timeframe": "15m",
-      "updatedAt": 1794230983759,
+      "porQue": "Cuando el mercado tiene volatilidad amplia (≥ 2.2%), Micro-Grid se pausa automáticamente y cede su cuota de capital a Cazador Trailing y Smart DCA para capturar recorridos más grandes (+0.8% a +3.5%).",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 3.51696367841111,
-      "stopLossPct": 2
+      "updatedAt": 1794234347403,
+      "expiresAt": 1794237947403,
+      "isCurrent": true,
+      "status": "applied"
     },
     "cazador_weekend": {
-      "porQue": "Entre semana el flujo institucional opera en Londres y Wall Street, por lo que Cazador Weekend descansa y cede su cuota de capital a las estrategias principales hasta el viernes a las 17:00 COT.",
+      "timeframe": "1h",
+      "stopLossPct": 5,
       "reason": "En espera hasta el viernes a las 17:00 COT.",
-      "status": "applied",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "criterios": [
         "Días hábiles de semana (mercados institucionales de Londres y NY abiertos)",
         "Presupuesto cedido automáticamente a Cazador Trailing y Smart DCA"
       ],
-      "expiresAt": 1794234583759,
-      "isCurrent": true,
-      "timeframe": "1h",
-      "updatedAt": 1794230983759,
+      "porQue": "Entre semana el flujo institucional opera en Londres y Wall Street, por lo que Cazador Weekend descansa y cede su cuota de capital a las estrategias principales hasta el viernes a las 17:00 COT.",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 3.51696367841111,
-      "stopLossPct": 5
+      "updatedAt": 1794234347403,
+      "expiresAt": 1794237947403,
+      "isCurrent": true,
+      "status": "applied"
     },
     "trailing_rebound": {
-      "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m junto con el filtro de giro de vela de 5m permite capturar el suelo exacto y cobrar rebotes rápidos (+1.2% a +2.5%) sin entrar anticipado ni vender jamás en pérdida.",
-      "reason": "Alta velocidad detectada (BTC 3.5%, Memes 7.1%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
-      "status": "pending",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "timeframe": "15m",
+      "stopLossPct": 3.5,
+      "reason": "Alta velocidad detectada (BTC 3.5%, Memes 7.2%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
       "criterios": [
         "Rango Bitcoin: 3.52% | Escudo Macro BTC 15m activo",
-        "Rango Memecoins: 7.06% (Líder PEPE con 9.2%)",
+        "Rango Memecoins: 7.16% (Líder PEPE con 9.2%)",
         "Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m",
         "Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)"
       ],
-      "expiresAt": 1794234583759,
-      "isCurrent": false,
-      "timeframe": "15m",
-      "updatedAt": 1794230983759,
+      "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m junto con el filtro de giro de vela de 5m permite capturar el suelo exacto y cobrar rebotes rápidos (+1.2% a +2.5%) sin entrar anticipado ni vender jamás en pérdida.",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "btcRange24h": 3.51696367841111,
-      "stopLossPct": 3.5
+      "updatedAt": 1794234347403,
+      "expiresAt": 1794237947403,
+      "isCurrent": true,
+      "status": "applied"
     }
   },
   "trailingCallbacks": {
     "BNBUSDT": 0.25,
     "BTCUSDT": 0.25,
     "ETHUSDT": 0.25,
+    "SOLUSDT": 0.35,
     "XRPUSDT": 0.25,
     "default": 0.35,
     "AVAXUSDT": 0.35,
@@ -192,6 +193,7 @@
     "BONKUSDT",
     "SHIBUSDT"
   ],
-  "updatedAt": 1794231027101,
-  "wideGapLotSize": 50
+  "updatedAt": 1794234351484,
+  "wideGapLotSize": 50,
+  "rejectedSuggestions": {}
 }

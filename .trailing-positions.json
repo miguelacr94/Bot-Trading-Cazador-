@@ -30,18 +30,6 @@
     }
   ],
   [
-    "SOLUSDT",
-    {
-      "symbol": "SOLUSDT",
-      "buyPrice": 93.37,
-      "qty": 0.2088783,
-      "investedUsdt": 19.502966870999998,
-      "highestPrice": 93.37,
-      "activated": false,
-      "buyTime": 1793639359184
-    }
-  ],
-  [
     "PEPEUSDT",
     {
       "symbol": "PEPEUSDT",

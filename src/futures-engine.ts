@@ -255,20 +255,29 @@ export class FuturesEngine {
     return res.json();
   }
 
-  // Precisión de decimales de cantidad por símbolo en Binance Futures
-  private roundLotSize(symbol: string, qty: number): number {
-    const precisionMap: Record<string, number> = {
-      BTCUSDT: 3,
-      ETHUSDT: 3,
-      SOLUSDT: 2,
-      BNBUSDT: 2,
-      AVAXUSDT: 1,
-      XRPUSDT: 1,
-      DOGEUSDT: 0
+  // Precisión y límites oficiales de Binance Futures por símbolo
+  private getSymbolLotSpec(symbol: string): { precision: number; minQty: number; minNotional: number } {
+    const specs: Record<string, { precision: number; minQty: number; minNotional: number }> = {
+      BTCUSDT: { precision: 3, minQty: 0.001, minNotional: 50 },
+      ETHUSDT: { precision: 3, minQty: 0.001, minNotional: 20 },
+      SOLUSDT: { precision: 2, minQty: 0.01, minNotional: 5 },
+      BNBUSDT: { precision: 2, minQty: 0.01, minNotional: 5 },
+      AVAXUSDT: { precision: 0, minQty: 1, minNotional: 5 },
+      XRPUSDT: { precision: 1, minQty: 0.1, minNotional: 5 },
+      DOGEUSDT: { precision: 0, minQty: 1, minNotional: 5 }
     };
-    const p = precisionMap[symbol] !== undefined ? precisionMap[symbol] : 2;
-    const factor = Math.pow(10, p);
-    return Math.floor(qty * factor) / factor;
+    return specs[symbol] || { precision: 0, minQty: 1, minNotional: 5 };
+  }
+
+  // Precisión de decimales de cantidad por símbolo en Binance Futures
+  private roundLotSize(symbol: string, qty: number): string {
+    const spec = this.getSymbolLotSpec(symbol);
+    const factor = Math.pow(10, spec.precision);
+    let val = Math.floor(qty * factor) / factor;
+    if (val < spec.minQty) {
+      val = spec.minQty;
+    }
+    return val.toFixed(spec.precision);
   }
 
   
@@ -758,7 +767,16 @@ export class FuturesEngine {
           await this.privateFuturesRequest("/fapi/v1/leverage", "POST", { symbol, leverage });
         } catch {}
 
+        const spec = this.getSymbolLotSpec(symbol);
         const roundedQty = this.roundLotSize(symbol, contracts);
+        const effectiveQty = parseFloat(roundedQty);
+        const effectiveNotional = effectiveQty * entryPrice;
+
+        if (effectiveNotional < spec.minNotional) {
+          console.log(`⚠️ [FUTUROS] ${symbol} no cumple minNotional (${effectiveNotional.toFixed(2)} < ${spec.minNotional}). Omitiendo para proteger el balance.`);
+          return;
+        }
+
         const orderSide = side === "LONG" ? "BUY" : "SELL";
         const res = await this.privateFuturesRequest("/fapi/v1/order", "POST", {
           symbol,
@@ -771,24 +789,30 @@ export class FuturesEngine {
           console.log(`⚡ [FUTUROS REAL] Orden abierta en Binance: ${symbol} ${orderSide} ${roundedQty} (ID: ${res.orderId})`);
         } else if (res.code) {
           console.error(`❌ [FUTUROS REAL ERROR] ${res.msg} (code: ${res.code})`);
+          this.symbolCooldowns.set(symbol, Date.now() + 5 * 60 * 1000);
           await this.notifier.send(`⚠️ <b>[FUTUROS REAL] Error abriendo ${symbol}:</b>\n${res.msg}`);
           return;
         }
       } catch (err: any) {
         console.error(`❌ [FUTUROS REAL] Error en orden de ${symbol}:`, err.message);
+        this.symbolCooldowns.set(symbol, Date.now() + 5 * 60 * 1000);
         return;
       }
     }
+
+    const actualQty = parseFloat(this.roundLotSize(symbol, contracts));
+    const actualNotional = actualQty * entryPrice;
+    const actualMargin = actualNotional / leverage;
 
     const newPos: FuturesPosition = {
       id: realOrderId ? `fut_real_${realOrderId}` : `sim_fut_${Date.now()}`,
       symbol,
       side,
       entryPrice,
-      marginUsdt: margin,
+      marginUsdt: actualMargin,
       leverage,
-      notionalUsdt: notional,
-      contracts,
+      notionalUsdt: actualNotional,
+      contracts: actualQty,
       stopLossPrice,
       stopLossPct,
       trailingTriggerPrice,
@@ -997,7 +1021,8 @@ export class FuturesEngine {
 
   public start(pollIntervalMs = 4000): void {
     if (this.intervalHandle) return;
-    console.log("🚀 Motor Cuantitativo de Futuros (Simulación Estricta) INICIADO.");
+    const mode = this.state.isSimulated ? "Simulación Estricta" : "REAL (Fondos en Binance)";
+    console.log(`🚀 Motor Cuantitativo de Futuros (${mode}) INICIADO.`);
 
     this.intervalHandle = setInterval(async () => {
       try {
