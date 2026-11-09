@@ -422,9 +422,9 @@ export class FuturesEngine {
       let changed = false;
       this.positions = this.loadPositions();
 
-      // 1. Si alguna posición local ya no existe en Binance, removerla de activas
+      // 1. Si alguna posición local ya no existe en Binance, removerla de activas (con 60s de gracia para propagación de nuevas órdenes)
       const initialLen = this.positions.length;
-      this.positions = this.positions.filter(p => activeSymbols.has(p.symbol));
+      this.positions = this.positions.filter(p => activeSymbols.has(p.symbol) || (Date.now() - (p.openTime || 0) < 60000));
       if (this.positions.length !== initialLen) changed = true;
 
       // 2. Agregar o actualizar cada posición activa de Binance
@@ -850,6 +850,15 @@ export class FuturesEngine {
     let realOrderId: any = null;
     if (!this.state.isSimulated) {
       try {
+        // 0. Pre-verificación de Margen Disponible en Binance para evitar rebotes
+        const account = await this.privateFuturesRequest("/fapi/v2/account", "GET");
+        const availableBalance = parseFloat(account?.availableBalance || "0");
+        if (availableBalance < margin * 0.95) {
+          console.log(`⚠️ [FUTUROS] Margen insuficiente disponible (${availableBalance.toFixed(2)} USDT < ${margin.toFixed(2)} USDT requeridos). Omitiendo orden para proteger la cuenta.`);
+          this.symbolCooldowns.set(symbol, Date.now() + 60 * 1000);
+          return;
+        }
+
         try {
           await this.privateFuturesRequest("/fapi/v1/marginType", "POST", { symbol, marginType: "ISOLATED" });
         } catch {}
@@ -876,6 +885,7 @@ export class FuturesEngine {
         });
         if (res.orderId) {
           realOrderId = res.orderId;
+          this.symbolCooldowns.set(symbol, Date.now() + 60 * 1000);
           console.log(`⚡ [FUTUROS REAL] Orden abierta en Binance: ${symbol} ${orderSide} ${roundedQty} (ID: ${res.orderId})`);
         } else if (res.code) {
           console.error(`❌ [FUTUROS REAL ERROR] ${res.msg} (code: ${res.code})`);
