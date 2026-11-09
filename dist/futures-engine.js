@@ -334,8 +334,10 @@ export class FuturesEngine {
             const activeSymbols = new Set(activeOnBinance.map((p) => p.symbol));
             let changed = false;
             this.positions = this.loadPositions();
+            // 1. Si alguna posición local ya no existe en Binance, removerla de activas
             // 1. Si alguna posición local ya no existe en Binance, removerla de activas (con 60s de gracia para propagación de nuevas órdenes)
             const initialLen = this.positions.length;
+            this.positions = this.positions.filter(p => activeSymbols.has(p.symbol));
             this.positions = this.positions.filter(p => activeSymbols.has(p.symbol) || (Date.now() - (p.openTime || 0) < 60000));
             if (this.positions.length !== initialLen)
                 changed = true;
@@ -424,21 +426,88 @@ export class FuturesEngine {
             }
         }
     }
+    lastCandleDefenseCheck = new Map();
+    async checkAdverseCandleInProfit(symbol, side) {
+        const lastCheck = this.lastCandleDefenseCheck.get(symbol) || 0;
+        if (Date.now() - lastCheck < 25000)
+            return null;
+        this.lastCandleDefenseCheck.set(symbol, Date.now());
+        try {
+            const k15 = await this.fetchKlines(symbol, "15m", 4);
+            if (k15.length < 3)
+                return null;
+            const prev = k15[k15.length - 3];
+            const last = k15[k15.length - 2]; // última vela 15m cerrada
+            const range = last.high - last.low;
+            if (range <= 0)
+                return null;
+            const lowerWickRatio = (Math.min(last.open, last.close) - last.low) / range;
+            const upperWickRatio = (last.high - Math.max(last.open, last.close)) / range;
+            const prevBody = Math.abs(prev.close - prev.open);
+            const lastBody = Math.abs(last.close - last.open);
+            if (side === "LONG") {
+                const isShootingStarAgainst = upperWickRatio >= 0.45 && last.close <= last.open;
+                const isBearishEngulfingAgainst = prev.close > prev.open &&
+                    last.close < last.open &&
+                    last.close <= prev.open &&
+                    last.open >= prev.close * 0.9995 &&
+                    lastBody >= prevBody * 1.05;
+                if (isBearishEngulfingAgainst)
+                    return "Envolvente Bajista 15M en contra";
+                if (isShootingStarAgainst)
+                    return `Estrella Fugaz 15M en contra (mecha ${Math.round(upperWickRatio * 100)}%)`;
+            }
+            else {
+                const isHammerAgainst = lowerWickRatio >= 0.45 && last.close >= last.open;
+                const isBullishEngulfingAgainst = prev.close < prev.open &&
+                    last.close > last.open &&
+                    last.close >= prev.open &&
+                    last.open <= prev.close * 1.0005 &&
+                    lastBody >= prevBody * 1.05;
+                if (isBullishEngulfingAgainst)
+                    return "Envolvente Alcista 15M en contra";
+                if (isHammerAgainst)
+                    return `Martillo Comprador 15M en contra (mecha ${Math.round(lowerWickRatio * 100)}%)`;
+            }
+        }
+        catch { }
+        return null;
+    }
     async handleLongTick(pos, curPrice, index) {
         // 1. Verificar Stop-Loss Innegociable
         if (curPrice <= pos.stopLossPrice) {
             await this.closePosition(index, curPrice, "STOP_LOSS");
             return;
         }
-        // 2. Activar Trailing si llega al gatillo (+0.8%)
+        const gainPct = ((curPrice - pos.entryPrice) / pos.entryPrice) * 100;
+        const modeLabel = this.state.isSimulated ? "SIMULACIÓN" : "REAL";
+        // 1.5. Patrón #4: Defensa Inteligente de Salida si ya gana >= +1.10% (+3.3% ROE) y sale vela de rechazo en contra
+        if (!pos.trailingActive && gainPct >= 1.10) {
+            const adverseReason = await this.checkAdverseCandleInProfit(pos.symbol, "LONG");
+            if (adverseReason) {
+                pos.trailingActive = true;
+                pos.peakPrice = curPrice;
+                pos.trailingCallbackPct = Math.min(pos.trailingCallbackPct, 0.22);
+                pos.trailingStopPrice = curPrice * (1 - pos.trailingCallbackPct / 100);
+                this.savePositions();
+                if (this.isEnabled()) {
+                    await this.notifier.send(`🛡️ [FUTUROS ${modeLabel}: DEFENSA POR VELA CONTRARIA] 🕯️\n\n` +
+                        `• Moneda: <b>${pos.symbol}</b> (LONG ${pos.leverage}x)\n` +
+                        `• Ganancia actual: <b>+${gainPct.toFixed(2)}%</b>\n` +
+                        `• Patrón detectado: <b>${adverseReason}</b>\n` +
+                        `• 🔒 Candado Trailing activado de inmediato para blindar ganancias.`);
+                }
+                return;
+            }
+        }
+        // 2. Activar Trailing si llega al gatillo
         if (!pos.trailingActive && curPrice >= pos.trailingTriggerPrice) {
             pos.trailingActive = true;
             pos.peakPrice = curPrice;
             pos.trailingStopPrice = curPrice * (1 - pos.trailingCallbackPct / 100);
             this.savePositions();
             if (this.isEnabled()) {
-                const gainPct = ((curPrice - pos.entryPrice) / pos.entryPrice) * 100;
-                await this.notifier.send(`🎯 [FUTUROS SIMULACIÓN: TRAILING ACTIVADO] 🚀\n\n` +
+                await this.notifier.send(`🎯 [FUTUROS ${modeLabel}: TRAILING ACTIVADO] 🚀\n\n` +
                     `• Moneda: <b>${pos.symbol}</b> (LONG ${pos.leverage}x)\n` +
                     `• Precio actual: <b>${curPrice}</b> (+${gainPct.toFixed(2)}%)\n` +
                     `• 🛡️ Ganancia mínima asegurada (+${pos.trailingTriggerPct}%)\n` +
@@ -465,15 +534,35 @@ export class FuturesEngine {
             await this.closePosition(index, curPrice, "STOP_LOSS");
             return;
         }
-        // 2. Activar Trailing si cae hasta el gatillo (+0.8% de ganancia en corto)
+        const gainPct = ((pos.entryPrice - curPrice) / pos.entryPrice) * 100;
+        const modeLabel = this.state.isSimulated ? "SIMULACIÓN" : "REAL";
+        // 1.5. Patrón #4: Defensa Inteligente de Salida si ya gana >= +1.10% (+3.3% ROE) y sale vela compradora en contra
+        if (!pos.trailingActive && gainPct >= 1.10) {
+            const adverseReason = await this.checkAdverseCandleInProfit(pos.symbol, "SHORT");
+            if (adverseReason) {
+                pos.trailingActive = true;
+                pos.peakPrice = curPrice;
+                pos.trailingCallbackPct = Math.min(pos.trailingCallbackPct, 0.22);
+                pos.trailingStopPrice = curPrice * (1 + pos.trailingCallbackPct / 100);
+                this.savePositions();
+                if (this.isEnabled()) {
+                    await this.notifier.send(`🛡️ [FUTUROS ${modeLabel}: DEFENSA POR VELA CONTRARIA] 🕯️\n\n` +
+                        `• Moneda: <b>${pos.symbol}</b> (SHORT ${pos.leverage}x)\n` +
+                        `• Ganancia actual: <b>+${gainPct.toFixed(2)}% neto en corto</b>\n` +
+                        `• Patrón detectado: <b>${adverseReason}</b>\n` +
+                        `• 🔒 Candado Trailing activado de inmediato para blindar ganancias.`);
+                }
+                return;
+            }
+        }
+        // 2. Activar Trailing si cae hasta el gatillo
         if (!pos.trailingActive && curPrice <= pos.trailingTriggerPrice) {
             pos.trailingActive = true;
             pos.peakPrice = curPrice;
             pos.trailingStopPrice = curPrice * (1 + pos.trailingCallbackPct / 100);
             this.savePositions();
             if (this.isEnabled()) {
-                const gainPct = ((pos.entryPrice - curPrice) / pos.entryPrice) * 100;
-                await this.notifier.send(`🎯 [FUTUROS SIMULACIÓN: TRAILING ACTIVADO] 🚀\n\n` +
+                await this.notifier.send(`🎯 [FUTUROS ${modeLabel}: TRAILING ACTIVADO] 🚀\n\n` +
                     `• Moneda: <b>${pos.symbol}</b> (SHORT ${pos.leverage}x)\n` +
                     `• Precio actual: <b>${curPrice}</b> (+${gainPct.toFixed(2)}% neto en corto)\n` +
                     `• 🛡️ Ganancia mínima asegurada (+${pos.trailingTriggerPct}%)\n` +
@@ -632,6 +721,7 @@ export class FuturesEngine {
         const ema50_1h = this.calculateEMA(closes1h, 50);
         const curPrice1h = closes1h[closes1h.length - 1];
         const rsi15m = this.calculateRSI(closes15m, 14);
+        const prevCandle15m = klines15m[klines15m.length - 3]; // penúltima vela cerrada
         const lastCandle15m = klines15m[klines15m.length - 2]; // última vela cerrada
         const curPrice = closes15m[closes15m.length - 1];
         const totalRange = lastCandle15m.high - lastCandle15m.low;
@@ -645,44 +735,97 @@ export class FuturesEngine {
         const isNightCot = hourCot >= 20 || hourCot < 3;
         const minWickRequired = isNightCot ? 0.45 : 0.35;
         const upperWickRatio = upperWick / totalRange;
+        // --- DETECTOR DE LOS 3 PATRONES DE ENTRADA MAESTROS (15M) ---
+        const prevRange = prevCandle15m ? Math.max(1e-9, prevCandle15m.high - prevCandle15m.low) : 1;
+        const prevLowerWickRatio = prevCandle15m ? (Math.min(prevCandle15m.open, prevCandle15m.close) - prevCandle15m.low) / prevRange : 0;
+        const prevUpperWickRatio = prevCandle15m ? (prevCandle15m.high - Math.max(prevCandle15m.open, prevCandle15m.close)) / prevRange : 0;
+        const prevBody = prevCandle15m ? Math.abs(prevCandle15m.close - prevCandle15m.open) : 0;
+        const lastBody = Math.abs(lastCandle15m.close - lastCandle15m.open);
+        // 1. Martillo / Estrella Fugaz (Pinbar de Mecha Larga)
+        const isHammerPinbar = lowerWickRatio >= minWickRequired;
+        const isShootingStarPinbar = upperWickRatio >= minWickRequired;
+        // 2. Vela Envolvente Institucional (Bullish / Bearish Engulfing)
+        const isBullishEngulfing = !!prevCandle15m &&
+            prevCandle15m.close < prevCandle15m.open &&
+            lastCandle15m.close > lastCandle15m.open &&
+            lastCandle15m.close >= prevCandle15m.open &&
+            lastCandle15m.open <= prevCandle15m.close * 1.0005 &&
+            lastBody >= prevBody * 1.05 &&
+            (lastBody / totalRange) >= 0.50;
+        const isBearishEngulfing = !!prevCandle15m &&
+            prevCandle15m.close > prevCandle15m.open &&
+            lastCandle15m.close < lastCandle15m.open &&
+            lastCandle15m.close <= prevCandle15m.open &&
+            lastCandle15m.open >= prevCandle15m.close * 0.9995 &&
+            lastBody >= prevBody * 1.05 &&
+            (lastBody / totalRange) >= 0.50;
+        // 3. Doble Mecha / Barrido de Liquidez (Liquidity Sweep / Tweezers)
+        const isBullishSweep = !!prevCandle15m &&
+            lowerWickRatio >= 0.28 &&
+            prevLowerWickRatio >= 0.28 &&
+            Math.abs(lastCandle15m.low - prevCandle15m.low) / prevCandle15m.low <= 0.004 &&
+            lastCandle15m.close >= lastCandle15m.open;
+        const isBearishSweep = !!prevCandle15m &&
+            upperWickRatio >= 0.28 &&
+            prevUpperWickRatio >= 0.28 &&
+            Math.abs(lastCandle15m.high - prevCandle15m.high) / prevCandle15m.high <= 0.004 &&
+            lastCandle15m.close <= lastCandle15m.open;
+        const bullPatternName = isBullishEngulfing
+            ? "🟢 Envolvente Alcista"
+            : isBullishSweep
+                ? "🛡️ Doble Piso (Barrido Liquidez)"
+                : isHammerPinbar
+                    ? `🔨 Martillo Pinbar (mecha ${(lowerWickRatio * 100).toFixed(0)}%)`
+                    : ` Pinbar Soporte (mecha ${(lowerWickRatio * 100).toFixed(0)}%)`;
+        const bearPatternName = isBearishEngulfing
+            ? "🔴 Envolvente Bajista"
+            : isBearishSweep
+                ? "🧱 Doble Techo (Barrido Liquidez)"
+                : `🌠 Estrella Fugaz (mecha ${(upperWickRatio * 100).toFixed(0)}%)`;
+        const hasBullishCandleTrigger = isHammerPinbar || isBullishEngulfing || isBullishSweep;
+        const hasBearishCandleTrigger = isShootingStarPinbar || isBearishEngulfing || isBearishSweep;
         // Obtener Funding Rate para protección
         const fundingRate = await this.fetchFundingRate(symbol);
         // --- EVALUACIÓN DE SEÑAL LONG ---
-        // Caso A: Tendencia macro alcista (> EMA50 1H) + retroceso a soporte (RSI <= 45)
-        // Caso B: Capitulación y Absorción en el suelo (RSI <= 38 + mecha compradora >= 35%)
+        // Caso A: Tendencia macro alcista (> EMA50 1H) + retroceso a soporte (RSI <= 45) + patrón comprador
+        // Caso B: Capitulación y Absorción en el suelo (RSI <= 38 + patrón maestro alcista)
         const isMacroBullish = curPrice1h >= ema50_1h * 0.995;
-        const isFloorAbsorption = rsi15m <= 38 && lowerWickRatio >= minWickRequired;
-        const isTrendPullback = isMacroBullish && rsi15m <= 45 && lowerWickRatio >= (minWickRequired * 0.8);
+        const isFloorAbsorption = rsi15m <= 38 && hasBullishCandleTrigger;
+        const isTrendPullback = isMacroBullish && rsi15m <= 45 && (lowerWickRatio >= (minWickRequired * 0.8) || isBullishEngulfing || isBullishSweep);
         const isFundingSafeForLong = fundingRate < 0.0003;
         // Cooldown check
         const cd = this.symbolCooldowns.get(symbol);
         const inCooldown = cd && Date.now() < cd;
         if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && (isFloorAbsorption || isTrendPullback) && isFundingSafeForLong) {
             const rationale = isFloorAbsorption
-                ? `🔥 Suelo y Absorción 15M: RSI (${rsi15m.toFixed(1)}) con mecha compradora del ${(lowerWickRatio * 100).toFixed(0)}%`
-                : `📈 Pullback en tendencia 1H (>EMA50) + rebote en soporte 15M (RSI: ${rsi15m.toFixed(1)})`;
+                ? `🔥 Suelo 15M [${bullPatternName}]: RSI (${rsi15m.toFixed(1)}) en zona de absorción`
+                : `📈 Pullback 1H (>EMA50) [${bullPatternName}]: Rebote en soporte 15M (RSI: ${rsi15m.toFixed(1)})`;
             await this.openPosition(symbol, "LONG", curPrice, rationale);
         }
         // --- EVALUACIÓN DE SEÑAL SHORT ---
-        // Caso A: Tendencia macro bajista (< EMA50 1H) + rebote agotado (RSI >= 50 + mecha de rechazo superior >= 35%)
-        // Caso B: Sobrecompra extrema (RSI >= 65 + mecha de rechazo)
+        // Caso A: Tendencia macro bajista (< EMA50 1H) + rebote agotado (RSI >= 50 + patrón maestro bajista)
+        // Caso B: Sobrecompra extrema (RSI >= 63 + patrón maestro bajista)
         const isMacroBearish = curPrice1h <= ema50_1h * 1.005;
-        const isBearishRejection = isMacroBearish && rsi15m >= 50 && upperWickRatio >= minWickRequired;
-        const isOverboughtReversal = rsi15m >= 65 && upperWickRatio >= minWickRequired;
+        const isBearishRejection = isMacroBearish && rsi15m >= 50 && hasBearishCandleTrigger;
+        const isOverboughtReversal = rsi15m >= 63 && hasBearishCandleTrigger;
         const isFundingSafeForShort = fundingRate > -0.0003;
         if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && (isBearishRejection || isOverboughtReversal) && isFundingSafeForShort) {
             const rationale = isBearishRejection
-                ? `🔻 Rechazo en tendencia bajista 1H (<EMA50): RSI 15M (${rsi15m.toFixed(1)}) con mecha de rechazo del ${(upperWickRatio * 100).toFixed(0)}%`
-                : `⚡ Giro desde sobrecompra extrema (RSI: ${rsi15m.toFixed(1)}) con rechazo superior del ${(upperWickRatio * 100).toFixed(0)}%`;
+                ? `🔻 Rechazo 1H (<EMA50) [${bearPatternName}]: RSI 15M (${rsi15m.toFixed(1)})`
+                : `⚡ Giro Sobrecompra [${bearPatternName}]: RSI 15M (${rsi15m.toFixed(1)})`;
             await this.openPosition(symbol, "SHORT", curPrice, rationale);
         }
         let statusText = "VIGILANDO";
         if (hasPosition)
             statusText = `POSICIÓN VIVA (${hasPosition.side} ${hasPosition.leverage}x)`;
         else if (isFloorAbsorption || isTrendPullback)
-            statusText = "🟢 ENTRADA LONG CONFIRMADA";
+            statusText = `🟢 LONG: ${bullPatternName}`;
         else if (isBearishRejection || isOverboughtReversal)
-            statusText = "🔴 ENTRADA SHORT CONFIRMADA";
+            statusText = `🔴 SHORT: ${bearPatternName}`;
+        else if (hasBullishCandleTrigger)
+            statusText = `🕯️ ${bullPatternName} (Esperando RSI)`;
+        else if (hasBearishCandleTrigger)
+            statusText = `🕯️ ${bearPatternName} (Esperando RSI)`;
         else if (rsi15m <= 40)
             statusText = "🟢 ZONA SOBREVENTA (Buscando Suelo)";
         else if (isMacroBearish && rsi15m >= 48)
