@@ -2730,8 +2730,10 @@ export class TrailingMasterBot {
       }
       const btcStressIndex = Math.max(0, Math.min(1.0, Number(stress.toFixed(2))));
 
-      // Tormenta Macro activa: cuando BTC perdió su EMA50 con caída acumulada fuerte o el estrés supera 0.60
-      const isMacroStorm = btcStressIndex >= 0.60 || (btcPrice < btcEma50 && btcDrop3hPct <= -1.35);
+      // Tormenta Macro activa: Requiere caída real acelerada en curso (caída 3H <= -1.10% o quiebre de EMA50 con Stoch bajo).
+      // Si BTC solo está consolidando o rebotando (3h > -0.65% y StochRSI saliendo del piso), NO es tormenta activa y se permite cazar rebotes.
+      const isActivelyDropping = btcDrop3hPct <= -1.10 || (btcPrice < btcEma50 && btcDrop3hPct <= -0.75 && btcStoch1h.k < 40);
+      const isMacroStorm = isActivelyDropping && (btcStressIndex >= 0.60 || btcPrice < btcEma50);
 
       // Piso de Capitulación Real de BTC: único momento donde se permite cazar durante una tormenta macro
       const isBtcCapitulationFloor =
