@@ -142,5 +142,23 @@
     "feesUsdt": 0.00959,
     "netPnlUsdt": 0.13781,
     "roePct": 4.277
+  },
+  {
+    "id": "fut_real_166977879731",
+    "symbol": "XRPUSDT",
+    "side": "LONG",
+    "entryPrice": 1.0837,
+    "exitPrice": 1.0782,
+    "marginUsdt": 3.4059983,
+    "leverage": 3,
+    "notionalUsdt": 10.40352,
+    "openTime": 1794236403708,
+    "closeTime": 1794316753352,
+    "durationMin": 1339,
+    "exitReason": "STOP_LOSS",
+    "grossPnlUsdt": -0.052800000000000576,
+    "feesUsdt": 0.010377120000000002,
+    "netPnlUsdt": -0.06317712000000057,
+    "roePct": -1.8548782012017027
   }
 ]
