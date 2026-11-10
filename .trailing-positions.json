@@ -18,7 +18,7 @@
   [
     "BONKUSDT_lot_2_1793856059668",
     {
-      "symbol": "BONKUSDT",
+      "symbol": "BONKUSDT_lot_2_1793856059668",
       "lotId": "BONKUSDT_lot_2_1793856059668",
       "lotIndex": 2,
       "buyPrice": 0.000003,
@@ -41,19 +41,6 @@
       "highestPrice": 3.764,
       "activated": false,
       "buyTime": 1794029299311
-    }
-  ],
-  [
-    "SOLUSDT",
-    {
-      "symbol": "SOLUSDT",
-      "buyPrice": 82.38,
-      "qty": 0.3608783,
-      "investedUsdt": 29.6568,
-      "highestPrice": 82.42,
-      "activated": false,
-      "buyTime": 1794327758602,
-      "strategy": "trailing_rebound"
     }
   ]
 ]

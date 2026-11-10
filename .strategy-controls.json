@@ -50,9 +50,9 @@
     },
     "walletSplit": {
       "manualUsdt": 0,
-      "lastKnownTotalFreeUsdt": 13.72257388,
-      "autoQuarantineDeposits": true,
-      "lastUpdated": 1794328004870
+      "lastKnownTotalFreeUsdt": 43.87092703,
+      "autoQuarantineDeposits": false,
+      "lastUpdated": 1794338828499
     },
     "maxPositions": 8,
     "coreWatchlist": [
@@ -95,27 +95,27 @@
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1794331541731,
+      "expiresAt": 1794342415214,
       "isCurrent": true,
       "timeframe": "4h",
-      "updatedAt": 1794327941731,
-      "btcRange24h": 3.5352702220514294,
+      "updatedAt": 1794338815214,
+      "btcRange24h": 3.7327676399787735,
       "stopLossPct": 6
     },
     "micro_grid": {
       "porQue": "Cuando el mercado tiene volatilidad amplia (≥ 2.2%), Micro-Grid se pausa automáticamente y cede su cuota de capital a Cazador Trailing y Smart DCA para capturar recorridos más grandes (+0.8% a +3.5%).",
-      "reason": "Mercado direccional activo (3.5%). Presupuesto en Cazador Trailing.",
+      "reason": "Mercado direccional activo (3.7%). Presupuesto en Cazador Trailing.",
       "status": "applied",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "criterios": [
-        "Rango Bitcoin: 3.54% (Mercado con ondas direccionales)",
+        "Rango Bitcoin: 3.73% (Mercado con ondas direccionales)",
         "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
       ],
-      "expiresAt": 1794331541731,
+      "expiresAt": 1794342415214,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794327941731,
-      "btcRange24h": 3.5352702220514294,
+      "updatedAt": 1794338815214,
+      "btcRange24h": 3.7327676399787735,
       "stopLossPct": 2
     },
     "cazador_weekend": {
@@ -127,29 +127,29 @@
         "Días hábiles de semana (mercados institucionales de Londres y NY abiertos)",
         "Presupuesto cedido automáticamente a Cazador Trailing y Smart DCA"
       ],
-      "expiresAt": 1794331541731,
+      "expiresAt": 1794342415214,
       "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1794327941731,
-      "btcRange24h": 3.5352702220514294,
+      "updatedAt": 1794338815214,
+      "btcRange24h": 3.7327676399787735,
       "stopLossPct": 5
     },
     "trailing_rebound": {
       "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m junto con el filtro de giro de vela de 5m permite capturar el suelo exacto y cobrar rebotes rápidos (+1.2% a +2.5%) sin entrar anticipado ni vender jamás en pérdida.",
-      "reason": "Alta velocidad detectada (BTC 3.5%, Memes 6.7%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
+      "reason": "Alta velocidad detectada (BTC 3.7%, Memes 6.7%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
       "status": "applied",
       "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
       "criterios": [
-        "Rango Bitcoin: 3.54% | Escudo Macro BTC 15m activo",
-        "Rango Memecoins: 6.68% (Líder PEPE con 11.1%)",
+        "Rango Bitcoin: 3.73% | Escudo Macro BTC 15m activo",
+        "Rango Memecoins: 6.67% (Líder PEPE con 11.1%)",
         "Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m",
         "Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)"
       ],
-      "expiresAt": 1794331541731,
+      "expiresAt": 1794342415214,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794327941731,
-      "btcRange24h": 3.5352702220514294,
+      "updatedAt": 1794338815214,
+      "btcRange24h": 3.7327676399787735,
       "stopLossPct": 3.5
     }
   },
@@ -168,8 +168,8 @@
   },
   "recoveryTracker": {
     "targetUsdt": 100,
-    "tradesCount": 44,
-    "recoveredUsdt": 13.392976240174
+    "tradesCount": 47,
+    "recoveredUsdt": 13.884530628912746
   },
   "stopLossEnabled": false,
   "stopLossPct": 4,
@@ -193,6 +193,6 @@
     "BONKUSDT",
     "SHIBUSDT"
   ],
-  "updatedAt": 1794328004870,
+  "updatedAt": 1794338828499,
   "wideGapLotSize": 50
 }

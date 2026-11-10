@@ -666,17 +666,30 @@ export class TrailingMasterBot {
 
     const delta = totalFreeUsdt - lastKnown;
 
-    // Si el saldo libre aumentó (Depósito entrante)
+    // Si el saldo libre aumentó (Depósito entrante o ventas ejecutadas)
     if (delta > 0.15) {
-      const justSold = (Date.now() - this.lastBotSaleTime) < 30000;
-      if (!justSold && this.walletSplit.autoQuarantineDeposits !== false) {
-        // Asignar el 100% del depósito entrante al SALDO MANUAL
+      // Verificar si hubo ventas recientes del bot en los últimos 30 minutos (para jamás confundir una toma de ganancias con un depósito manual)
+      let recentSaleTime = this.lastBotSaleTime || 0;
+      try {
+        const ledgerF = path.resolve(process.cwd(), ".closed-trades.json");
+        if (fs.existsSync(ledgerF)) {
+          const trades = JSON.parse(fs.readFileSync(ledgerF, "utf-8"));
+          if (Array.isArray(trades) && trades.length > 0) {
+            const lastTradeTime = trades[trades.length - 1].time || 0;
+            if (lastTradeTime > recentSaleTime) recentSaleTime = lastTradeTime;
+          }
+        }
+      } catch {}
+
+      const justSold = (Date.now() - recentSaleTime) < (30 * 60 * 1000); // Ventana de 30 minutos
+      if (!justSold && this.walletSplit.autoQuarantineDeposits === true && this.walletSplit.manualUsdt > 0) {
+        // Asignar el 100% del depósito entrante al SALDO MANUAL solo si la cuarentena está explícitamente activada y hay billetera manual
         this.walletSplit.manualUsdt = Math.max(0, this.walletSplit.manualUsdt) + delta;
         this.walletSplit.lastKnownTotalFreeUsdt = totalFreeUsdt;
         this.saveWalletSplit();
 
         const botSpendable = Math.max(0, totalFreeUsdt - this.walletSplit.manualUsdt);
-        console.log(`🛡️ [DEPÓSITO PROTEGIDO] Ingreso de +$${delta.toFixed(2)} USDT detectado. Asignado 100% al FONDO MANUAL.`);
+        console.log(`🛡️ [DEPÓSITO PROTEGIDO] Ingreso de +$${delta.toFixed(2)} USDT detectado. Asignado al FONDO MANUAL.`);
         console.log(`   • 👤 Saldo Manual Protegido: $${this.walletSplit.manualUsdt.toFixed(2)} USDT | 🤖 Saldo Bot: $${botSpendable.toFixed(2)} USDT`);
 
         this.notifier.send(

@@ -1,12 +1,12 @@
 {
-  "sessionKey": "NY_IMPULSO",
-  "sessionTitle": "🗽 Impulso Wall Street (Máxima Liquidez y Volumen)",
-  "totalFreeUsdt": 13.72257388,
-  "reservedUsdt": 13.72257388,
-  "spendableUsdt": 0,
-  "lotFractionPct": 0.5,
-  "trailingBounceTrigger": 0.35,
-  "reason": "Mayor volumen del día. Se opera la expansión manteniendo el 25% en caja protegida.",
-  "recommendation": "🗽 Dejar correr posiciones con Trailing Take Profit y guardar el 25% para retrocesos.",
-  "updatedAt": 1794328004873
+  "sessionKey": "COSECHA_PRENOCTURNA",
+  "sessionTitle": "📉 Enfriamiento Post-Wall Street (14:00 - 17:00 COT)",
+  "totalFreeUsdt": 43.87092703,
+  "reservedUsdt": 17.55,
+  "spendableUsdt": 26.32,
+  "lotFractionPct": 0.3,
+  "trailingBounceTrigger": 0.4,
+  "reason": "Cierre de contado en Nueva York. Los operadores institucionales toman ganancias y el mercado suele deslizarse a la baja. Reserva elevada al 35%.",
+  "recommendation": "📉 Proteger el 35% de la caja. No comprar rebotes débiles; esperar confirmación profunda de soporte.",
+  "updatedAt": 1794338828501
 }
