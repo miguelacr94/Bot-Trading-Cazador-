@@ -5374,6 +5374,14 @@ export class TrailingMasterBot {
       } else {
         strategicFloorUsdt = Math.max(35, Math.round(totalPortfolioEst * 0.18 * 100) / 100);
       }
+
+      // 🛡️ REGLA DE LIQUIDEZ ACTIVA:
+      // Si el piso estratégico deja menos de $10 USDT libres para compras mínimas,
+      // se modera el piso (reservando máx 40% del saldo libre) para asegurar que el bot pueda
+      // entrar en nuevas oportunidades con Trailing Rebound y no quedar congelado al 100%.
+      if (totalFreeUsdt >= 20 && (totalFreeUsdt - strategicFloorUsdt) < this.minUsdtToTrade) {
+        strategicFloorUsdt = Math.min(strategicFloorUsdt, Math.round(totalFreeUsdt * 0.40 * 100) / 100);
+      }
     }
 
     // Calcular montos exactos respetando los mínimos de Binance ($10 USDT) y el Piso Estratégico

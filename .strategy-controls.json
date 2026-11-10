@@ -1,6 +1,6 @@
 {
   "strategies": {
-    "futures": true,
+    "futures": false,
     "smart_dca": true,
     "micro_grid": false,
     "cazador_weekend": false,
@@ -50,9 +50,9 @@
     },
     "walletSplit": {
       "manualUsdt": 0,
-      "lastKnownTotalFreeUsdt": 14.18667388,
+      "lastKnownTotalFreeUsdt": 13.72257388,
       "autoQuarantineDeposits": true,
-      "lastUpdated": 1794327212973
+      "lastUpdated": 1794328004870
     },
     "maxPositions": 8,
     "coreWatchlist": [
@@ -95,10 +95,10 @@
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1794330748567,
+      "expiresAt": 1794331541731,
       "isCurrent": true,
       "timeframe": "4h",
-      "updatedAt": 1794327148567,
+      "updatedAt": 1794327941731,
       "btcRange24h": 3.5352702220514294,
       "stopLossPct": 6
     },
@@ -111,10 +111,10 @@
         "Rango Bitcoin: 3.54% (Mercado con ondas direccionales)",
         "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
       ],
-      "expiresAt": 1794330748567,
+      "expiresAt": 1794331541731,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794327148567,
+      "updatedAt": 1794327941731,
       "btcRange24h": 3.5352702220514294,
       "stopLossPct": 2
     },
@@ -127,10 +127,10 @@
         "Días hábiles de semana (mercados institucionales de Londres y NY abiertos)",
         "Presupuesto cedido automáticamente a Cazador Trailing y Smart DCA"
       ],
-      "expiresAt": 1794330748567,
+      "expiresAt": 1794331541731,
       "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1794327148567,
+      "updatedAt": 1794327941731,
       "btcRange24h": 3.5352702220514294,
       "stopLossPct": 5
     },
@@ -145,10 +145,10 @@
         "Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m",
         "Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)"
       ],
-      "expiresAt": 1794330748567,
+      "expiresAt": 1794331541731,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794327148567,
+      "updatedAt": 1794327941731,
       "btcRange24h": 3.5352702220514294,
       "stopLossPct": 3.5
     }
@@ -193,6 +193,6 @@
     "BONKUSDT",
     "SHIBUSDT"
   ],
-  "updatedAt": 1794327212973,
+  "updatedAt": 1794328004870,
   "wideGapLotSize": 50
 }

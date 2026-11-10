@@ -1,12 +1,12 @@
 {
   "sessionKey": "NY_IMPULSO",
   "sessionTitle": "🗽 Impulso Wall Street (Máxima Liquidez y Volumen)",
-  "totalFreeUsdt": 0,
-  "reservedUsdt": 0,
+  "totalFreeUsdt": 13.72257388,
+  "reservedUsdt": 13.72257388,
   "spendableUsdt": 0,
   "lotFractionPct": 0.5,
   "trailingBounceTrigger": 0.35,
   "reason": "Mayor volumen del día. Se opera la expansión manteniendo el 25% en caja protegida.",
   "recommendation": "🗽 Dejar correr posiciones con Trailing Take Profit y guardar el 25% para retrocesos.",
-  "updatedAt": 1794235094149
+  "updatedAt": 1794328004873
 }

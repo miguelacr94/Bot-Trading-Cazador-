@@ -58,5 +58,20 @@
     "pnlPct": 1.3621341005754315,
     "strategy": "trailing_rebound",
     "source": "bot_execution"
+  },
+  {
+    "symbol": "BNBUSDT",
+    "orderId": 12956729281,
+    "time": 1794327655469,
+    "buyPrice": 709.63,
+    "sellPrice": 678.9,
+    "qty": 0.043,
+    "costUsdt": 30.51409,
+    "proceedsUsdt": 29.1927,
+    "feesUsdt": 0.0000325,
+    "pnlUsdt": -1.32139,
+    "pnlPct": -4.33,
+    "strategy": "manual_sacrifice_rotation",
+    "source": "spot_liquidity_unlock"
   }
 ]
