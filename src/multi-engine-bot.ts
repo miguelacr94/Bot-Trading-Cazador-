@@ -563,25 +563,22 @@ export class TrailingMasterBot {
             const tradesRes = await this.client.myTrades(sym, { limit: 20, recvWindow: 60000 });
             const buyTrades = (tradesRes.data || []).filter((t: any) => t.isBuyer);
             if (buyTrades.length > 0) {
-              // Calcular precio promedio ponderado real recorriendo hacia atrás hasta cubrir el balance
+              // Calcular precio promedio ponderado real recorriendo hacia atrás hasta cubrir el balance significativo (ignorando polvo residual < $2 USDT)
               let coveredQty = 0;
               let weightedCost = 0;
-              let highestBuyPrice = 0;
               for (let i = buyTrades.length - 1; i >= 0; i--) {
                 const t = buyTrades[i];
                 const tQty = parseFloat(t.qty);
                 const tPrice = parseFloat(t.price);
                 const need = total - coveredQty;
+                if (coveredQty > 0 && need * curPrice < 2.0) break; // Ignorar polvo antiguo menor a $2 USDT
                 const useQty = Math.min(tQty, need);
                 coveredQty += useQty;
                 weightedCost += useQty * tPrice;
-                if (tPrice > highestBuyPrice) highestBuyPrice = tPrice;
-                if (coveredQty >= total * 0.98) break;
+                if (coveredQty >= total * 0.90) break;
               }
               if (coveredQty > 0) {
-                const avgPrice = weightedCost / coveredQty;
-                // BLINDAJE SUPREMO: El buyPrice NUNCA puede ser menor al precio más alto pagado por cualquier moneda en la bolsa
-                buyPrice = Math.max(avgPrice, highestBuyPrice);
+                buyPrice = weightedCost / coveredQty;
                 buyTime = buyTrades[buyTrades.length - 1].time || Date.now();
               }
             }
