@@ -2074,14 +2074,14 @@ export class TrailingMasterBot {
         }
         let rem = qty;
         while (rem > 1e-12 && lots.length) {
-          const l = lots[lots.length - 1];
+          const l = lots[0]; // FIFO: las ventas anteriores consumieron primero las compras más antiguas
           const take = Math.min(l.qty, rem);
           l.qty -= take; rem -= take;
-          if (l.qty <= 1e-12) lots.pop();
+          if (l.qty <= 1e-12) lots.shift();
         }
       }
       let rem = sellQty, cost = 0;
-      for (let i = lots.length - 1; i >= 0 && rem > 1e-12; i--) {
+      for (let i = 0; i < lots.length && rem > 1e-12; i++) {
         const take = Math.min(lots[i].qty, rem);
         cost += take * lots[i].unitCost;
         rem -= take;
@@ -5400,7 +5400,13 @@ export class TrailingMasterBot {
     let reservedUsdt = 0;
     let spendableUsdt = totalFreeUsdt;
 
-    if (totalFreeUsdt >= 20) {
+    // 🎯 MODO FRANCOTIRADOR ESPECIAL $100 USDT:
+    // Si hay >= $90 USDT libres, hasta $100.00 USDT quedan desbloqueados para el Tiro Especial Cauteloso
+    // en Monedas Top de Velocidad (SOL, AVAX, SUI, XRP, ETH), y el excedente por encima de $100 queda como reserva/divisible.
+    if (totalFreeUsdt >= 90) {
+      reservedUsdt = Math.max(0, Math.round((totalFreeUsdt - 100) * 100) / 100);
+      spendableUsdt = totalFreeUsdt;
+    } else if (totalFreeUsdt >= 20) {
       const pctReserve = Math.round(totalFreeUsdt * reservePct * 100) / 100;
       reservedUsdt = Math.min(totalFreeUsdt, Math.max(10, strategicFloorUsdt, pctReserve));
       spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
@@ -5525,6 +5531,25 @@ export class TrailingMasterBot {
 
     let lot = Math.floor(spendableUsdt * effectiveFraction * allocMultiplier * tierMultiplier * 100) / 100;
     lot = Math.min(lot, Math.floor(tierMaxCap * 100) / 100);
+
+    // 🎯 TIRO ESPECIAL FRANCOTIRADOR $100 USDT (Exclusivo para las Reinas de Alta Velocidad y Liquidez):
+    // SOL (10 ondas/día), AVAX (15 ondas/día), SUI (10 ondas/día), XRP (8 ondas/día), ETH (5 ondas/día), y BTC (solo si rango >= 2.8%).
+    const isSniper100Queen =
+      ["SOLUSDT", "AVAXUSDT", "SUIUSDT", "XRPUSDT", "ETHUSDT"].includes(symbol) ||
+      (symbol === "BTCUSDT" && coinRange24hPct >= 2.8);
+
+    if (spendableUsdt >= 90) {
+      if (tier === 1 && strategy === "trailing_rebound" && isSniper100Queen && !isMeme) {
+        const sniperShot = Math.min(100.00, Math.floor(spendableUsdt * 100) / 100);
+        console.log(`🎯 [BALA ESPECIAL FRANCOTIRADOR] Desplegando $${sniperShot.toFixed(2)} USDT en ${symbol} (Alta Velocidad y Rebote Confirmado)`);
+        return sniperShot;
+      } else {
+        // Cualquier otra moneda o estrategia secundaria SOLO puede usar el excedente por encima de los $100 USDT protegidos
+        const surplusAbove100 = Math.max(0, Math.floor((spendableUsdt - 100) * 100) / 100);
+        if (surplusAbove100 < this.minUsdtToTrade) return 0;
+        return Math.min(lot, surplusAbove100);
+      }
+    }
 
     // Si es una oportunidad de MÁXIMA BRECHA en Monedas Core (NEAR/SUI/AVAX/SOL), aplicamos el presupuesto configurable (default 50 USDT)
     const configuredWideGapAmount = this.controls.wideGapLotSize || 50;
@@ -5881,41 +5906,51 @@ export class TrailingMasterBot {
       // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
       await this.checkLiquidityAndFuturesViability(usdt);
 
-      // 2. Evaluar oportunidades por Bolsillos Estratégicos (DCA, Weekend y Día Quieto tienen llave sobre la Reserva Protegida)
+      // 2. Evaluar oportunidades por Bolsillos Estratégicos (Protegiendo los primeros $100 USDT para el Tiro Especial Francotirador)
       if (botSpendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
-        // Bolsillo 1 (Prioridad Máxima): Smart DCA puede usar tanto el saldo gastable como la Bóveda de Reserva para rescatar posiciones
-        const dcaTriggered = await this.checkSmartDcaOpportunities(botSpendableUsdt);
+        const hasSniper100Ready = botSpendableUsdt >= 90;
+        const secondaryPoolUsdt = hasSniper100Ready
+          ? Math.max(0, Math.round((botSpendableUsdt - 100) * 100) / 100)
+          : botSpendableUsdt;
 
-        // Bolsillo 2: Centinela Alpha (solo con saldo gastable ordinario)
+        // Bolsillo 1: Smart DCA solo usa el excedente si hay Bala Especial de $100 lista
+        const dcaTriggered = secondaryPoolUsdt >= this.minUsdtToTrade
+          ? await this.checkSmartDcaOpportunities(secondaryPoolUsdt)
+          : false;
+
+        // Bolsillo 2: Centinela Alpha
         let alphaTriggered = false;
-        if (!dcaTriggered && this.controls.strategies?.centinela_alpha && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
+        if (!dcaTriggered && !hasSniper100Ready && this.controls.strategies?.centinela_alpha && sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
           alphaTriggered = await this.evaluateCentinelaAlpha(sessionPlan.spendableUsdt);
         }
 
-        // Bolsillo 3: Fin de Semana (Cazador Weekend desbloquea la Bóveda de Reserva acumulada el viernes, dejando $15 de colchón DCA)
+        // Bolsillo 3: Fin de Semana
         let weekendTriggered = false;
-        const weekendUnlockedUsdt = Math.max(sessionPlan.spendableUsdt, Math.max(0, botSpendableUsdt - 15));
+        const weekendUnlockedUsdt = hasSniper100Ready
+          ? secondaryPoolUsdt
+          : Math.max(sessionPlan.spendableUsdt, Math.max(0, botSpendableUsdt - 15));
         if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && uniqueActiveCount < maxUniqueCoins && weekendUnlockedUsdt >= this.minUsdtToTrade) {
           weekendTriggered = await this.evaluateCazadorWeekend(weekendUnlockedUsdt, activeSymbols);
         }
 
-        // Bolsillo 4: Día Quieto / Lateral (Micro-Grid desbloquea hasta $20 USDT de la Bóveda de Reserva, dejando $15 de colchón DCA)
+        // Bolsillo 4: Día Quieto / Lateral (Micro-Grid solo usa el excedente por encima de los $100 USDT protegidos)
         let gridTriggered = false;
         const btcRangeNow = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
         const isQuietOrGridActive = this.controls.strategies.micro_grid || (this.isWeekendWindow() && btcRangeNow < 2.2 && !this.isSundayCmeReopenWindow());
-        const gridUnlockedUsdt = Math.max(sessionPlan.spendableUsdt, Math.min(20, Math.max(0, botSpendableUsdt - 15)));
+        const gridUnlockedUsdt = hasSniper100Ready
+          ? Math.min(20, secondaryPoolUsdt)
+          : Math.max(sessionPlan.spendableUsdt, Math.min(20, Math.max(0, botSpendableUsdt - 15)));
         if (!dcaTriggered && !weekendTriggered && isQuietOrGridActive && uniqueActiveCount < maxUniqueCoins && gridUnlockedUsdt >= this.minUsdtToTrade) {
           gridTriggered = await this.evaluateMicroGrid(gridUnlockedUsdt, activeSymbols);
         }
 
-        // Bolsillo 5: Cazador Trailing Estándar (Tier 1 entre semana): respeta ESTRICTAMENTE sessionPlan.spendableUsdt
-        // para JAMÁS agotar la reserva destinada a Fin de Semana, Días Quietos y Smart DCA.
+        // Bolsillo 5: Cazador Trailing / Francotirador Especial $100 USDT (Máxima prioridad cuando hay >= $100 USDT libres)
         if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins) {
           if (sessionPlan.spendableUsdt >= this.minUsdtToTrade) {
             await this.scanForDips(activeSymbols);
           }
           if (this.buyWatches.size > 0) {
-            await this.checkBuyWatches(this.isWeekendWindow() ? weekendUnlockedUsdt : sessionPlan.spendableUsdt);
+            await this.checkBuyWatches(this.isWeekendWindow() && !hasSniper100Ready ? weekendUnlockedUsdt : sessionPlan.spendableUsdt);
           }
         }
       }
