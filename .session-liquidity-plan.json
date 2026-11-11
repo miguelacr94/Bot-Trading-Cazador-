@@ -1,12 +1,13 @@
 {
   "sessionKey": "COSECHA_PRENOCTURNA",
-  "sessionTitle": "📉 Enfriamiento Post-Wall Street (14:00 - 17:00 COT)",
-  "totalFreeUsdt": 43.87092703,
-  "reservedUsdt": 17.55,
-  "spendableUsdt": 26.32,
-  "lotFractionPct": 0.3,
-  "trailingBounceTrigger": 0.4,
-  "reason": "Cierre de contado en Nueva York. Los operadores institucionales toman ganancias y el mercado suele deslizarse a la baja. Reserva elevada al 35%.",
-  "recommendation": "📉 Proteger el 35% de la caja. No comprar rebotes débiles; esperar confirmación profunda de soporte.",
-  "updatedAt": 1794338828501
+  "sessionTitle": "🌆 Cosecha Vespertina & Acumulación (17:00 - 20:00 COT)",
+  "totalFreeUsdt": 16.04478106,
+  "reservedUsdt": 16.04478106,
+  "spendableUsdt": 0,
+  "lotFractionPct": 0.25,
+  "trailingBounceTrigger": 0.35,
+  "harvestCallbackPct": 0.2,
+  "reason": "Preparación para el drenaje nocturno. El 45% de la cuenta se protege en USDT líquido.",
+  "recommendation": "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para cerrar en verde y acumular USDT para la noche.",
+  "updatedAt": 1794434634385
 }

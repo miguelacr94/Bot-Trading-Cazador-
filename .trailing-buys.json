@@ -1,1 +1,18 @@
-[]
+[
+  [
+    "SHIBUSDT",
+    {
+      "symbol": "SHIBUSDT",
+      "armedPrice": 0.00000441,
+      "lowestPrice": 0.00000441,
+      "armedTime": 1794434321243,
+      "rsi": 39.92420936319836,
+      "dropPct": 2.217294900221727,
+      "coinRange24hPct": 2.7334851936218607,
+      "upsideGapPct": 2.267573696145122,
+      "high24h": 0.00000451,
+      "rvol": 0.5959007217078527,
+      "convictionTier": "IMPULSO"
+    }
+  ]
+]

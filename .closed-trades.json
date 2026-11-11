@@ -703,5 +703,35 @@
     "pnlPct": 1.9776,
     "strategy": "smart_dca",
     "source": "RECHAZO_MECHA"
+  },
+  {
+    "symbol": "BTCUSDT",
+    "orderId": 68368340879,
+    "time": 1794411375817,
+    "buyPrice": 73572.07,
+    "sellPrice": 74266.48000000001,
+    "qty": 0.00013000000000000002,
+    "costUsdt": 9.578748479379382,
+    "proceedsUsdt": 9.64498776,
+    "feesUsdt": 0.00965464,
+    "pnlUsdt": 0.06623928062061779,
+    "pnlPct": 0.691523331708878,
+    "strategy": "trailing_rebound",
+    "source": "bot_execution"
+  },
+  {
+    "symbol": "XRPUSDT",
+    "orderId": 15780763345,
+    "time": 1794430704149,
+    "buyPrice": 1.06106106,
+    "sellPrice": 1.0662,
+    "qty": 18.6,
+    "costUsdt": 19.735735735735734,
+    "proceedsUsdt": 19.81148868,
+    "feesUsdt": 0.01983132,
+    "pnlUsdt": 0.07575294426426638,
+    "pnlPct": 0.38383643396227485,
+    "strategy": "micro_grid",
+    "source": "bot_execution"
   }
 ]

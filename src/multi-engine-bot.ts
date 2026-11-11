@@ -18,7 +18,7 @@ const COP_PER_USDT = 4200;
 
 // WATCHLISTS SEPARADAS: CLÁSICAS Y CANASTA MEMECOINS TIER-1
 export const CORE_WATCHLIST = ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "NEARUSDT", "SUIUSDT", "BTCUSDT", "BNBUSDT", "XRPUSDT"];
-export const MEME_WATCHLIST = ["PEPEUSDT", "DOGEUSDT", "BONKUSDT"];
+export const MEME_WATCHLIST = ["PEPEUSDT", "DOGEUSDT"];
 export const WATCHLIST = [...CORE_WATCHLIST, ...MEME_WATCHLIST];
 
 // Formateador dinámico de precios para soportar micro-ticks y monedas estándar (ETH/SOL/BTC)
