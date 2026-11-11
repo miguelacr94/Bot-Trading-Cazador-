@@ -4930,68 +4930,8 @@ export class TrailingMasterBot {
   }
 
   async checkMarketRegime() {
-    if (Date.now() - this.lastRegimeCheckTime < 180000) return; // Chequear cada 3 minutos
-    this.lastRegimeCheckTime = Date.now();
-
-    try {
-      const btc24 = await this.client.ticker24hr("BTCUSDT");
-      const high = parseFloat(btc24.data.highPrice);
-      const low = parseFloat(btc24.data.lowPrice);
-      const range24h = ((high - low) / low) * 100;
-      const isQuiet = range24h < 2.2;
-      const currentRegime: "QUIET" | "TRENDING" = isQuiet ? "QUIET" : "TRENDING";
-
-      if (this.lastDetectedRegime === null) {
-        this.lastDetectedRegime = currentRegime;
-      }
-
-      const isIgnored = !!(this.controls.gridIgnoredUntil && Date.now() < this.controls.gridIgnoredUntil);
-
-      // A) DÍA QUIETO DETECTADO: Activar Micro-Grid si está apagado, no hay sugerencia pendiente y no está silenciado
-      if (isQuiet && !this.controls.strategies.micro_grid && !this.pendingRegimeSwitch && !isIgnored) {
-        this.pendingRegimeSwitch = {
-          type: "activate_grid",
-          reason: `Rango estrecho en Bitcoin de ${range24h.toFixed(2)}% (${low.toFixed(0)} - ${high.toFixed(0)})`,
-          btcRange24h: range24h,
-          createdAt: Date.now(),
-          expiresAt: Date.now() + 180000 // 3 min
-        };
-
-        const alertMsg =
-          `💤 <b>[MERCADO LATERAL / DÍA QUIETO DETECTADO]</b> 🌐\n\n` +
-          `• La volatilidad de 24h en Bitcoin es de apenas <b>${range24h.toFixed(2)}%</b> (${low.toFixed(0)} - ${high.toFixed(0)}).\n` +
-          `• 💡 <b>Recomendación del Centinela:</b> Activar <b>🌐 Micro-Grid</b> (Malla Lateral) con <b>30%</b> del presupuesto para cosechar micro-rebotes (+0.45% a +0.60%) mientras el mercado está quieto.\n\n` +
-          `👉 Toca un botón o escribe:
-` +
-          `• /aprobar_grid — <i>Activar Micro-Grid ahora</i>\n` +
-          `• /ignorar_grid — <i>Permanecer en Cazador Trailing</i>\n\n` +
-          `🤖 <i>${this.controls.autoPilot ? "Modo Autónomo ACTIVO: Si no respondes en 3 minutos, se activará automáticamente." : "Modo Manual: Esperando tu confirmación."}</i>`;
-
-        const buttons = [
-          [
-            { text: "🌐 Activar Micro-Grid", callback_data: "/aprobar_grid" },
-            { text: "❌ Mantener Trailing", callback_data: "/ignorar_grid" }
-          ]
-        ];
-        await this.notifier.send(alertMsg, buttons);
-        console.log(alertMsg.replace(/<[^>]*>/g, ""));
-      }
-
-      // B) FIN DE DÍA QUIETO / VOLATILIDAD REACTIVADA: Si el mercado despierta (range >= 2.5%)
-      if (!isQuiet && range24h >= 2.5) {
-        if (this.controls.strategies.micro_grid) {
-          await this.deactivateMicroGrid(range24h);
-        }
-        if (this.controls.gridIgnoredUntil) {
-          this.controls.gridIgnoredUntil = 0;
-          this.saveStrategyControls();
-        }
-      }
-
-      this.lastDetectedRegime = currentRegime;
-    } catch (e: any) {
-      console.error("Error en checkMarketRegime:", e.message);
-    }
+    // 🎯 FRANCOTIRADOR $100 ACTIVO: Se desactiva la auto-sugerencia de Micro-Grid para evitar pulverizar el capital en micro-lotes
+    return;
   }
 
   async checkRegimeSwitchTimeout() {
