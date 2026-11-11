@@ -4997,16 +4997,9 @@ export class TrailingMasterBot {
   async checkRegimeSwitchTimeout() {
     if (!this.pendingRegimeSwitch) return;
     if (Date.now() >= this.pendingRegimeSwitch.expiresAt) {
-      const sw = this.pendingRegimeSwitch;
       this.pendingRegimeSwitch = null;
-
-      if (this.controls.autoPilot) {
-        console.log("⚡ [AUTO-PILOTO] Tiempo de 3 min agotado. Auto-activando Micro-Grid por Día Quieto...");
-        await this.activateMicroGrid(true, sw.btcRange24h);
-      } else {
-        console.log("⌛ [MODO MANUAL] Tiempo agotado. Sugerencia de Micro-Grid descartada.");
-        await this.notifier.send("⌛ <i>Tiempo de espera agotado. Activación de Micro-Grid descartada (Modo Manual).</i>");
-      }
+      // 🎯 FRANCOTIRADOR $100 PROTEGIDO: No auto-activar Micro-Grid para evitar pulverizar el capital en micro-lotes
+      console.log("🛡️ [FRANCOTIRADOR $100] Sugerencia de Micro-Grid ignorada para mantener el capital concentrado.");
     }
   }
 
