@@ -2730,10 +2730,8 @@ export class TrailingMasterBot {
       }
       const btcStressIndex = Math.max(0, Math.min(1.0, Number(stress.toFixed(2))));
 
-      // Tormenta Macro activa: Requiere caída real acelerada en curso (caída 3H <= -1.10% o quiebre de EMA50 con Stoch bajo).
-      // Si BTC solo está consolidando o rebotando (3h > -0.65% y StochRSI saliendo del piso), NO es tormenta activa y se permite cazar rebotes.
-      const isActivelyDropping = btcDrop3hPct <= -1.10 || (btcPrice < btcEma50 && btcDrop3hPct <= -0.75 && btcStoch1h.k < 40);
-      const isMacroStorm = isActivelyDropping && (btcStressIndex >= 0.60 || btcPrice < btcEma50);
+      // Tormenta Macro activa: cuando BTC perdió su EMA50 con caída acumulada fuerte o el estrés supera 0.60
+      const isMacroStorm = btcStressIndex >= 0.60 || (btcPrice < btcEma50 && btcDrop3hPct <= -1.35);
 
       // Piso de Capitulación Real de BTC: único momento donde se permite cazar durante una tormenta macro
       const isBtcCapitulationFloor =
@@ -2780,12 +2778,10 @@ export class TrailingMasterBot {
     const macro = await this.getLiveMacroRegime();
 
     // 🛡️ ESCUDO DE TORMENTA MACRO CONTINUA (1H + 3H + 15M):
-    // Evita la "trampa de pausa de 1 hora" (cuando BTC cae fuerte, hace 1 vela neutra y luego sigue desplomándose -4% más).
-    // Si Bitcoin está en Tormenta Macro (debajo de EMA50/200 con caída 3H o alto estrés) y NO ha llegado a piso de capitulación,
-    // el bot congela automáticamente el armado de compras en altcoins sin necesidad de intervención humana.
+    // Si Bitcoin está en tensión macro, se alerta pero se permite al escáner cazar las monedas
+    // que ya alcanzaron suelos extremos (-6% a -12%), aumentando la exigencia del rebote en checkBuyWatches.
     if (macro.isMacroStorm && !macro.isBtcCapitulationFloor) {
-      console.log(`🌪️ [RÉGIMEN TORMENTA MACRO ACTIVO] BTC Stress=${(macro.btcStressIndex * 100).toFixed(0)}% | 3h=${macro.btcDrop3hPct.toFixed(2)}% | RSI1H=${macro.btcRsi1h.toFixed(1)} | Stoch1H=${macro.btcStochK.toFixed(0)}. Esperando suelo de capitulación de BTC.`);
-      return;
+      console.log(`🌪️ [RÉGIMEN TORMENTA MACRO] BTC Stress=${(macro.btcStressIndex * 100).toFixed(0)}% | 3h=${macro.btcDrop3hPct.toFixed(2)}%. Cazando suelos extremos con Trailing Buy sensible.`);
     }
 
     // 🛡️ FILTRO MACRO INSTITUCIONAL BTC 15M: Si Bitcoin está en caída libre activa en la vela actual de 15m
@@ -2873,9 +2869,12 @@ export class TrailingMasterBot {
           continue;
         }
         const maxRecent = Math.max(...highs.slice(-20));
-        const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
         const low24 = Math.min(...lows.slice(-candlesIn24h));
         const high24 = Math.max(...highs.slice(-candlesIn24h));
+        const dropRecentPct = maxRecent > 0 ? ((maxRecent - curPrice) / maxRecent) * 100 : 0;
+        const drop24hPct = high24 > 0 ? ((high24 - curPrice) / high24) * 100 : dropRecentPct;
+        // La caída real considera tanto la onda reciente (últimas 20 velas) como el retroceso desde el techo de 24h
+        const dropPct = Math.max(dropRecentPct, drop24hPct);
         const coinRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
         const upsideGapPct = curPrice > 0 ? ((high24 - curPrice) / curPrice) * 100 : dropPct;
         // Ubicación Fibonacci real dentro del canal de 24h (0.0 = fondo absoluto, 1.0 = techo 24h)
@@ -2932,9 +2931,10 @@ export class TrailingMasterBot {
 
         // 🐶 ESCUDO 3 (FILTRO DE HIERRO PARA MEMECOINS):
         const isMemeExtremeDip =
-          (dropPct >= 3.4 && bb.percentB <= 0.12 && rsi <= 35 && stochRsi.k <= 22) ||
+          (dropPct >= 3.4 && bb.percentB <= 0.15 && rsi <= 36 && stochRsi.k <= 25) ||
+          (dropPct >= 4.0 && fibPosition24h <= 0.15 && rsi <= 38 && (stochRsi.k <= 45 || hasPinbarRejection)) ||
           (dropPct >= 4.2 && rsi <= 37 && hasPinbarRejection && stochRsi.k <= 25) ||
-          (rsi <= 30 && dropPct >= 2.8 && (hasPinbarRejection || bb.percentB <= 0.10));
+          (rsi <= 30 && dropPct >= 2.8 && (hasPinbarRejection || bb.percentB <= 0.12));
         const isDip = isMeme
           ? isMemeExtremeDip
           : (isStandardDip || isWickRebound);
