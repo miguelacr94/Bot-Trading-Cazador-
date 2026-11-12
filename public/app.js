@@ -692,43 +692,107 @@
     const liveBadge = $("caceria-live-badge");
 
     if (liveBox && liveCards) {
+      liveBox.style.display = "block";
       if (huntingCoins.length > 0) {
-        liveBox.style.display = "block";
-        if (liveBadge) liveBadge.textContent = `${huntingCoins.length} cazando piso`;
+        if (liveBadge) {
+          liveBadge.textContent = `🎯 ${huntingCoins.length} cazando piso`;
+          liveBadge.style.color = "#34d399";
+          liveBadge.style.borderColor = "rgba(16,185,129,0.3)";
+          liveBadge.style.background = "rgba(16,185,129,0.18)";
+        }
         liveCards.innerHTML = huntingCoins.map((r) => {
           const h = r.huntingData;
-          const scoreColor = h.score >= 4 ? "#34d399" : (h.score >= 2 ? "#fbbf24" : "#f87171");
-          return `<div style="background:rgba(15,23,42,0.85); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+          const scoreColor = h.score >= 5 ? "#10b981" : (h.score >= 3 ? "#fbbf24" : "#f87171");
+          const pctProgress = (h.score / 5) * 100;
+          
+          // Detect missing requirements for tactical label
+          const missing = [];
+          if (h.bounceStatus !== "green") missing.push(`Rebote (${(h.bouncePct || 0).toFixed(2)}% / +${(h.reqBouncePct || 0.42).toFixed(2)}%)`);
+          if (h.candleStatus !== "green") missing.push("Vela 5m verde");
+          if (h.cvdStatus !== "green") missing.push(`CVD ballenas (${(h.cvdRatio || 50).toFixed(0)}% / 54%)`);
+          if (h.obiStatus !== "green") missing.push(`Libro Depth (${(h.obiRatio || 50).toFixed(0)}% / 52%)`);
+          if (h.btcStatus !== "green") missing.push(`BTC ${h.btcDesc}`);
+
+          return `<div style="background:rgba(15,23,42,0.92); border:1px solid ${h.score === 5 ? 'rgba(16,185,129,0.5)' : 'rgba(255,255,255,0.1)'}; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow:0 4px 14px rgba(0,0,0,0.35);">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong style="font-size:14px; color:#f8fafc;">${r.symbol.replace("USDT", "")}/USDT</strong>
-              <span style="font-size:11px; font-weight:700; color:${scoreColor}; background:rgba(0,0,0,0.4); padding:2px 7px; border-radius:4px; border:1px solid ${scoreColor}44;">${h.score}/5 Listo</span>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:18px;">🎯</span>
+                <strong style="font-size:15px; color:#f8fafc; letter-spacing:0.02em;">${r.symbol.replace("USDT", "")} <span style="font-size:11px; color:#94a3b8; font-weight:normal;">/USDT</span></strong>
+              </div>
+              <span style="font-size:11px; font-weight:800; color:${scoreColor}; background:rgba(0,0,0,0.45); padding:3px 8px; border-radius:6px; border:1px solid ${scoreColor}55;">
+                ${h.score}/5 Listo ${h.score === 5 ? '⚡ DISPARO' : ''}
+              </span>
             </div>
-            <div style="display:flex; justify-content:space-between; font-size:11px; color:#94a3b8; background:rgba(0,0,0,0.25); padding:6px 8px; border-radius:6px;">
-              <div>Piso: <b style="color:#e2e8f0;">$${fmt(r.lowestPrice)}</b></div>
-              <div>Actual: <b style="color:#e2e8f0;">$${fmt(r.curPrice)}</b></div>
-              <div>Disparo: <b style="color:#34d399;">$${fmt(h.triggerPrice)}</b></div>
+
+            <!-- Barra de progreso visual -->
+            <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
+              <div style="width:${pctProgress}%; height:100%; background:linear-gradient(90deg, #f87171, #fbbf24, #34d399); transition:width 0.4s ease;"></div>
             </div>
-            <div style="display:flex; flex-wrap:wrap; gap:4px;">
-              <span class="semaforo-pill ${h.bounceStatus}" title="Rebote desde piso: +${(h.bouncePct || 0).toFixed(2)}% (Exige: >= +${(h.reqBouncePct || 0.42).toFixed(2)}%)">
-                ${h.bounceStatus === 'green' ? '🟢' : (h.bounceStatus === 'orange' ? '🟠' : '🔴')} Rebote +${(h.bouncePct || 0).toFixed(2)}%
-              </span>
-              <span class="semaforo-pill ${h.candleStatus}" title="Vela 5m: ${h.candleDesc}">
-                ${h.candleStatus === 'green' ? '🟢' : (h.candleStatus === 'orange' ? '🟠' : '🔴')} Vela 5m ${h.isGreen ? '▲' : '▼'}
-              </span>
-              <span class="semaforo-pill ${h.cvdStatus}" title="CVD Compras agresivas: ${(h.cvdRatio || 50).toFixed(0)}% (Exige: >= 54%)">
-                ${h.cvdStatus === 'green' ? '🟢' : (h.cvdStatus === 'orange' ? '🟠' : '🔴')} CVD ${(h.cvdRatio || 50).toFixed(0)}%
-              </span>
-              <span class="semaforo-pill ${h.obiStatus}" title="Libro Depth: ${(h.obiRatio || 50).toFixed(0)}% Bids">
-                ${h.obiStatus === 'green' ? '🟢' : (h.obiStatus === 'orange' ? '🟠' : '🔴')} Depth ${(h.obiRatio || 50).toFixed(0)}%
-              </span>
-              <span class="semaforo-pill ${h.btcStatus}" title="Semáforo Bitcoin: ${h.btcDesc}">
-                ${h.btcStatus === 'green' ? '🟢' : (h.btcStatus === 'orange' ? '🟠' : '🔴')} BTC ${h.btcDesc}
-              </span>
+
+            <!-- Precios clave -->
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; font-size:11px; background:rgba(0,0,0,0.35); padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
+              <div><span style="color:#64748b; display:block; font-size:10px;">PISO MÍN</span><b style="color:#e2e8f0;">$${fmt(r.lowestPrice)}</b></div>
+              <div><span style="color:#64748b; display:block; font-size:10px;">ACTUAL</span><b style="color:#38bdf8;">$${fmt(r.curPrice)}</b></div>
+              <div><span style="color:#64748b; display:block; font-size:10px;">DISPARO</span><b style="color:#34d399;">$${fmt(h.triggerPrice)}</b></div>
+            </div>
+
+            <!-- Semáforo de 5 Requisitos Institucionales -->
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
+                <span style="font-size:11px; color:#cbd5e1;">1. Rebote Suelo (+${(h.reqBouncePct || 0.42).toFixed(2)}%)</span>
+                <span class="semaforo-pill ${h.bounceStatus}">
+                  ${h.bounceStatus === 'green' ? '🟢 Cumplido' : (h.bounceStatus === 'orange' ? '🟠 En camino' : '🔴 En el suelo')} (+${(h.bouncePct || 0).toFixed(2)}%)
+                </span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
+                <span style="font-size:11px; color:#cbd5e1;">2. Vela 5m (Absorción)</span>
+                <span class="semaforo-pill ${h.candleStatus}">
+                  ${h.candleStatus === 'green' ? '🟢 Verde ▲' : (h.candleStatus === 'orange' ? '🟠 Doji ▬' : '🔴 Roja ▼')}
+                </span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
+                <span style="font-size:11px; color:#cbd5e1;">3. CVD Ballenas (≥ 54%)</span>
+                <span class="semaforo-pill ${h.cvdStatus}">
+                  ${h.cvdStatus === 'green' ? '🟢 Compras' : (h.cvdStatus === 'orange' ? '🟠 Neutral' : '🔴 Ventas')} ${(h.cvdRatio || 50).toFixed(0)}%
+                </span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
+                <span style="font-size:11px; color:#cbd5e1;">4. Libro Profundidad (≥ 52%)</span>
+                <span class="semaforo-pill ${h.obiStatus}">
+                  ${h.obiStatus === 'green' ? '🟢 Muro Bids' : (h.obiStatus === 'orange' ? '🟠 Equilibrado' : '🔴 Presión Asks')} ${(h.obiRatio || 50).toFixed(0)}%
+                </span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
+                <span style="font-size:11px; color:#cbd5e1;">5. Filtro Bitcoin</span>
+                <span class="semaforo-pill ${h.btcStatus}">
+                  ${h.btcStatus === 'green' ? '🟢 Estable' : (h.btcStatus === 'orange' ? '🟠 Corrección' : '🔴 En caída')} (${h.btcDesc})
+                </span>
+              </div>
+            </div>
+
+            <!-- Resumen táctico -->
+            <div style="font-size:10px; color:${missing.length === 0 ? '#34d399' : '#94a3b8'}; background:rgba(0,0,0,0.25); padding:6px 8px; border-radius:6px; border-left:3px solid ${scoreColor};">
+              ${missing.length === 0 
+                ? '⚡ <b>¡TODOS LOS REQUISITOS LISTOS!</b> Disparando orden Spot...' 
+                : `⏳ <b>Falta confirmar:</b> ${missing.join(', ')}.`}
             </div>
           </div>`;
         }).join("");
       } else {
-        liveBox.style.display = "none";
+        if (liveBadge) {
+          liveBadge.textContent = "📡 0 cazando (Vigilancia 24/7)";
+          liveBadge.style.color = "#94a3b8";
+          liveBadge.style.borderColor = "rgba(255,255,255,0.12)";
+          liveBadge.style.background = "rgba(255,255,255,0.05)";
+        }
+        liveCards.innerHTML = `<div style="grid-column:1 / -1; padding:18px 20px; background:rgba(15,23,42,0.65); border:1px dashed rgba(255,255,255,0.12); border-radius:8px; text-align:center;">
+          <div style="font-size:13px; font-weight:700; color:#f1f5f9; margin-bottom:5px;">
+            🎯 Modo Cacería Institucional en Espera de Oportunidad
+          </div>
+          <div style="font-size:11px; color:#94a3b8; max-width:680px; margin:0 auto; line-height:1.5;">
+            El bot está escaneando las monedas del radar esperando una caída institucional. En el momento en que una moneda comience a perseguir el piso, aquí se activará en vivo su tarjeta con el <b>Semáforo de 5 Requisitos</b> (🟢 Cumplido, 🟠 Casi listo, 🔴 Bloqueado) y solo comprará cuando los 5 se tornen verdes.
+          </div>
+        </div>`;
       }
     }
 

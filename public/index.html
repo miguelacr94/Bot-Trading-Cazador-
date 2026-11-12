@@ -2764,57 +2764,66 @@
 
     <!-- TAB 1: OPERACIONES SPOT -->
     <div class="tab-content active" id="tab-spot">
-<!-- Active Positions Section -->
-    <div class="section-title">
-      <h2>🏹 Compras Activas (Trailing Take Profit)</h2>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span class="section-tag" id="active-positions-count">Cargando posiciones...</span>
-        <button type="button" class="btn-eye-toggle" data-eye-target="positions-container" title="Ver o comprimir compras activas">
-          <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
-        </button>
-      </div>
-    </div>
 
-    <div class="positions-grid sec-collapsible-body" id="positions-container">
-      <div id="positions-empty">🎯 <b>Sin posiciones abiertas.</b><br><span style="font-size:13px">El bot está escaneando el radar para comprar en la próxima caída confirmada.</span></div>
-      <!-- Se inyectan y actualizan fluidamente in-place -->
-    </div>
-
-    <!-- Split: Radar de Caídas y Gráfica PnL -->
-    <div class="dashboard-split">
-      
-      <!-- Radar -->
-      <div class="split-card">
-        <div class="section-title" style="margin-bottom:14px;">
-          <h2>📡 Radar de Oportunidades (Trailing Buy)</h2>
+      <!-- 🎯 SEMÁFORO DE CACERÍA INSTITUCIONAL EN VIVO (TRAILING BUY) -->
+      <div id="caceria-live-box" style="margin-bottom:20px; background:linear-gradient(135deg, rgba(15,23,42,0.96), rgba(30,41,59,0.85)); border:1px solid rgba(59,130,246,0.35); border-radius:12px; padding:16px; box-shadow:0 6px 22px rgba(0,0,0,0.45);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:22px;">🏹</span>
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <strong style="color:#f8fafc; font-size:14px; letter-spacing:0.02em;">Semáforo de Cacería en Vivo (Sniper Entry)</strong>
+                <span class="semaforo-pill green" style="font-size:10px;">5/5 = Disparo de Compra</span>
+              </div>
+              <span style="font-size:11px; color:#94a3b8; display:block; margin-top:2px;">
+                Semáforo Institucional: 🟢 <b>Cumplido</b> (Validado) | 🟠 <b>Casi listo</b> (En rango) | 🔴 <b>Bloqueado</b> (Esperando confirmación)
+              </span>
+            </div>
+          </div>
           <div style="display:flex; align-items:center; gap:8px;">
-            <span class="section-tag">Watchlist</span>
-            <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-spot-radar" title="Ver o comprimir radar">
-              <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
-            </button>
+            <span id="caceria-live-badge" style="font-size:11px; font-weight:700; color:#38bdf8; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.3); padding:4px 10px; border-radius:6px;">📡 Escaneando Radar</span>
           </div>
         </div>
-        <div id="sec-body-spot-radar" class="sec-collapsible-body">
-          <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
-            Monitorea caídas y sobreventas institucionales. Solo compra cuando el semáforo confirma suelo Wyckoff, volumen CVD de ballenas y libro favorable.
-          </p>
 
-          <!-- 🎯 SEMÁFORO DE CACERÍA EN VIVO (TRAILING BUY) -->
-          <div id="caceria-live-box" style="display:none; margin-bottom:16px; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.8)); border:1px solid rgba(59,130,246,0.35); border-radius:10px; padding:14px; box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:18px;">🏹</span>
-                <div>
-                  <strong style="color:#f1f5f9; font-size:13px; letter-spacing:0.02em;">Semáforo de Cacería en Vivo</strong>
-                  <span style="font-size:11px; color:#94a3b8; display:block;">Requisitos para compra: 🟢 Cumplido | 🟠 Casi listo | 🔴 Bloqueado</span>
-                </div>
-              </div>
-              <span id="caceria-live-badge" style="font-size:11px; font-weight:700; color:#34d399; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.3); padding:3px 9px; border-radius:6px;">0 cazando</span>
-            </div>
-            <div id="caceria-live-cards" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap:12px;">
-              <!-- Se inyectan las tarjetas vivas -->
+        <div id="caceria-live-cards" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:14px;">
+          <!-- Se inyectan las tarjetas vivas -->
+        </div>
+      </div>
+
+      <!-- Active Positions Section -->
+      <div class="section-title">
+        <h2>🏹 Compras Activas (Trailing Take Profit)</h2>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="section-tag" id="active-positions-count">Cargando posiciones...</span>
+          <button type="button" class="btn-eye-toggle" data-eye-target="positions-container" title="Ver o comprimir compras activas">
+            <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="positions-grid sec-collapsible-body" id="positions-container">
+        <div id="positions-empty">🎯 <b>Sin posiciones abiertas.</b><br><span style="font-size:13px">El bot está escaneando el radar para comprar en la próxima caída confirmada.</span></div>
+        <!-- Se inyectan y actualizan fluidamente in-place -->
+      </div>
+
+      <!-- Split: Radar de Caídas y Gráfica PnL -->
+      <div class="dashboard-split">
+        
+        <!-- Radar -->
+        <div class="split-card">
+          <div class="section-title" style="margin-bottom:14px;">
+            <h2>📡 Radar de Oportunidades (Trailing Buy)</h2>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="section-tag">Watchlist</span>
+              <button type="button" class="btn-eye-toggle" data-eye-target="sec-body-spot-radar" title="Ver o comprimir radar">
+                <span class="eye-icon">👁️</span> <span class="eye-lbl">Comprimir</span>
+              </button>
             </div>
           </div>
+          <div id="sec-body-spot-radar" class="sec-collapsible-body">
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+              Monitorea caídas y sobreventas institucionales. Solo compra cuando el semáforo confirma suelo Wyckoff, volumen CVD de ballenas y libro favorable.
+            </p>
 
           <div class="table-responsive">
             <table class="radar-table">
