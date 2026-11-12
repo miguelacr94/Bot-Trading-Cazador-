@@ -310,7 +310,7 @@ export class DashboardServer {
         const depth = dRes.ok ? await dRes.json() : { bids: [], asks: [] };
         const curPrice = this.prices[sym] || w.lowestPrice;
         const bounce = ((curPrice - w.lowestPrice) / w.lowestPrice) * 100;
-        const reqBounce = 0.42;
+        const reqBounce = 0.38;
 
         let score = 0;
 
@@ -335,8 +335,8 @@ export class DashboardServer {
           const totQ = parseFloat(l5[7] || "0");
           const buyQ = parseFloat(l5[10] || "0");
           cvdRatio = totQ > 0 ? (buyQ / totQ) * 100 : 50;
-          if (cvdRatio >= 54) { cvdStatus = "green"; score++; }
-          else if (cvdRatio >= 45) { cvdStatus = "orange"; }
+          if (cvdRatio >= 52) { cvdStatus = "green"; score++; }
+          else if (cvdRatio >= 44) { cvdStatus = "orange"; }
         }
 
         // 3. Depth
@@ -346,8 +346,8 @@ export class DashboardServer {
         const aVal = asks.reduce((acc: number, [p, q]: any) => acc + parseFloat(p) * parseFloat(q), 0);
         const obi = (bVal + aVal) > 0 ? (bVal / (bVal + aVal)) * 100 : 50;
         let obiStatus = "red";
-        if (obi >= 52) { obiStatus = "green"; score++; }
-        else if (obi >= 36) { obiStatus = "orange"; }
+        if (obi >= 50) { obiStatus = "green"; score++; }
+        else if (obi >= 34) { obiStatus = "orange"; }
 
         // 4. Bitcoin
         let btcStatus = "green";

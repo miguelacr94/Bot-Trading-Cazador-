@@ -3117,9 +3117,9 @@ export class TrailingMasterBot {
         const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(botAvailableUsdt);
         const isMemeCoin = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE") || sym.includes("SHIB");
         const baseBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
-        const stressAddon = macro.btcStressIndex * 0.25;
-        const volAddon = Math.min(0.25, Math.max(0, ((w.coinRange24hPct || 3.0) - 4.0) * 0.03));
-        const reqBounce = (isMemeCoin ? Math.max(0.55, baseBounce) : Math.max(0.42, baseBounce)) + stressAddon + volAddon;
+        const stressAddon = macro.btcStressIndex * 0.15;
+        const volAddon = Math.min(0.20, Math.max(0, ((w.coinRange24hPct || 3.0) - 4.0) * 0.02));
+        const reqBounce = (isMemeCoin ? Math.max(0.48, baseBounce) : Math.max(0.35, baseBounce)) + stressAddon + volAddon;
         const strat = w.strategy || "trailing_rebound";
         const effectiveSpendable = (strat === "cazador_weekend" && this.isWeekendWindow())
           ? Math.max(sessionPlan.spendableUsdt, usdt)
@@ -3128,7 +3128,7 @@ export class TrailingMasterBot {
         if (bounce >= reqBounce && effectiveSpendable >= this.minUsdtToTrade) {
           // 🚦 ESCUDO 1: FLUJO DE ÓRDENES DE BITCOIN (CVD + MTF 1H/15M/5M)
           // 🧱 ESCUDO 2: ESCÁNER DE LIBRO DE ÓRDENES (/depth - OBI & SELL WALLS)
-          // 🕯️ ESCUDO 3: SECUENCIA WYCKOFF DE 3 VELAS + CVD DE LA MONEDA (ANTI-VELA VERDE FALSA)
+          // 🕯️ ESCUDO 3: SECUENCIA WYCKOFF DE ABSORCIÓN + ORDER FLOW CVD
           let turnaroundConfirmed = true;
           try {
             const [k5, k15, depthRes, btcK5, btcK15, btcK1h] = await Promise.all([
@@ -3152,14 +3152,14 @@ export class TrailingMasterBot {
               const bo5 = parseFloat(b5[1]), bc5 = parseFloat(b5[4]);
               const bpo5 = parseFloat(bPrev5[1]), bpc5 = parseFloat(bPrev5[4]);
               const btcDrop5 = ((bc5 - bo5) / bo5) * 100;
-              const btcTwoRed5m = bc5 < bo5 && bpc5 < bpo5 && btcDrop5 <= -0.10;
+              const btcTwoRed5m = bc5 < bo5 && bpc5 < bpo5 && btcDrop5 <= -0.15;
 
               // CVD de Bitcoin en los últimos 5m (Flujo neto de dólares institucionales en BTC)
               const btcTotQuote5 = parseFloat(b5[7] || "0");
               const btcBuyQuote5 = parseFloat(b5[10] || "0");
               const btcBuyRatio5 = btcTotQuote5 > 0 ? (btcBuyQuote5 / btcTotQuote5) * 100 : 50;
               const btcNetDeltaUsdt = (2 * btcBuyQuote5) - btcTotQuote5;
-              const btcHeavySellingFlow = btcTotQuote5 > 500000 && btcBuyRatio5 < 43.0 && btcNetDeltaUsdt < -1200000;
+              const btcHeavySellingFlow = btcTotQuote5 > 500000 && btcBuyRatio5 < 42.0 && btcNetDeltaUsdt < -1500000;
 
               // Tendencia de 1H de Bitcoin (EMA 20 1H)
               let btc1hBearishCascade = false;
@@ -3170,12 +3170,12 @@ export class TrailingMasterBot {
                 const lastBtc1h = btcK1h.data[btcK1h.data.length - 1];
                 const btcOpen1h = parseFloat(lastBtc1h[1]), btcClose1h = parseFloat(lastBtc1h[4]);
                 // Si BTC está cayendo en la vela actual de 1H bajo su EMA20 y aún no está en capitulación extrema (RSI 1h > 30), exigir flujo positivo de BTC
-                if (btcClose1h < btcEma20_1h && btcClose1h < btcOpen1h && btcRsi1h > 30 && btcBuyRatio5 < 50.0) {
+                if (btcClose1h < btcEma20_1h && btcClose1h < btcOpen1h && btcRsi1h > 30 && btcBuyRatio5 < 46.0) {
                   btc1hBearishCascade = true;
                 }
               }
 
-              if ((btcDrop15 <= -0.22 && btcWick15 < 0.35) || btcDrop5 <= -0.15 || btcTwoRed5m || btcHeavySellingFlow || btc1hBearishCascade) {
+              if ((btcDrop15 <= -0.30 && btcWick15 < 0.30) || btcDrop5 <= -0.22 || btcTwoRed5m || btcHeavySellingFlow || btc1hBearishCascade) {
                 console.log(`🚦 [ESCUDO ORDER FLOW BTC: ${sym}] BTC en presión vendedora (15m: ${btcDrop15.toFixed(2)}% | 5m CVD Compras: ${btcBuyRatio5.toFixed(1)}% | Delta: $${(btcNetDeltaUsdt / 1e6).toFixed(2)}M | 1H Cascada: ${btc1hBearishCascade}). Reteniendo compra.`);
                 continue;
               }
@@ -3201,10 +3201,10 @@ export class TrailingMasterBot {
                   biggestNearAskWall = askVal;
                 }
               }
-              if (biggestNearAskWall > bidUsdt * 0.50 && obiPct < 45) {
+              if (biggestNearAskWall > bidUsdt * 0.60 && obiPct < 42) {
                 hasBlockingSellWall = true;
               }
-              if (obiPct < 36.0 || hasBlockingSellWall) {
+              if (obiPct < 34.0 || hasBlockingSellWall) {
                 console.log(`🧱 [ESCUDO LIBRO DE ÓRDENES: ${sym}] Desbalance desfavorable en Depth (Bids OBI: ${obiPct.toFixed(1)}% | Muro Venta cercano: ${hasBlockingSellWall}). Esperando absorción del muro.`);
                 continue;
               }
@@ -3221,21 +3221,21 @@ export class TrailingMasterBot {
               const wick15 = (h15 - l15) > 0 ? (Math.min(o15, c15) - l15) / (h15 - l15) : 0;
               const closes15m = k15.data.map((row: any) => parseFloat(row[4]));
               const ema50_15m = this.calculateEMA(closes15m, 50);
-              const brokeEma50_15m = o15 >= ema50_15m && c15 < ema50_15m * 0.996 && wick15 < 0.35;
+              const brokeEma50_15m = o15 >= ema50_15m && c15 < ema50_15m * 0.995 && wick15 < 0.30;
 
-              if ((drop15Pct <= -0.30 && wick15 < 0.35) || (prevDrop15Pct <= -0.70 && c15 < o15 && wick15 < 0.40) || brokeEma50_15m) {
+              if ((drop15Pct <= -0.40 && wick15 < 0.30) || (prevDrop15Pct <= -0.85 && c15 < o15 && wick15 < 0.35) || brokeEma50_15m) {
                 console.log(`⏳ [FILTRO ANTI-CASCADA / EMA50 15M: ${sym}] Vela 15m en presión bajista o rompiendo EMA50 (actual ${drop15Pct.toFixed(2)}%, mecha ${(wick15 * 100).toFixed(0)}%). Esperando piso firme.`);
                 continue;
               }
             }
 
-            // 4. Evaluar Secuencia Wyckoff de 3 Velas en 5m + Order Flow CVD (Anti-Vela Verde Falsa)
+            // 4. Evaluar Secuencia Wyckoff y Absorción en 5m + Order Flow CVD
             if (k5?.data?.length >= 6) {
               const last5 = k5.data[k5.data.length - 1];
               const prev5 = k5.data[k5.data.length - 2];
               const prev2_5 = k5.data[k5.data.length - 3];
-              const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]), v5 = parseFloat(last5[5]);
-              const po5 = parseFloat(prev5[1]), ph5 = parseFloat(prev5[2]), pl5 = parseFloat(prev5[3]), pc5 = parseFloat(prev5[4]), pv5 = parseFloat(prev5[5]);
+              const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]);
+              const po5 = parseFloat(prev5[1]), ph5 = parseFloat(prev5[2]), pl5 = parseFloat(prev5[3]), pc5 = parseFloat(prev5[4]);
               const p2l5 = parseFloat(prev2_5[3]);
 
               // Cálculo de Order Flow (Taker Buy Ratio %) en la vela de disparo y la previa
@@ -3254,41 +3254,37 @@ export class TrailingMasterBot {
               const isGreen5m = c5 > o5;
               const prevIsGreen5m = pc5 >= po5;
 
-              // Secuencia de Doble Piso / Testeo Secundario Wyckoff:
-              // El mínimo actual (l5) o previo (pl5) debe sostenerse por encima o igual al piso de las últimas 6 velas (sin romper a nuevos mínimos en la vela de disparo)
+              // Testeo Wyckoff: El mínimo debe sostenerse sin perforar a la baja en cascada
               const recent6Lows = k5.data.slice(-6).map((r: any) => parseFloat(r[3]));
               const minRecent6 = Math.min(...recent6Lows);
-              const heldSecondaryTest = l5 >= minRecent6 * 0.9993 && (l5 >= pl5 * 0.9995 || l5 >= p2l5 * 0.9995);
+              const heldSecondaryTest = l5 >= minRecent6 * 0.9990 && (l5 >= pl5 * 0.9990 || l5 >= p2l5 * 0.9990);
               const brokePrevMidpoint = c5 >= (po5 + pc5) / 2;
 
-              // 🚫 DETECTOR DE TRAMPA DE LIQUIDEZ (VELA VERDE FALSA CON DELTA NEGATIVO):
-              // Como vimos en SOL/XRP/SUI: el precio sube levemente pero >52% del volumen son ballenas vendiendo a mercado.
+              // Compras agresivas institucionales reales:
               const hasRealAggressiveBuying =
-                takerBuyRatio5m >= 54.0 ||
-                (takerBuyRatio5m >= 50.0 && prevTakerBuyRatio5m >= 54.0) ||
-                (takerBuyRatio5m >= 49.5 && obiPct >= 58.0);
+                takerBuyRatio5m >= 52.0 ||
+                (takerBuyRatio5m >= 48.0 && prevTakerBuyRatio5m >= 52.0) ||
+                (takerBuyRatio5m >= 46.0 && obiPct >= 54.0);
 
               if (!hasRealAggressiveBuying) {
-                console.log(`🚫 [TRAMPA DE LIQUIDEZ EVITADA: ${sym}] Rebote +${bounce.toFixed(2)}% rechazado por Order Flow débil (CVD Compras 5m: ${takerBuyRatio5m.toFixed(1)}% < 54% | OBI: ${obiPct.toFixed(1)}%). Ventas ocultas detectadas.`);
+                console.log(`🚫 [TRAMPA DE LIQUIDEZ EVITADA: ${sym}] Rebote +${bounce.toFixed(2)}% rechazado por Order Flow débil (CVD Compras 5m: ${takerBuyRatio5m.toFixed(1)}% | OBI: ${obiPct.toFixed(1)}%). Ventas ocultas detectadas.`);
                 continue;
               }
 
               const closes5m = k5.data.map((row: any) => parseFloat(row[4]));
               const rsi5m = this.calculateRSI(closes5m, 14);
               const stoch5m = this.calculateStochRSI(closes5m, 14, 14, 3, 3);
-              const macd5m = this.calculateMACDHistogram(closes5m, 12, 26, 9);
 
-              const indicatorsConfirmTurn = macd5m.isDecelerating && stoch5m.turningUp && stoch5m.k <= 62;
-              const hasWyckoffStructure = heldSecondaryTest && brokePrevMidpoint && (prevIsGreen5m || prevLowerWick5 >= 0.28 || lowerWick5 >= 0.35);
-              const isDefensiveSession = sessionPlan.sessionKey === "COSECHA_PRENOCTURNA" || sessionPlan.sessionKey === "NOCTURNO_DRENAJE";
-              if (isDefensiveSession || isMemeCoin) {
-                turnaroundConfirmed = isGreen5m && hasWyckoffStructure && hasRealAggressiveBuying && indicatorsConfirmTurn && rsi5m <= (isMemeCoin ? 42 : 46);
-              } else {
-                turnaroundConfirmed = isGreen5m && hasWyckoffStructure && hasRealAggressiveBuying && indicatorsConfirmTurn;
-              }
+              // Absorción y confirmación de giro:
+              // Vela verde o mecha de absorción + soporte Wyckoff + no sobrecomprado
+              const hasAbsorptionCandle = isGreen5m || lowerWick5 >= 0.28 || (c5 >= o5 * 0.9995 && lowerWick5 >= 0.22);
+              const hasStructure = heldSecondaryTest && (brokePrevMidpoint || prevIsGreen5m || prevLowerWick5 >= 0.25 || isGreen5m);
+              const notOverbought = stoch5m.k <= 75 && rsi5m <= 65;
+
+              turnaroundConfirmed = hasAbsorptionCandle && hasStructure && hasRealAggressiveBuying && notOverbought;
 
               if (!turnaroundConfirmed) {
-                console.log(`⏳ [ESCUDO WYCKOFF / ORDER FLOW: ${sym}] Rebote +${bounce.toFixed(2)}% esperando confirmación (Verde5m=${isGreen5m}, Wyckoff=${hasWyckoffStructure}, CVD=${takerBuyRatio5m.toFixed(1)}%, OBI=${obiPct.toFixed(1)}%, MACD_Frena=${macd5m.isDecelerating}, StochK=${stoch5m.k.toFixed(0)}).`);
+                console.log(`⏳ [CONFIRMACIÓN DE SUELO: ${sym}] Rebote +${bounce.toFixed(2)}% esperando giro (VelaVerde/Mecha=${hasAbsorptionCandle}, Estructura=${hasStructure}, CVD=${takerBuyRatio5m.toFixed(1)}%, OBI=${obiPct.toFixed(1)}%, StochK=${stoch5m.k.toFixed(0)}).`);
                 continue;
               }
             }
