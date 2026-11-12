@@ -3234,8 +3234,9 @@ export class TrailingMasterBot {
             coinVol,
             Math.max(totalDropFromPeak, upsideGapPct)
           );
-          if (amountToUse < this.minUsdtToTrade && effectiveSpendable >= this.minUsdtToTrade) {
-            amountToUse = this.minUsdtToTrade;
+          if (amountToUse < this.minUsdtToTrade) {
+            console.log(`🛡️ [BLOQUE SNIPER PROTEGIDO: ${sym}] Monto asignado ($${amountToUse.toFixed(2)}) menor al mínimo ($${this.minUsdtToTrade}). Reteniendo para tiro principal.`);
+            continue;
           }
           const sourceDesc = strat === "cazador_weekend"
             ? `Cazador Weekend (piso ${w.lowestPrice}, Brecha +${upsideGapPct.toFixed(1)}%)`
@@ -5529,11 +5530,11 @@ export class TrailingMasterBot {
     let lot = Math.floor(spendableUsdt * effectiveFraction * allocMultiplier * tierMultiplier * 100) / 100;
     lot = Math.min(lot, Math.floor(tierMaxCap * 100) / 100);
 
-    // 🎯 TIRO ESPECIAL FRANCOTIRADOR $100 USDT (Exclusivo para las Reinas de Alta Velocidad y Liquidez):
-    // SOL (10 ondas/día), AVAX (15 ondas/día), SUI (10 ondas/día), XRP (8 ondas/día), ETH (5 ondas/día), y BTC (solo si rango >= 2.8%).
+    // 🎯 TIRO ESPECIAL FRANCOTIRADOR $100 USDT (Exclusivo para Monedas Principales de Alta Velocidad y Liquidez):
+    // SOL, AVAX, SUI, XRP, ETH, BNB, NEAR y BTC (cuando hay rango activo).
     const isSniper100Queen =
-      ["SOLUSDT", "AVAXUSDT", "SUIUSDT", "XRPUSDT", "ETHUSDT"].includes(symbol) ||
-      (symbol === "BTCUSDT" && coinRange24hPct >= 2.8);
+      ["SOLUSDT", "AVAXUSDT", "SUIUSDT", "XRPUSDT", "ETHUSDT", "BNBUSDT", "NEARUSDT"].includes(symbol) ||
+      (symbol === "BTCUSDT" && coinRange24hPct >= 2.2);
 
     if (spendableUsdt >= 90) {
       if (tier === 1 && strategy === "trailing_rebound" && isSniper100Queen && !isMeme) {
@@ -5905,7 +5906,7 @@ export class TrailingMasterBot {
 
       // 2. Evaluar oportunidades por Bolsillos Estratégicos (Blindaje total de los primeros $100 USDT para el Tiro Especial Francotirador)
       if (botSpendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
-        const hasSniper100Ready = botSpendableUsdt >= 95;
+        const hasSniper100Ready = botSpendableUsdt >= 90;
         // Ninguna estrategia secundaria puede tocar los primeros $100 USDT: solo operan si hay excedente por encima de $100
         const secondaryPoolUsdt = Math.max(0, Math.round((botSpendableUsdt - 100) * 100) / 100);
 
