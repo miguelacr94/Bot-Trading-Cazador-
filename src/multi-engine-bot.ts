@@ -5530,36 +5530,39 @@ export class TrailingMasterBot {
     let lot = Math.floor(spendableUsdt * effectiveFraction * allocMultiplier * tierMultiplier * 100) / 100;
     lot = Math.min(lot, Math.floor(tierMaxCap * 100) / 100);
 
-    // 🎯 TIRO ESPECIAL FRANCOTIRADOR $100 USDT (Exclusivo para Monedas Principales de Alta Velocidad y Liquidez):
-    // SOL, AVAX, SUI, XRP, ETH, BNB, NEAR y BTC (cuando hay rango activo).
+    // 🎯 NIVEL 5: TIRO ESPECIAL FRANCOTIRADOR $100 USDT (Exclusivo para Capitulación / Oportunidad Especial Institucional):
+    // Solo se dispara en Monedas Reinas cuando hay un desplome extremo (Caída >= 5.2%, Rango >= 5.5% y RSI <= 26, o Caída >= 6.0% con RSI <= 28).
     const isSniper100Queen =
-      ["SOLUSDT", "AVAXUSDT", "SUIUSDT", "XRPUSDT", "ETHUSDT", "BNBUSDT", "NEARUSDT"].includes(symbol) ||
-      (symbol === "BTCUSDT" && coinRange24hPct >= 2.2);
+      ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "SUIUSDT", "AVAXUSDT", "NEARUSDT"].includes(symbol);
+    const isSpecial100Opportunity =
+      !isMeme &&
+      isSniper100Queen &&
+      ((coinRange24hPct >= 5.5 && dropPct >= 5.2 && rsi <= 26) ||
+       (dropPct >= 6.0 && rsi <= 28));
 
-    if (spendableUsdt >= 90) {
-      if (tier === 1 && strategy === "trailing_rebound" && isSniper100Queen && !isMeme) {
-        const sniperShot = Math.min(100.00, Math.floor(spendableUsdt * 100) / 100);
-        console.log(`🎯 [BALA ESPECIAL FRANCOTIRADOR] Desplegando $${sniperShot.toFixed(2)} USDT en ${symbol} (Alta Velocidad y Rebote Confirmado)`);
-        return sniperShot;
-      } else {
-        // Cualquier otra moneda o estrategia secundaria SOLO puede usar el excedente por encima de los $100 USDT protegidos
-        const surplusAbove100 = Math.max(0, Math.floor((spendableUsdt - 100) * 100) / 100);
-        if (surplusAbove100 < this.minUsdtToTrade) return 0;
-        return Math.min(lot, surplusAbove100);
-      }
+    if (tier === 1 && strategy === "trailing_rebound" && isSpecial100Opportunity && spendableUsdt >= 85) {
+      const sniperShot = Math.min(100.00, Math.floor(spendableUsdt * 100) / 100);
+      console.log(`🎯 [BALA ESPECIAL FRANCOTIRADOR $100] Desplegando $${sniperShot.toFixed(2)} USDT en ${symbol} (Capitulación Extrema: Caída -${dropPct.toFixed(2)}% | Rango ${coinRange24hPct.toFixed(2)}% | RSI ${rsi.toFixed(1)})`);
+      return sniperShot;
     }
 
-    // Si es una oportunidad de MÁXIMA BRECHA en Monedas Core (NEAR/SUI/AVAX/SOL), aplicamos el presupuesto configurable (default 50 USDT)
+    // 💎 NIVELES 1 A 4: ESCALONES QUIRÚRGICOS PROPORCIONALES (Operativa normal y de alta volatilidad sin gastar los $100 de golpe)
     const configuredWideGapAmount = this.controls.wideGapLotSize || 50;
     if (tier === 1 && isMaxGapOpportunity && !isMeme) {
+      // Escalón 4 (Máxima Brecha): $45 - $50 USDT
       const targetGapLot = Math.min(configuredWideGapAmount, spendableUsdt);
       if (targetGapLot >= this.minUsdtToTrade) {
         lot = targetGapLot;
       }
-    } else if (tier === 1 && isHighVolOpportunity && !isMeme && spendableUsdt >= 25 && lot < 25) {
-      lot = Math.min(spendableUsdt, Math.min(35, Math.floor(spendableUsdt * 0.80 * 100) / 100));
-    } else if (tier === 1 && isMediumImpulse && !isMeme && spendableUsdt >= 18 && lot < 18) {
-      lot = Math.min(spendableUsdt, 20);
+    } else if (tier === 1 && isHighVolOpportunity && !isMeme && spendableUsdt >= 28) {
+      // Escalón 3 (Alta Volatilidad): $30 - $35 USDT
+      lot = Math.min(spendableUsdt, Math.max(lot, rsi <= 32 || dropPct >= 3.0 ? 35 : 30));
+    } else if (tier === 1 && isMediumImpulse && !isMeme && spendableUsdt >= 20) {
+      // Escalón 2 (Impulso Medio): $20 - $25 USDT
+      lot = Math.min(spendableUsdt, Math.max(lot, rsi <= 33 ? 25 : 22));
+    } else if (tier === 1 && !isMaxGapOpportunity && !isHighVolOpportunity && !isMediumImpulse && spendableUsdt >= 15) {
+      // Escalón 1 (Compacto / Explorador): $15 - $18 USDT
+      lot = Math.min(spendableUsdt, Math.max(lot, isMeme ? 15 : 18));
     }
 
     if (lot < this.minUsdtToTrade && spendableUsdt >= this.minUsdtToTrade) {
@@ -5904,45 +5907,43 @@ export class TrailingMasterBot {
       // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
       await this.checkLiquidityAndFuturesViability(usdt);
 
-      // 2. Evaluar oportunidades por Bolsillos Estratégicos (Blindaje total de los primeros $100 USDT para el Tiro Especial Francotirador)
+      // 2. Evaluar oportunidades por Escalones Quirúrgicos ($15-$50 normales/fuertes y $100 exclusivo para Capitulación Especial)
       if (botSpendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
-        const hasSniper100Ready = botSpendableUsdt >= 90;
-        // Ninguna estrategia secundaria puede tocar los primeros $100 USDT: solo operan si hay excedente por encima de $100
-        const secondaryPoolUsdt = Math.max(0, Math.round((botSpendableUsdt - 100) * 100) / 100);
+        const secondaryPoolUsdt = Math.max(0, Math.round(sessionPlan.spendableUsdt * 100) / 100);
 
-        // Bolsillo 1: Smart DCA solo usa el excedente por encima de los $100 USDT protegidos
-        const dcaTriggered = secondaryPoolUsdt >= this.minUsdtToTrade
+        // Prioridad 1: Cacería Quirúrgica de Rebote (Trailing Buy en curso: evalúa los 5 niveles de inversión)
+        let bought = false;
+        if (this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins && this.buyWatches.size > 0 && secondaryPoolUsdt >= this.minUsdtToTrade) {
+          bought = await this.checkBuyWatches(secondaryPoolUsdt);
+        }
+
+        // Prioridad 2: Smart DCA (Refuerzo de Lote 2/3 en caídas profundas confirmadas)
+        const dcaTriggered = !bought && secondaryPoolUsdt >= this.minUsdtToTrade
           ? await this.checkSmartDcaOpportunities(secondaryPoolUsdt)
           : false;
 
-        // Bolsillo 2: Centinela Alpha (solo con excedente > $100)
+        // Prioridad 3: Centinela Alpha
         let alphaTriggered = false;
-        if (!dcaTriggered && secondaryPoolUsdt >= this.minUsdtToTrade && this.controls.strategies?.centinela_alpha) {
+        if (!bought && !dcaTriggered && secondaryPoolUsdt >= this.minUsdtToTrade && this.controls.strategies?.centinela_alpha) {
           alphaTriggered = await this.evaluateCentinelaAlpha(secondaryPoolUsdt);
         }
 
-        // Bolsillo 3: Fin de Semana (solo con excedente > $100)
+        // Prioridad 4: Fin de Semana
         let weekendTriggered = false;
-        if (!dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && uniqueActiveCount < maxUniqueCoins && secondaryPoolUsdt >= this.minUsdtToTrade) {
+        if (!bought && !dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && uniqueActiveCount < maxUniqueCoins && secondaryPoolUsdt >= this.minUsdtToTrade) {
           weekendTriggered = await this.evaluateCazadorWeekend(secondaryPoolUsdt, activeSymbols);
         }
 
-        // Bolsillo 4: Día Quieto / Lateral (Micro-Grid solo con excedente > $100)
+        // Prioridad 5: Día Quieto / Lateral (Micro-Grid)
         let gridTriggered = false;
         const gridUnlockedUsdt = Math.min(20, secondaryPoolUsdt);
-        if (!dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && uniqueActiveCount < maxUniqueCoins && gridUnlockedUsdt >= this.minUsdtToTrade) {
+        if (!bought && !dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && uniqueActiveCount < maxUniqueCoins && gridUnlockedUsdt >= this.minUsdtToTrade) {
           gridTriggered = await this.evaluateMicroGrid(gridUnlockedUsdt, activeSymbols);
         }
 
-        // Bolsillo 5: Francotirador Especial $100 USDT (Se activa en cuanto reúne el bloque >= $95 USDT)
-        if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins) {
-          let bought = false;
-          if (this.buyWatches.size > 0 && hasSniper100Ready) {
-            bought = await this.checkBuyWatches(sessionPlan.spendableUsdt);
-          }
-          if (!bought) {
-            await this.scanForDips(activeSymbols);
-          }
+        // Prioridad 6: Escaneo de nuevos pisos para armar Cacerías (Trailing Buy)
+        if (!bought && !dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins) {
+          await this.scanForDips(activeSymbols);
         }
       }
 
