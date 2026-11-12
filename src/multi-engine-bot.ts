@@ -4356,7 +4356,7 @@ export class TrailingMasterBot {
                `🔇 <b>Silenciada:</b> No volveré a sugerir DCA en ${sym} por <b>2 horas</b>, a menos que caiga un <b>-3.0% adicional</b>.`;
       }
 
-      if (cmd === "/cazando" || cmd === "cazando") {
+      if (cmd === "/cazando" || cmd === "cazando" || cmd === "/caceria" || cmd === "caceria" || cmd === "/semaforo" || cmd === "semaforo") {
         return await this.buildBuyWatchReport();
       }
 
@@ -6045,23 +6045,99 @@ export class TrailingMasterBot {
   }
 
   async buildBuyWatchReport(): Promise<string> {
-    let txt = `🔻 <b>TRAILING BUY - CAZANDO EL PISO</b>\n\n`;
+    let txt = `🏹 <b>PANEL SEMÁFORO DE CACERÍA (QUIRÚRGICO)</b>\n`;
+    txt += `<i>🟢 = Cumplido | 🟠 = Casi listo | 🔴 = Pendiente / Bloqueado</i>\n\n`;
+
     if (this.buyWatches.size === 0) {
       txt += `• Ninguna moneda en vigilancia ahora mismo.\n` +
-             `• En cuanto una caiga ≥ 1.5% (o RSI bajo), el bot la arma y empieza a seguir su piso.\n`;
+             `• El radar escanea 24/7 en busca de sobreventas institucionales.\n`;
       return txt;
     }
+
+    const macro = await this.getLiveMacroRegime();
+    const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(100);
+
     for (const [sym, w] of this.buyWatches.entries()) {
-      let cur = w.lowestPrice;
-      try { cur = parseFloat((await this.client.tickerPrice(sym)).data.price); } catch {}
-      const trigger = w.lowestPrice * (1 + TRAILING_BUY_BOUNCE_PCT / 100);
-      const fromArmed = ((w.lowestPrice - w.armedPrice) / w.armedPrice) * 100;
-      const mins = Math.round((Date.now() - w.armedTime) / 60000);
-      txt += `🪙 <b>${sym}</b> (armado hace ${mins} min)\n` +
-             `• Precio al armar: ${w.armedPrice} (caída -${w.dropPct.toFixed(2)}%, RSI ${w.rsi.toFixed(1)})\n` +
-             `• 🔻 Piso más bajo: <b>${w.lowestPrice}</b> (${fromArmed.toFixed(2)}%)\n` +
-             `• Precio actual: ${cur}\n` +
-             `• ✅ Compra si toca: <b>${trigger.toFixed(4)}</b> (+${TRAILING_BUY_BOUNCE_PCT}% desde el piso)\n\n`;
+      try {
+        const [tickerRes, k5Res, depthRes] = await Promise.all([
+          this.client.tickerPrice(sym),
+          this.client.klines(sym, "5m", { limit: 4 }),
+          this.client.depth(sym, { limit: 15 }).catch(() => ({ data: { bids: [], asks: [] } }))
+        ]);
+
+        const cur = parseFloat(tickerRes.data.price);
+        const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
+        const isMemeCoin = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("DOGE");
+        const baseBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
+        const reqBounce = (isMemeCoin ? Math.max(0.55, baseBounce) : Math.max(0.42, baseBounce)) + (macro.btcStressIndex * 0.25);
+        const mins = Math.round((Date.now() - w.armedTime) / 60000);
+
+        // 1. Semáforo Rebote desde el piso
+        let rIco = "🔴", rDesc = "Fondo aún no confirmado";
+        let score = 0;
+        if (bounce >= reqBounce) {
+          rIco = "🟢"; rDesc = "Rebote superado"; score++;
+        } else if (bounce >= reqBounce * 0.50) {
+          rIco = "🟠"; rDesc = `Cerca del +${reqBounce.toFixed(2)}%`;
+        }
+
+        // 2. Semáforo Vela 5m
+        const k5Data = k5Res.data;
+        const last5 = k5Data[k5Data.length - 1];
+        const o5 = parseFloat(last5[1]), c5 = parseFloat(last5[4]);
+        const isGreen = c5 > o5;
+        let vIco = "🔴", vDesc = "Roja (presión bajista)";
+        if (isGreen) {
+          vIco = "🟢"; vDesc = "Verde (compradores al mando)"; score++;
+        } else if (Math.abs((c5 - o5) / o5) * 100 <= 0.05) {
+          vIco = "🟠"; vDesc = "Doji (neutral / absorbiendo)";
+        }
+
+        // 3. Semáforo Flujo de Ballenas (CVD / Taker Buy Ratio)
+        const totQuote = parseFloat(last5[7] || "0");
+        const buyQuote = parseFloat(last5[10] || "0");
+        const cvdRatio = totQuote > 0 ? (buyQuote / totQuote) * 100 : 50;
+        let cIco = "🔴", cDesc = "Dominan ventas a mercado";
+        if (cvdRatio >= 54.0) {
+          cIco = "🟢"; cDesc = "Compras agresivas de ballenas"; score++;
+        } else if (cvdRatio >= 45.0) {
+          cIco = "🟠"; cDesc = "Equilibrado (cerca de compras)";
+        }
+
+        // 4. Semáforo Libro de Órdenes (OBI % Bids y Muros)
+        const bids = depthRes?.data?.bids || [];
+        const asks = depthRes?.data?.asks || [];
+        const bVal = bids.reduce((a: number, [p, q]: any) => a + parseFloat(p) * parseFloat(q), 0);
+        const aVal = asks.reduce((a: number, [p, q]: any) => a + parseFloat(p) * parseFloat(q), 0);
+        const obi = (bVal + aVal) > 0 ? (bVal / (bVal + aVal)) * 100 : 50;
+        let oIco = "🔴", oDesc = "Muro de venta bloqueando";
+        if (obi >= 52.0) {
+          oIco = "🟢"; oDesc = "Soporte de compra sólido"; score++;
+        } else if (obi >= 36.0) {
+          oIco = "🟠"; oDesc = "Libro neutral";
+        }
+
+        // 5. Semáforo Bitcoin
+        let bIco = "🔴", bDesc = "BTC en caída (veto activo)";
+        if (macro.btcStressIndex <= 0.45 && !macro.isMacroStorm) {
+          bIco = "🟢"; bDesc = "BTC estable / sin peligro"; score++;
+        } else if (macro.btcStressIndex <= 0.65) {
+          bIco = "🟠"; bDesc = "BTC en corrección moderada";
+        }
+
+        const triggerPrice = w.lowestPrice * (1 + reqBounce / 100);
+
+        txt += `🪙 <b>${sym}</b> [${score}/5 Requisitos] <i>(${mins} min acechando)</i>\n`;
+        txt += `• Piso: <b>$${fmtPrice(w.lowestPrice)}</b> | Actual: <b>$${fmtPrice(cur)}</b>\n`;
+        txt += `• Disparo en: <b>$${fmtPrice(triggerPrice)}</b> (+${reqBounce.toFixed(2)}% desde piso)\n`;
+        txt += `${rIco} <b>Rebote:</b> +${bounce.toFixed(2)}% (${rDesc})\n`;
+        txt += `${vIco} <b>Vela 5m:</b> ${vDesc}\n`;
+        txt += `${cIco} <b>Flujo Ballenas (CVD):</b> ${cvdRatio.toFixed(1)}% (${cDesc})\n`;
+        txt += `${oIco} <b>Libro Depth (OBI):</b> ${obi.toFixed(0)}% Bids (${oDesc})\n`;
+        txt += `${bIco} <b>Semáforo Bitcoin:</b> ${bDesc}\n\n`;
+      } catch (e: any) {
+        txt += `🪙 <b>${sym}:</b> Error consultando telemetría en vivo (${e.message})\n\n`;
+      }
     }
     return txt;
   }
