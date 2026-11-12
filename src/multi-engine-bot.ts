@@ -1977,12 +1977,17 @@ export class TrailingMasterBot {
           const dropFromPeak = ((pos.highestPrice - curPrice) / pos.highestPrice) * 100;
           const hitHardCap = gainPct >= TRAILING_HARD_CAP_PCT;
           let callback = pos.strategy === "micro_grid" ? 0.12 : this.getCallbackPct(symbol, pos);
-          let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.48 : 0.80);
+          let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.45 : 0.65);
 
-          // 🌆 COMPRESIÓN CUANTITATIVA EN DÍAS QUIETOS, WEEKEND PLANO, PRE-WEEKEND, COSECHA PRE-NOCTURNA O ANTI-ESTANCAMIENTO:
-          if (!pos.customMinGainPct && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode) && gainPct >= 0.50) {
-            callback = Math.min(callback, (isPreWeekendHarvest || isReliefHarvestMode) ? 0.15 : 0.16);
-            minGain = 0.50;
+          // 🦎 ADAPTACIÓN CAMALEÓN DE SALIDA SEGÚN RÉGIMEN EN VIVO:
+          // • En Tendencia Alcista Fuerte (btcStress <= 0.22): amplía el margen de persecución (callback * 1.20) para exprimir corridas de +1.5% a +3.5%.
+          // • En Lateral Comprimido / Corrección Bajista / Anti-Estancamiento: comprime el callback (0.14% - 0.16%) para cobrar quirúrgicamente cada rebote.
+          if (!pos.customMinGainPct && macro.btcStressIndex <= 0.22 && !isPreNightHarvest && !isStagnantPosition) {
+            callback = Number((callback * 1.20).toFixed(2));
+            minGain = 0.75;
+          } else if (!pos.customMinGainPct && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode) && gainPct >= 0.46) {
+            callback = Math.min(callback, (isPreWeekendHarvest || isReliefHarvestMode) ? 0.14 : 0.16);
+            minGain = 0.46;
           }
 
           // 🕯️ CENTINELA DE MECHA DE RECHAZO, DESCARGA CVD EN CIMA Y ESCUDO ANTI-VENTA TEMPRANA
@@ -2960,37 +2965,68 @@ export class TrailingMasterBot {
           continue;
         }
 
-        // 📐 AUTO-CALIBRACIÓN INSTITUCIONAL ESTRICTA (ATR + VWAP + Estrés Macro BTC + Volumen Clímax):
-        // Prohibido armar compras en la mitad superior del rango (antes 42%, ahora máximo 26% inferior o descuento fuerte bajo VWAP).
+        // 🦎 MOTOR CAMALEÓN CUÁNTICO (AUTO-ADAPTACIÓN A LOS 4 REGÍMENES DEL MERCADO EN TIEMPO REAL):
+        // El bot detecta automáticamente si mañana el mercado cambia a Tendencia Alcista, Lateral Comprimido, Corrección Bajista o Capitulación,
+        // ajustando sus ecuaciones quirúrgicamente sin quedarse congelado ni entrar antes de tiempo.
+        const ema20 = this.calculateEMA(closes, 20);
         const atrPct = this.calculateATRPct(highs, lows, closes, 14);
-        const dynamicFibCeiling = Math.max(0.14, 0.26 - macro.btcStressIndex * 0.12);
-        const dynamicStochCeiling = Math.max(12, Math.round(22 - macro.btcStressIndex * 10));
+
+        const isBullishTrendRegime = macro.btcStressIndex <= 0.25 && ema20 >= ema50 * 0.998 && curPrice >= ema50 * 0.992;
+        const isCompressedRangeRegime = !isBullishTrendRegime && coinRange24hPct <= 3.2 && macro.btcStressIndex <= 0.45;
+        const isExtremeCapitulationRegime = macro.btcStressIndex >= 0.72;
+        const dynamicRegimeLabel = isBullishTrendRegime
+          ? "ALCISTA_IMPULSO"
+          : (isCompressedRangeRegime ? "LATERAL_COMPRIMIDO" : (isExtremeCapitulationRegime ? "CAPITULACION_EXTREMA" : "CORRECCION_BAJISTA"));
+
+        // Parámetros elásticos auto-calibrados según el régimen vivo de hoy o de mañana:
+        const dynamicFibCeiling = isBullishTrendRegime
+          ? 0.48 // En tendencia alcista los retrocesos rebotan en el 40-48% de Fibonacci o sobre EMA20/VWAP
+          : (isCompressedRangeRegime
+            ? 0.30 // En canal lateral comprimido caza el tercio inferior del canal
+            : Math.max(0.14, 0.26 - macro.btcStressIndex * 0.12)); // En mercado bajista exige el fondo extremo (14%-26%)
+
+        const dynamicStochCeiling = isBullishTrendRegime
+          ? 28
+          : (isCompressedRangeRegime ? 24 : Math.max(12, Math.round(22 - macro.btcStressIndex * 10)));
+
+        const dynamicRsiCeiling = isBullishTrendRegime
+          ? 42
+          : (isCompressedRangeRegime ? 39 : Math.max(29, Math.min(37, 36 - (macro.btcStressIndex * 8) + (coinRange24hPct * 0.12))));
+
+        const reqDynamicDrop = isBullishTrendRegime
+          ? Math.max(1.25, Math.min(3.2, atrPct * 1.65)) // En mercado alcista basta un pullback limpio de 1.25%-2.0% hacia soporte
+          : (isCompressedRangeRegime
+            ? Math.max(1.35, Math.min(2.8, atrPct * 1.90)) // En rango estrecho se adapta a la volatilidad real del día
+            : Math.max(2.4, Math.min(6.8, Math.max(atrPct * 2.4, 2.0 + coinRange24hPct * 0.28) * (1 + macro.btcStressIndex * 0.40))));
 
         // 🌊 RE-ENTRADA EN OLA POST-VENTA (WAVE SURFING):
-        // Si vendimos en ganancia y la moneda corrigió >= 0.85% más barato con StochRSI <= 30, RSI <= 41 y absorción compradora
         const isWaveReentryDip = !isMeme && isPostSaleWaveCandidate && droppedFromExit >= 0.85 && stochRsi.k <= 30 && rsi <= 41 && (takerBuyRatioPct >= 52 || hasPinbarRejection) && fibPosition24h <= 0.55;
 
-        // Exigir volumen de parada institucional (Stopping Volume >= 1.25x en las últimas 6 velas) o sobreventa extrema con descuento VWAP o Re-Entrada en Ola
-        const hasStoppingVolume = rvol >= 1.15 || maxRecentRvol >= 1.30 || rsi <= 29 || isWaveReentryDip;
+        // 🎯 RETROCESO QUIRÚRGICO EN TENDENCIA ALCISTA (BULLISH PULLBACK):
+        const isBullishPullbackDip = !isMeme && isBullishTrendRegime && dropRecentPct >= reqDynamicDrop && fibPosition24h <= dynamicFibCeiling && rsi <= dynamicRsiCeiling && stochRsi.k <= dynamicStochCeiling && (takerBuyRatioPct >= 52 || hasPinbarRejection || bb.percentB <= 0.22);
+
+        // 🎯 PISO DE CANAL EN RANGO LATERAL COMPRIMIDO (PING-PONG RANGE):
+        const isCompressedRangeDip = !isMeme && isCompressedRangeRegime && dropPct >= reqDynamicDrop && (fibPosition24h <= dynamicFibCeiling || bb.percentB <= 0.15) && rsi <= dynamicRsiCeiling && stochRsi.k <= dynamicStochCeiling;
+
+        // Exigir volumen de parada institucional o régimen alcista/lateral validado
+        const hasStoppingVolume = rvol >= 1.15 || maxRecentRvol >= 1.30 || rsi <= 29 || isWaveReentryDip || isBullishPullbackDip || (isCompressedRangeDip && rvol >= 0.95);
         const isInFibonacciDiscountZone =
           isWaveReentryDip ||
-          (fibPosition24h <= dynamicFibCeiling && distFromVwapPct <= -1.2) ||
+          isBullishPullbackDip ||
+          isCompressedRangeDip ||
+          (fibPosition24h <= dynamicFibCeiling && distFromVwapPct <= -1.0) ||
           (distFromVwapPct <= -2.2 && rsi <= 33 && stochRsi.k <= dynamicStochCeiling) ||
           (rsi <= Math.max(27, 32 - macro.btcStressIndex * 5) && stochRsi.k <= 15);
         if (!isInFibonacciDiscountZone || !hasStoppingVolume) {
           continue;
         }
 
-        // Umbral de RSI y caída auto-calibrados por ATR de la moneda y Estrés Macro de Bitcoin
-        const dynamicRsiCeiling = Math.max(29, Math.min(37, 36 - (macro.btcStressIndex * 8) + (coinRange24hPct * 0.12)));
-        const reqDynamicDrop = Math.max(2.4, Math.min(6.8, Math.max(atrPct * 2.4, 2.0 + coinRange24hPct * 0.28) * (1 + macro.btcStressIndex * 0.40)));
-
         // Condiciones cuantitativas institucionales de suelo:
         const isStochOversold = stochRsi.k <= dynamicStochCeiling || rsi <= Math.max(27, 31 - macro.btcStressIndex * 4);
-        const isBollingerOversold = isNearLowerBollinger && rsi <= Math.min(36, dynamicRsiCeiling) && dropPct >= Math.max(2.2, reqDynamicDrop * 0.80) && isStochOversold;
-        const isWideGapDip = !isMeme && (upsideGapPct >= reqDynamicDrop && dropPct >= Math.min(2.8, reqDynamicDrop * 0.90)) && rsi <= dynamicRsiCeiling && stochRsi.k <= dynamicStochCeiling && fibPosition24h <= Math.min(0.24, dynamicFibCeiling);
-        const isStandardDip = ((dropPct >= Math.max(2.5, reqDynamicDrop * 0.90) && rsi <= Math.min(35, dynamicRsiCeiling) && isStochOversold) || isBollingerOversold || isWideGapDip || (rsi <= 29 && stochRsi.k <= 16));
-        const isWickRebound = hasPinbarRejection && dropPct >= Math.max(2.2, atrPct * 1.8) && rsi <= Math.min(36, dynamicRsiCeiling) && stochRsi.k <= Math.min(24, dynamicStochCeiling + 3) && rvol >= 1.20;
+        const isBollingerOversold = isNearLowerBollinger && rsi <= Math.min(38, dynamicRsiCeiling) && dropPct >= Math.max(1.5, reqDynamicDrop * 0.80) && isStochOversold;
+        const isWideGapDip = !isMeme && (upsideGapPct >= reqDynamicDrop && dropPct >= Math.min(2.8, reqDynamicDrop * 0.90)) && rsi <= dynamicRsiCeiling && stochRsi.k <= dynamicStochCeiling && fibPosition24h <= Math.min(0.28, dynamicFibCeiling);
+        const isStandardDip = ((dropPct >= Math.max(1.5, reqDynamicDrop * 0.90) && rsi <= dynamicRsiCeiling && isStochOversold) || isBollingerOversold || isWideGapDip || (rsi <= 29 && stochRsi.k <= 16));
+        const isWickRebound = hasPinbarRejection && dropPct >= Math.max(1.6, atrPct * 1.7) && rsi <= dynamicRsiCeiling && stochRsi.k <= Math.min(28, dynamicStochCeiling + 3) && rvol >= 1.15;
 
         // 🐶 ESCUDO 3 (FILTRO DE HIERRO PARA MEMECOINS):
         const isMemeExtremeDip =
@@ -2999,7 +3035,7 @@ export class TrailingMasterBot {
           (rsi <= 27 && dropPct >= 3.2 && hasPinbarRejection && bb.percentB <= 0.10);
         const isDip = isMeme
           ? isMemeExtremeDip
-          : (isStandardDip || isWickRebound || isWaveReentryDip);
+          : (isStandardDip || isWickRebound || isWaveReentryDip || isBullishPullbackDip || isCompressedRangeDip);
 
         if (isDip) {
           this.buyWatches.set(sym, {
