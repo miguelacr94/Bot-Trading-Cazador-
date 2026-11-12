@@ -1985,14 +1985,15 @@ export class TrailingMasterBot {
             minGain = 0.50;
           }
 
-          // 🕯️ CENTINELA DE MECHA DE RECHAZO Y DESCARGA CVD EN CIMA (ORDER FLOW EXHAUSTION)
+          // 🕯️ CENTINELA DE MECHA DE RECHAZO, DESCARGA CVD EN CIMA Y ESCUDO ANTI-VENTA TEMPRANA
           let isRejectionWick = false;
           let isOrderFlowExhaustion = false;
-          if (gainPct >= 0.55 && dropFromPeak >= 0.08) {
+          let isBullishMomentumAlive = false;
+          if (gainPct >= 0.23 && dropFromPeak >= 0.06) {
             try {
               const [klines15, klines5] = await Promise.all([
                 this.client.klines(actualSymbol, "15m", { limit: 2 }),
-                this.client.klines(actualSymbol, "5m", { limit: 2 })
+                this.client.klines(actualSymbol, "5m", { limit: 12 })
               ]);
               const lastK15 = klines15.data[klines15.data.length - 1];
               const o = parseFloat(lastK15[1]), h = parseFloat(lastK15[2]), l = parseFloat(lastK15[3]), c = parseFloat(lastK15[4]);
@@ -2004,15 +2005,25 @@ export class TrailingMasterBot {
                 console.log(`🕯️ [MECHA DE RECHAZO EN CIMA] ${symbol}: mecha superior ${(upperWickRatio * 100).toFixed(0)}% >= 35%. Gatillando venta inmediata.`);
               }
 
-              // Lectura de CVD (Taker Buy Quote Volume) en la vela actual de 5m:
-              // Si las ballenas empiezan a descargar ventas a mercado (>65% venta agresiva) tras subir >= +0.55%, cobrar en la cima
+              // Lectura de CVD (Taker Buy Quote Volume) y EMA 9 en 5m:
               const lastK5 = klines5.data[klines5.data.length - 1];
               const totQuote5 = parseFloat(lastK5[7] || "0");
               const buyQuote5 = parseFloat(lastK5[10] || "0");
               const buyRatio5 = totQuote5 > 0 ? (buyQuote5 / totQuote5) * 100 : 50;
-              if (totQuote5 > 5000 && buyRatio5 <= 35.0 && dropFromPeak >= 0.10) {
+              const closes5 = klines5.data.map((r: any) => parseFloat(r[4]));
+              const ema9_5m = this.calculateEMA(closes5, 9);
+
+              // 1. Si las ballenas descargan ventas (>65% venta agresiva) tras subir >= +0.55%, cobrar en la cima
+              if (gainPct >= 0.55 && totQuote5 > 5000 && buyRatio5 <= 35.0 && dropFromPeak >= 0.10) {
                 isOrderFlowExhaustion = true;
                 console.log(`🌊 [DESCARGA DE BALLENAS DETECTADA EN CIMA] ${symbol}: CVD Compras cayó a ${buyRatio5.toFixed(1)}% en 5m con ganancia +${gainPct.toFixed(2)}%. Cobrando antes del giro.`);
+              }
+
+              // 2. ESCUDO ANTI-VENTA TEMPRANA (RESPIRO ALCISTA CON BALLENAS COMPRANDO):
+              // Si el precio hace un micro-retroceso pero sigue SOBRE la EMA 9 de 5m y las ballenas siguen comprando agresivamente (CVD >= 57%),
+              // y tenemos colchón seguro (>= +0.24%), NO vender prematuramente en el primer respiro: dejar que corra hacia el siguiente escalón.
+              if (curPrice >= ema9_5m && buyRatio5 >= 57.0 && gainPct >= 0.24 && !isRejectionWick) {
+                isBullishMomentumAlive = true;
               }
             } catch(e) {}
           }
@@ -2020,16 +2031,21 @@ export class TrailingMasterBot {
           let hitLockedFloor = false;
           if (pos.lockedFloorGainPct && pos.lockedFloorGainPct > 0) {
             const peakGain = ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100;
-            // Solo se activa si el precio estuvo POR ENCIMA del piso asegurado (con un margen de respiro de 0.08%)
-            // y luego retrocede y cruza hacia abajo tocando el piso.
             const hasBufferAboveFloor = peakGain >= pos.lockedFloorGainPct + 0.08;
             if (hasBufferAboveFloor && gainPct <= pos.lockedFloorGainPct && gainPct >= 0.22) {
-              hitLockedFloor = true;
-              console.log(`🔒 [CANDADO CERO DEVOLUCIÓN EJECUTADO] ${symbol}: Ganancia actual +${gainPct.toFixed(2)}% tocó el piso blindado (+${pos.lockedFloorGainPct.toFixed(2)}%). Asegurando ganancia en USDT.`);
+              // Si el impulso alcista sigue vivo (CVD >= 57% y sobre EMA9) y aún estamos por encima del piso de emergencia (+0.23%),
+              // damos respiro para no hacer una venta temprana; si cae a <= 0.23% o se apaga el CVD, vende sin falta.
+              if (isBullishMomentumAlive && gainPct >= 0.25 && pos.lockedFloorGainPct <= 0.45) {
+                console.log(`🚀 [EVITANDO VENTA TEMPRANA: ${symbol}] Micro-respiro a +${gainPct.toFixed(2)}%, pero ballenas siguen comprando (CVD >= 57% y sobre EMA9 5m). Dejando correr ola alcista.`);
+              } else {
+                hitLockedFloor = true;
+                console.log(`🔒 [CANDADO CERO DEVOLUCIÓN EJECUTADO] ${symbol}: Ganancia actual +${gainPct.toFixed(2)}% tocó el piso blindado (+${pos.lockedFloorGainPct.toFixed(2)}%). Asegurando ganancia en USDT.`);
+              }
             }
           }
-          // CANDADO SUPREMO: hitCallback se activa por Trailing regular (>= minGain) O por Piso Asegurado (>= 0.22% neto)
-          const hitCallback = (dropFromPeak >= callback && gainPct >= minGain) || (hitLockedFloor && gainPct >= 0.22);
+          // CANDADO SUPREMO: hitCallback también respeta el escudo anti-venta temprana salvo que caiga más de 1.5x el callback
+          const effectiveCallbackTrigger = isBullishMomentumAlive ? (dropFromPeak >= callback * 1.55) : (dropFromPeak >= callback);
+          const hitCallback = (effectiveCallbackTrigger && gainPct >= minGain) || (hitLockedFloor && gainPct >= 0.22);
 
           // CANDADO FÉRREO: Venta autorizada si supera el mínimo de seguridad (>= 0.22% para candado cero devolución, o >= 0.45% para trailing regular)
           const minAllowedExit = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.24) ? 0.22 : (pos.strategy === "micro_grid" ? 0.44 : 0.45);
@@ -2853,19 +2869,23 @@ export class TrailingMasterBot {
 
         const curPrice = closes[closes.length - 1];
 
-        // Cooldown post-venta inteligente: Si cayó >= 2.5% respecto a la salida, se levanta de inmediato
+        // Cooldown y Re-Entrada en Ola Post-Venta (Wave Surfing):
+        // Si acabamos de vender en ganancia y la moneda corrige enseguida >= 0.80% por debajo de nuestra venta,
+        // habilitamos la Re-Entrada en Ola para volver a comprar más barato y montarnos en la siguiente subida.
         const lastSold = this.recentlySoldSymbols.get(sym);
+        let droppedFromExit = 0;
+        let isPostSaleWaveCandidate = false;
         if (lastSold) {
           const elapsed = Date.now() - lastSold.time;
-          if (elapsed < 20 * 60 * 1000) {
-            const droppedFromExit = lastSold.sellPrice && lastSold.sellPrice > 0
-              ? ((lastSold.sellPrice - curPrice) / lastSold.sellPrice) * 100
-              : 0;
-            if (droppedFromExit < 2.5) {
-              continue; // Cooldown post-venta activo: evitar recomprar en el mismo techo
-            } else {
-              console.log(`🎯 [COOLDOWN LEVANTADO] ${sym} cayó ${droppedFromExit.toFixed(2)}% tras la salida. Re-entrada autorizada.`);
-            }
+          droppedFromExit = lastSold.sellPrice && lastSold.sellPrice > 0
+            ? ((lastSold.sellPrice - curPrice) / lastSold.sellPrice) * 100
+            : 0;
+          if (elapsed < 20 * 60 * 1000 && droppedFromExit < 0.80) {
+            continue; // Cooldown activo solo si no ha corregido al menos -0.80% desde nuestro precio de venta
+          }
+          if (elapsed < 45 * 60 * 1000 && droppedFromExit >= 0.85) {
+            isPostSaleWaveCandidate = true;
+            console.log(`🌊 [RE-ENTRADA EN OLA DETECTADA] ${sym} corrigió -${droppedFromExit.toFixed(2)}% debajo de nuestra venta ($${lastSold.sellPrice} -> $${curPrice}). Evaluando piso de recompra.`);
           }
         }
 
@@ -2946,9 +2966,14 @@ export class TrailingMasterBot {
         const dynamicFibCeiling = Math.max(0.14, 0.26 - macro.btcStressIndex * 0.12);
         const dynamicStochCeiling = Math.max(12, Math.round(22 - macro.btcStressIndex * 10));
 
-        // Exigir volumen de parada institucional (Stopping Volume >= 1.25x en las últimas 6 velas) o sobreventa extrema con descuento VWAP
-        const hasStoppingVolume = rvol >= 1.15 || maxRecentRvol >= 1.30 || rsi <= 29;
+        // 🌊 RE-ENTRADA EN OLA POST-VENTA (WAVE SURFING):
+        // Si vendimos en ganancia y la moneda corrigió >= 0.85% más barato con StochRSI <= 30, RSI <= 41 y absorción compradora
+        const isWaveReentryDip = !isMeme && isPostSaleWaveCandidate && droppedFromExit >= 0.85 && stochRsi.k <= 30 && rsi <= 41 && (takerBuyRatioPct >= 52 || hasPinbarRejection) && fibPosition24h <= 0.55;
+
+        // Exigir volumen de parada institucional (Stopping Volume >= 1.25x en las últimas 6 velas) o sobreventa extrema con descuento VWAP o Re-Entrada en Ola
+        const hasStoppingVolume = rvol >= 1.15 || maxRecentRvol >= 1.30 || rsi <= 29 || isWaveReentryDip;
         const isInFibonacciDiscountZone =
+          isWaveReentryDip ||
           (fibPosition24h <= dynamicFibCeiling && distFromVwapPct <= -1.2) ||
           (distFromVwapPct <= -2.2 && rsi <= 33 && stochRsi.k <= dynamicStochCeiling) ||
           (rsi <= Math.max(27, 32 - macro.btcStressIndex * 5) && stochRsi.k <= 15);
@@ -2974,7 +2999,7 @@ export class TrailingMasterBot {
           (rsi <= 27 && dropPct >= 3.2 && hasPinbarRejection && bb.percentB <= 0.10);
         const isDip = isMeme
           ? isMemeExtremeDip
-          : (isStandardDip || isWickRebound);
+          : (isStandardDip || isWickRebound || isWaveReentryDip);
 
         if (isDip) {
           this.buyWatches.set(sym, {
