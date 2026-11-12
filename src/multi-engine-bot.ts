@@ -1760,6 +1760,10 @@ export class TrailingMasterBot {
         const dbPos = await supabaseDb.loadActivePositions();
         if (dbPos && dbPos.size > 0) {
           this.activeTrailingPositions = this.mergePositionsPreservingState(dbPos);
+          try {
+            const file = path.resolve(process.cwd(), ".trailing-positions.json");
+            fs.writeFileSync(file, JSON.stringify(Array.from(this.activeTrailingPositions.entries()), null, 2));
+          } catch {}
           console.log(`☁️ [SUPABASE CLOUD] ${this.activeTrailingPositions.size} posiciones vivas sincronizadas desde Supabase DB.`);
           return;
         }
@@ -5414,20 +5418,12 @@ export class TrailingMasterBot {
     }
 
     // Calcular montos exactos respetando los mínimos de Binance ($10 USDT) y el Piso Estratégico
-    let reservedUsdt = 0;
-    let spendableUsdt = totalFreeUsdt;
-
-    // 🎯 MODO FRANCOTIRADOR ESPECIAL $100 USDT (ACUMULACIÓN ESTRICTA DEL BLOQUE DE $100):
-    // Mientras el efectivo libre sea menor a $95 USDT, se guarda al 100% en la bóveda de acumulación (spendable = 0)
-    // para que NO se gaste en compras pequeñas a medida que se van cerrando las posiciones actuales.
-    // En cuanto el efectivo libre alcance >= $95 USDT, se desbloquea el bloque completo para el Tiro Especial de $100 USDT.
-    if (totalFreeUsdt >= 95) {
-      reservedUsdt = Math.max(0, Math.round((totalFreeUsdt - 100) * 100) / 100);
-      spendableUsdt = totalFreeUsdt;
-    } else {
-      reservedUsdt = totalFreeUsdt;
-      spendableUsdt = 0;
+    let reservedUsdt = Math.max(strategicFloorUsdt, Math.round(totalFreeUsdt * reservePct * 100) / 100);
+    if (totalFreeUsdt >= this.minUsdtToTrade && (totalFreeUsdt - reservedUsdt) < this.minUsdtToTrade) {
+      // Garantizar al menos 1 lote quirúrgico si hay saldo suficiente (>= $18 USDT)
+      reservedUsdt = totalFreeUsdt >= 18 ? Math.max(0, Math.round((totalFreeUsdt - Math.max(18, totalFreeUsdt * 0.65)) * 100) / 100) : 0;
     }
+    let spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
 
     return {
       sessionKey,
@@ -5512,19 +5508,19 @@ export class TrailingMasterBot {
           : Math.max(20, Math.min(28, totalPortfolioEst * 0.10));
       }
     } else if (tier === 2) {
-      // Lote 2 (Refuerzo Piramidal): Mayor peso que Lote 1 para arrastrar el precio promedio pegado al piso
-      effectiveFraction = Math.max(lotFractionPct, 0.65);
-      tierMultiplier = 1.50;
+      // Lote 2 (Refuerzo Piramidal Quirúrgico en caída -3.8% a -5.4%): $22 - $30 USDT Core ($15 - $20 Meme)
+      effectiveFraction = Math.max(lotFractionPct, 0.55);
+      tierMultiplier = 1.35;
       tierMaxCap = isMeme
-        ? Math.max(24, Math.min(36, totalPortfolioEst * 0.13))
-        : Math.max(32, Math.min(48, totalPortfolioEst * 0.17));
+        ? Math.max(15, Math.min(20, totalPortfolioEst * 0.08))
+        : Math.max(22, Math.min(30, totalPortfolioEst * 0.12));
     } else if (tier === 3) {
-      // Lote 3 (Golpe Maestro en Capitulación): Máximo poder de fuego
-      effectiveFraction = Math.max(lotFractionPct, 0.80);
-      tierMultiplier = 1.85;
+      // Lote 2 Profundo (>= -5.5%) o Lote 3 (Capitulación >= -6.5%): $35 - $45 USDT Core ($22 - $28 Meme)
+      effectiveFraction = Math.max(lotFractionPct, 0.70);
+      tierMultiplier = 1.65;
       tierMaxCap = isMeme
-        ? Math.max(30, Math.min(44, totalPortfolioEst * 0.16))
-        : Math.max(38, Math.min(58, totalPortfolioEst * 0.21));
+        ? Math.max(22, Math.min(28, totalPortfolioEst * 0.11))
+        : Math.max(35, Math.min(45, totalPortfolioEst * 0.16));
     }
 
     let lot = Math.floor(spendableUsdt * effectiveFraction * allocMultiplier * tierMultiplier * 100) / 100;
