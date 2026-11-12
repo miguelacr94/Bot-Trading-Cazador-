@@ -5866,7 +5866,6 @@ export class TrailingMasterBot {
       await this.checkMarketRegime();
       await this.checkTimeframeAdvisor();
       await this.checkRegimeSwitchTimeout();
-
       // Auto-sincronizar periódicamente posiciones de Binance
       this.cycleCount = (this.cycleCount || 0) + 1;
       if (this.cycleCount % 6 === 1) {
@@ -6249,11 +6248,11 @@ export class TrailingMasterBot {
     // 🌐 CONSUMIR DATOS PRIORITARIOS DESDE SUPABASE CLOUD DB
     await this.syncFromSupabase();
 
-    await this.telegramCommands.start();
+    this.telegramCommands.start().catch((err: any) => console.error("Error iniciando Telegram:", err.message));
     this.futuresEngine.start(4000);
     console.log(`📱 Telegram listo para recibir órdenes por chat.`);
 
-    await this.syncOrphanPositions();
+    this.syncOrphanPositions().catch((e: any) => console.error("Error en syncOrphanPositions:", e.message));
     await this.runCycle();
     setInterval(() => this.runCycle(), 3500);
   }
