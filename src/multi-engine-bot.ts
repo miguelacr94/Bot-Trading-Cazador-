@@ -3117,113 +3117,66 @@ export class TrailingMasterBot {
         const botAvailableUsdt = Math.max(0, usdt - this.walletSplit.manualUsdt);
         const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(botAvailableUsdt);
         const isMemeCoin = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE") || sym.includes("SHIB");
-        const baseBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
-        const stressAddon = macro.btcStressIndex * 0.10;
-        const reqBounce = (isMemeCoin ? Math.max(0.45, baseBounce) : Math.max(0.32, baseBounce)) + stressAddon;
+        // Sincronización 100% exacta con el Semáforo de la Interfaz Web (+0.35% monedas principales, +0.45% memes)
+        const reqBounce = isMemeCoin ? 0.45 : 0.35;
         const strat = w.strategy || "trailing_rebound";
         const effectiveSpendable = (strat === "cazador_weekend" && this.isWeekendWindow())
           ? Math.max(sessionPlan.spendableUsdt, usdt)
           : sessionPlan.spendableUsdt;
 
         if (bounce >= reqBounce && effectiveSpendable >= this.minUsdtToTrade) {
-          // 🚦 ESCUDO 1: FLUJO DE ÓRDENES DE BITCOIN (CVD + MTF 1H/15M/5M)
-          // 🧱 ESCUDO 2: ESCÁNER DE LIBRO DE ÓRDENES (/depth 50 niveles - OBI & SELL WALLS)
-          // 🕯️ ESCUDO 3: SECUENCIA DE ABSORCIÓN + ORDER FLOW CVD COMBINADO
+          // 🚦 SINCRONIZACIÓN 1 A 1 CON LOS 5 INDICADORES DEL SEMÁFORO EN VIVO:
+          // 1. Rebote >= reqBounce (+0.35%)
+          // 2. Vela 5m Verde / Absorción
+          // 3. CVD Ballenas >= 50% (2 velas combinadas)
+          // 4. Libro Profundidad (50 niveles) >= 42%
+          // 5. Filtro Bitcoin (5m > -0.25%)
           let turnaroundConfirmed = true;
           try {
-            const [k5, k15, depthRes, btcK5, btcK15, btcK1h] = await Promise.all([
+            const [k5, depthRes, btcK5] = await Promise.all([
               this.client.klines(sym, "5m", { limit: 40 }),
-              this.client.klines(sym, "15m", { limit: 52 }),
               this.client.depth(sym, { limit: 50 }).catch(() => ({ data: { bids: [], asks: [] } })),
-              sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "5m", { limit: 4 }) : Promise.resolve({ data: [] }),
-              sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "15m", { limit: 4 }) : Promise.resolve({ data: [] }),
-              sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "1h", { limit: 25 }) : Promise.resolve({ data: [] })
+              sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "5m", { limit: 4 }) : Promise.resolve({ data: [] })
             ]);
 
-            // 1. Evaluar Semáforo Institucional y Order Flow de Bitcoin (BTC CVD Lead-Lag + 1H Trend)
-            if (sym !== "BTCUSDT" && btcK15?.data?.length >= 1 && btcK5?.data?.length >= 2) {
-              const b15 = btcK15.data[btcK15.data.length - 1];
-              const bo15 = parseFloat(b15[1]), bh15 = parseFloat(b15[2]), bl15 = parseFloat(b15[3]), bc15 = parseFloat(b15[4]);
-              const btcDrop15 = ((bc15 - bo15) / bo15) * 100;
-              const btcWick15 = (bh15 - bl15) > 0 ? (Math.min(bo15, bc15) - bl15) / (bh15 - bl15) : 0;
-
+            // Indicador 5: Filtro Bitcoin (5m > -0.25%)
+            if (sym !== "BTCUSDT" && btcK5?.data?.length >= 1) {
               const b5 = btcK5.data[btcK5.data.length - 1];
-              const bPrev5 = btcK5.data[btcK5.data.length - 2];
               const bo5 = parseFloat(b5[1]), bc5 = parseFloat(b5[4]);
-              const bpo5 = parseFloat(bPrev5[1]), bpc5 = parseFloat(bPrev5[4]);
               const btcDrop5 = ((bc5 - bo5) / bo5) * 100;
-              const btcTwoRed5m = bc5 < bo5 && bpc5 < bpo5 && btcDrop5 <= -0.18;
-
-              // CVD de Bitcoin en los últimos 5m (Flujo neto de dólares institucionales en BTC)
-              const btcTotQuote5 = parseFloat(b5[7] || "0");
-              const btcBuyQuote5 = parseFloat(b5[10] || "0");
-              const btcBuyRatio5 = btcTotQuote5 > 0 ? (btcBuyQuote5 / btcTotQuote5) * 100 : 50;
-              const btcNetDeltaUsdt = (2 * btcBuyQuote5) - btcTotQuote5;
-              const btcHeavySellingFlow = btcTotQuote5 > 500000 && btcBuyRatio5 < 40.0 && btcNetDeltaUsdt < -1800000;
-
-              if ((btcDrop15 <= -0.35 && btcWick15 < 0.25) || btcDrop5 <= -0.25 || btcTwoRed5m || btcHeavySellingFlow) {
-                console.log(`🚦 [ESCUDO ORDER FLOW BTC: ${sym}] BTC en caída activa (15m: ${btcDrop15.toFixed(2)}% | 5m: ${btcDrop5.toFixed(2)}% | CVD: ${btcBuyRatio5.toFixed(1)}%). Reteniendo compra.`);
+              if (btcDrop5 <= -0.25) {
+                console.log(`🚦 [SEMÁFORO 5/5 RETENIDO - BTC: ${sym}] BTC cayendo en 5m (${btcDrop5.toFixed(2)}% <= -0.25%). Esperando estabilidad.`);
                 continue;
               }
             }
 
-            // 2. Evaluar Libro de Órdenes en Vivo (/api/v3/depth 50 niveles: evita apagarse al despegar del piso)
+            // Indicador 4: Libro Profundidad (50 niveles >= 42%)
             let obiPct = 50;
-            let hasBlockingSellWall = false;
             const bids = depthRes?.data?.bids || [];
             const asks = depthRes?.data?.asks || [];
             if (bids.length > 0 && asks.length > 0) {
               const bidUsdt = bids.reduce((acc: number, [p, q]: any) => acc + parseFloat(p) * parseFloat(q), 0);
               const askUsdt = asks.reduce((acc: number, [p, q]: any) => acc + parseFloat(p) * parseFloat(q), 0);
               obiPct = (bidUsdt + askUsdt) > 0 ? (bidUsdt / (bidUsdt + askUsdt)) * 100 : 50;
-
-              // Detectar si existe un Muro de Venta (Sell Wall) gigante a menos de +0.95% del precio actual
-              const maxAskCeiling = cur * 1.0095;
-              let biggestNearAskWall = 0;
-              for (const [ap, aq] of asks) {
-                const askP = parseFloat(ap);
-                const askVal = askP * parseFloat(aq);
-                if (askP <= maxAskCeiling && askVal > biggestNearAskWall) {
-                  biggestNearAskWall = askVal;
-                }
-              }
-              if (biggestNearAskWall > bidUsdt * 0.75 && obiPct < 38) {
-                hasBlockingSellWall = true;
-              }
-              if (obiPct < 32.0 || hasBlockingSellWall) {
-                console.log(`🧱 [ESCUDO LIBRO DE ÓRDENES: ${sym}] Muro de venta bloqueando (Bids OBI: ${obiPct.toFixed(1)}%). Esperando absorción.`);
+              if (obiPct < 42.0) {
+                console.log(`🧱 [SEMÁFORO 5/5 RETENIDO - DEPTH: ${sym}] Libro OBI en ${obiPct.toFixed(1)}% (< 42%). Esperando soporte.`);
                 continue;
               }
             }
 
-            // 3. Evaluar Cascada 15m severa
-            if (k15?.data?.length >= 3) {
-              const last15 = k15.data[k15.data.length - 1];
-              const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
-              const drop15Pct = ((c15 - o15) / o15) * 100;
-              const wick15 = (h15 - l15) > 0 ? (Math.min(o15, c15) - l15) / (h15 - l15) : 0;
-
-              if (drop15Pct <= -0.55 && wick15 < 0.25) {
-                console.log(`⏳ [FILTRO ANTI-CASCADA 15M: ${sym}] Vela 15m en caída fuerte (${drop15Pct.toFixed(2)}%, mecha ${(wick15 * 100).toFixed(0)}%). Esperando piso.`);
-                continue;
-              }
-            }
-
-            // 4. Evaluar Absorción en 5m + Order Flow CVD Combinado (2 velas para no perder señal al abrir vela nueva)
-            if (k5?.data?.length >= 6) {
+            // Indicadores 2 y 3: Vela 5m (Verde/Absorción) + CVD Ballenas (>= 50%)
+            if (k5?.data?.length >= 2) {
               const last5 = k5.data[k5.data.length - 1];
               const prev5 = k5.data[k5.data.length - 2];
               const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]);
-              const po5 = parseFloat(prev5[1]), ph5 = parseFloat(prev5[2]), pl5 = parseFloat(prev5[3]), pc5 = parseFloat(prev5[4]);
+              const pc5 = parseFloat(prev5[4]);
 
-              // Cálculo de Order Flow (Taker Buy Ratio %) en la vela actual y combinada con la previa
               const totQuote5 = parseFloat(last5[7] || "0");
               const buyQuote5 = parseFloat(last5[10] || "0");
               const takerBuyRatio5m = totQuote5 > 0 ? (buyQuote5 / totQuote5) * 100 : 50;
 
               const prevTotQuote5 = parseFloat(prev5[7] || "0");
               const prevBuyQuote5 = parseFloat(prev5[10] || "0");
-              const prevTakerBuyRatio5m = prevTotQuote5 > 0 ? (prevBuyQuote5 / prevTotQuote5) * 100 : 50;
               const combinedTotQuote = totQuote5 + prevTotQuote5;
               const combinedBuyRatio5m = combinedTotQuote > 0 ? ((buyQuote5 + prevBuyQuote5) / combinedTotQuote) * 100 : 50;
               const effectiveCvd = Math.max(takerBuyRatio5m, combinedBuyRatio5m);
@@ -3232,29 +3185,17 @@ export class TrailingMasterBot {
               const lowerWick5 = range5 > 0 ? (Math.min(o5, c5) - l5) / range5 : 0;
               const isGreen5m = c5 >= o5 || (c5 > pc5 && lowerWick5 >= 0.20) || lowerWick5 >= 0.30;
 
-              // Compras agresivas institucionales reales (>= 50% flujo comprador o soporte sólido en libro):
-              const hasRealAggressiveBuying =
-                effectiveCvd >= 50.0 ||
-                (effectiveCvd >= 46.0 && prevTakerBuyRatio5m >= 50.0) ||
-                (effectiveCvd >= 45.0 && obiPct >= 50.0);
-
-              if (!hasRealAggressiveBuying) {
-                console.log(`🚫 [TRAMPA DE LIQUIDEZ EVITADA: ${sym}] Rebote +${bounce.toFixed(2)}% rechazado por CVD vendedor (CVD: ${effectiveCvd.toFixed(1)}% | OBI: ${obiPct.toFixed(1)}%).`);
+              if (effectiveCvd < 50.0) {
+                console.log(`🚫 [SEMÁFORO 5/5 RETENIDO - CVD: ${sym}] Rebote +${bounce.toFixed(2)}% con CVD en ${effectiveCvd.toFixed(1)}% (< 50%).`);
                 continue;
               }
 
-              const closes5m = k5.data.map((row: any) => parseFloat(row[4]));
-              const rsi5m = this.calculateRSI(closes5m, 14);
-              const stoch5m = this.calculateStochRSI(closes5m, 14, 14, 3, 3);
-
-              // Confirmación ágil sincronizada 1 a 1 con el Semáforo:
-              const notOverbought = stoch5m.k <= 80 && rsi5m <= 68;
-              turnaroundConfirmed = isGreen5m && hasRealAggressiveBuying && notOverbought;
-
-              if (!turnaroundConfirmed) {
-                console.log(`⏳ [CONFIRMACIÓN DE SUELO: ${sym}] Rebote +${bounce.toFixed(2)}% esperando vela/flujo (VelaVerde=${isGreen5m}, CVD=${effectiveCvd.toFixed(1)}%, OBI=${obiPct.toFixed(1)}%, StochK=${stoch5m.k.toFixed(0)}).`);
+              if (!isGreen5m) {
+                console.log(`⏳ [SEMÁFORO 5/5 RETENIDO - VELA 5M: ${sym}] Rebote +${bounce.toFixed(2)}% esperando vela 5m verde/absorción.`);
                 continue;
               }
+
+              turnaroundConfirmed = true;
             }
           } catch {}
 
@@ -5994,9 +5935,12 @@ export class TrailingMasterBot {
 
         // Bolsillo 5: Francotirador Especial $100 USDT (Se activa en cuanto reúne el bloque >= $95 USDT)
         if (!dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins) {
-          await this.scanForDips(activeSymbols);
+          let bought = false;
           if (this.buyWatches.size > 0 && hasSniper100Ready) {
-            await this.checkBuyWatches(sessionPlan.spendableUsdt);
+            bought = await this.checkBuyWatches(sessionPlan.spendableUsdt);
+          }
+          if (!bought) {
+            await this.scanForDips(activeSymbols);
           }
         }
       }
@@ -6032,8 +5976,7 @@ export class TrailingMasterBot {
         const cur = parseFloat(tickerRes.data.price);
         const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
         const isMemeCoin = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("DOGE");
-        const baseBounce = sessionPlan.trailingBounceTrigger || TRAILING_BUY_BOUNCE_PCT;
-        const reqBounce = (isMemeCoin ? Math.max(0.45, baseBounce) : Math.max(0.32, baseBounce)) + (macro.btcStressIndex * 0.10);
+        const reqBounce = isMemeCoin ? 0.45 : 0.35;
         const mins = Math.round((Date.now() - w.armedTime) / 60000);
 
         // 1. Semáforo Rebote desde el piso
@@ -6297,7 +6240,7 @@ export class TrailingMasterBot {
 
     await this.syncOrphanPositions();
     await this.runCycle();
-    setInterval(() => this.runCycle(), 7000);
+    setInterval(() => this.runCycle(), 3500);
   }
 }
 
