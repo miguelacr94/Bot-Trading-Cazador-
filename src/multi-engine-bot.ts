@@ -1864,18 +1864,27 @@ export class TrailingMasterBot {
         const isPreWeekendHarvest = this.isPreWeekendAccumulationWindow();
 
         // 🛡️ CANDADO AUTOMÁTICO CERO DEVOLUCIÓN (RATCHET FLOOR):
-        // Prohibido que una posición que ya estuvo en ganancia (+0.42% o más) se devuelva a terreno negativo.
-        // A medida que el precio sube, el piso inquebrantable sube escalón por escalón automáticamente.
+        // Prohibido que una posición que ya alcanzó su meta de activación (>= +0.68% o su customMinGainPct) se devuelva a terreno negativo.
+        // A medida que el precio sube, el piso inquebrantable sube escalón por escalón automáticamente (siempre >= +0.46% neto).
         const currentPeakGain = pos.highestPrice > pos.buyPrice
           ? Math.max(gainPct, ((pos.highestPrice - pos.buyPrice) / pos.buyPrice) * 100)
           : gainPct;
+        const minPeakToArmRatchet = Math.max(0.68, pos.customMinGainPct || 0);
         let autoRatchetFloor = 0;
-        if (currentPeakGain >= 2.50) autoRatchetFloor = 2.10;
-        else if (currentPeakGain >= 1.85) autoRatchetFloor = 1.50;
-        else if (currentPeakGain >= 1.35) autoRatchetFloor = 1.08;
-        else if (currentPeakGain >= 0.95) autoRatchetFloor = 0.72;
-        else if (currentPeakGain >= 0.65) autoRatchetFloor = 0.45;
-        else if (currentPeakGain >= 0.42) autoRatchetFloor = 0.25;
+        if (currentPeakGain >= minPeakToArmRatchet) {
+          if (currentPeakGain >= 2.50) autoRatchetFloor = 2.10;
+          else if (currentPeakGain >= 1.85) autoRatchetFloor = 1.50;
+          else if (currentPeakGain >= 1.35) autoRatchetFloor = 1.08;
+          else if (currentPeakGain >= 0.95) autoRatchetFloor = 0.72;
+          else if (currentPeakGain >= 0.68) autoRatchetFloor = 0.46;
+        }
+
+        // Si tenía un piso < 0.45% de la versión anterior y aún no ha llegado a su meta real, limpiarlo para no disparar en +0.23%
+        if (pos.lockedFloorGainPct && pos.lockedFloorGainPct < 0.45 && currentPeakGain < minPeakToArmRatchet) {
+          pos.lockedFloorGainPct = undefined;
+          if (gainPct < (pos.customMinGainPct || 0.48)) pos.activated = false;
+          this.saveTrailingPositions();
+        }
 
         if (autoRatchetFloor > 0 && (!pos.lockedFloorGainPct || pos.lockedFloorGainPct < autoRatchetFloor)) {
           pos.lockedFloorGainPct = autoRatchetFloor;
@@ -2093,7 +2102,7 @@ export class TrailingMasterBot {
     return true;
   }
 
-  private async verifyRealCostWithBinance(symbol: string, sellQty: number, price: number): Promise<{ ok: boolean; cost: number; estPnl: number; reason?: string }> {
+  private async verifyRealCostWithBinance(symbol: string, sellQty: number, price: number, targetBuyPrice?: number): Promise<{ ok: boolean; cost: number; estPnl: number; reason?: string }> {
     try {
       const asset = symbol.replace("USDT", "");
       const res = await this.client.myTrades(symbol, { limit: 1000, recvWindow: 60000 });
@@ -2126,6 +2135,14 @@ export class TrailingMasterBot {
           l.qty -= take; rem -= take;
           if (l.qty <= 1e-12) lots.shift();
         }
+      }
+      // Si estamos vendiendo un lote aislado específico (ej. Smart DCA Lote #2 comprado a $3.433),
+      // priorizar el lote cuyo unitCost coincide con targetBuyPrice (o LIFO del más reciente al más antiguo)
+      // para que un Lote #1 más caro nunca bloquee la toma de ganancia del Lote #2.
+      if (targetBuyPrice && targetBuyPrice > 0) {
+        lots.sort((a, b) => Math.abs(a.unitCost - targetBuyPrice) - Math.abs(b.unitCost - targetBuyPrice));
+      } else {
+        lots.reverse();
       }
       let rem = sellQty, cost = 0;
       for (let i = 0; i < lots.length && rem > 1e-12; i++) {
@@ -2221,7 +2238,7 @@ export class TrailingMasterBot {
 
       console.log(`🎯 [Venta Parcial 50%] Vendiendo ${sellQtyStr} ${asset} en ${pos.symbol} a ~${exitPrice} para asegurar ganancia en la cima...`);
       const tradeSym = actualSymbol;
-      const realCheckP = await this.verifyRealCostWithBinance(tradeSym, sellQty, exitPrice);
+      const realCheckP = await this.verifyRealCostWithBinance(tradeSym, sellQty, exitPrice, pos.buyPrice);
       if (!realCheckP.ok) {
         console.error(`🛑 [CORE SHIELD: COSTO REAL] Venta parcial de ${pos.symbol} BLOQUEADA: ${realCheckP.reason || "Binance la registraría como pérdida (" + realCheckP.estPnl.toFixed(3) + " USDT)"}`);
         return false;
@@ -2337,10 +2354,10 @@ export class TrailingMasterBot {
 
       if (!isManualExit) {
         // En cualquier salida automática (trailing, callback, agotamiento, mecha de rechazo):
-        // BLOQUEO TOTAL INQUEBRANTABLE SI EL PRECIO ES MENOR O IGUAL A LA COMPRA
+        // BLOQUEO TOTAL INQUEBRANTABLE SI EL PRECIO ES MENOR O IGUAL A LA COMPRA O NO CUBRE EL PISO NETO (+0.45%)
         if (curCheckPrice <= pos.buyPrice || estGainPct < minNetFloor) {
-          console.error(`🛑 [CORE SHIELD: VENTA A PÉRDIDA BLOQUEADA] ${pos.symbol}: Precio ${curCheckPrice} <= Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}%). Venta CANCELADA.`);
-          if (this.shouldNotifyShield("price_" + pos.symbol)) try {
+          console.error(`🛑 [CORE SHIELD: GANANCIA INSUFICIENTE / VENTA RETENIDA] ${pos.symbol}: Precio ${curCheckPrice} vs Compra ${pos.buyPrice} (Ganancia: ${estGainPct.toFixed(2)}% < mín ${minNetFloor}%). Manteniendo lote.`);
+          if (curCheckPrice <= pos.buyPrice && this.shouldNotifyShield("price_" + pos.symbol)) try {
             await this.notifier.send(
               `🛑 <b>[CORE SHIELD: VENTA A PÉRDIDA BLOQUEADA]</b> 🛡️\n\n` +
               `• <b>Moneda:</b> <b>${pos.symbol}</b>\n` +
@@ -2366,9 +2383,9 @@ export class TrailingMasterBot {
         }
       }
 
-      // 🛡️ SEGUNDA LLAVE (COSTO REAL EN BINANCE): se calcula lo que REALMENTE costaron las monedas a vender.
-      // Si Binance registraría la venta como PÉRDIDA, se bloquea (salvo venta manual con allowLoss=true).
-      const realCheck = await this.verifyRealCostWithBinance(actualSymbol, sellQty, curCheckPrice);
+      // 🛡️ SEGUNDA LLAVE (COSTO REAL EN BINANCE): se calcula lo que REALMENTE costaron las monedas de este lote específico.
+      // Si Binance registraría la venta de este lote como PÉRDIDA, se bloquea (salvo venta manual con allowLoss=true).
+      const realCheck = await this.verifyRealCostWithBinance(actualSymbol, sellQty, curCheckPrice, pos.buyPrice);
       if (!realCheck.ok && !(isManualExit && allowLoss)) {
         const why = realCheck.reason || `Binance la registraría como PÉRDIDA (${realCheck.estPnl.toFixed(3)} USDT, costo real ${realCheck.cost.toFixed(2)} USDT)`;
         console.error(`🛑 [CORE SHIELD: COSTO REAL] Venta de ${sellQtyStr} ${asset} BLOQUEADA: ${why}`);
