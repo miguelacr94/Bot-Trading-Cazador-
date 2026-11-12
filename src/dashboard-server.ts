@@ -303,14 +303,14 @@ export class DashboardServer {
       try {
         const [kRes, dRes] = await Promise.all([
           fetch(`${BINANCE_PUBLIC}/api/v3/klines?symbol=${sym}&interval=5m&limit=4`),
-          fetch(`${BINANCE_PUBLIC}/api/v3/depth?symbol=${sym}&limit=15`)
+          fetch(`${BINANCE_PUBLIC}/api/v3/depth?symbol=${sym}&limit=50`)
         ]);
 
         const k5 = kRes.ok ? await kRes.json() : [];
         const depth = dRes.ok ? await dRes.json() : { bids: [], asks: [] };
         const curPrice = this.prices[sym] || w.lowestPrice;
         const bounce = ((curPrice - w.lowestPrice) / w.lowestPrice) * 100;
-        const reqBounce = 0.38;
+        const reqBounce = 0.35;
 
         let score = 0;
 
@@ -319,7 +319,7 @@ export class DashboardServer {
         if (bounce >= reqBounce) { bounceStatus = "green"; score++; }
         else if (bounce >= reqBounce * 0.45) { bounceStatus = "orange"; }
 
-        // 2. Vela 5m
+        // 2. Vela 5m (incluye absorción por mecha o avance sobre vela previa)
         let isGreen = false;
         let candleStatus = "red";
         let candleDesc = "Roja";
@@ -327,33 +327,41 @@ export class DashboardServer {
         let cvdStatus = "red";
         if (k5.length > 0) {
           const l5 = k5[k5.length - 1];
-          const o5 = parseFloat(l5[1]), c5 = parseFloat(l5[4]);
-          isGreen = c5 > o5;
+          const p5 = k5.length >= 2 ? k5[k5.length - 2] : l5;
+          const o5 = parseFloat(l5[1]), h5 = parseFloat(l5[2]), low5 = parseFloat(l5[3]), c5 = parseFloat(l5[4]);
+          const pc5 = parseFloat(p5[4]);
+          const wick5 = (h5 - low5) > 0 ? (Math.min(o5, c5) - low5) / (h5 - low5) : 0;
+          isGreen = c5 >= o5 || (c5 > pc5 && wick5 >= 0.20) || wick5 >= 0.30;
           if (isGreen) { candleStatus = "green"; candleDesc = "Verde"; score++; }
-          else if (Math.abs((c5 - o5) / o5) * 100 <= 0.05) { candleStatus = "orange"; candleDesc = "Doji"; }
+          else if (Math.abs((c5 - o5) / o5) * 100 <= 0.08) { candleStatus = "orange"; candleDesc = "Doji"; }
 
           const totQ = parseFloat(l5[7] || "0");
           const buyQ = parseFloat(l5[10] || "0");
-          cvdRatio = totQ > 0 ? (buyQ / totQ) * 100 : 50;
-          if (cvdRatio >= 52) { cvdStatus = "green"; score++; }
-          else if (cvdRatio >= 44) { cvdStatus = "orange"; }
+          const curCvd = totQ > 0 ? (buyQ / totQ) * 100 : 50;
+          const prevTotQ = parseFloat(p5[7] || "0");
+          const prevBuyQ = parseFloat(p5[10] || "0");
+          const combTot = totQ + prevTotQ;
+          const combCvd = combTot > 0 ? ((buyQ + prevBuyQ) / combTot) * 100 : 50;
+          cvdRatio = Math.max(curCvd, combCvd);
+          if (cvdRatio >= 50) { cvdStatus = "green"; score++; }
+          else if (cvdRatio >= 42) { cvdStatus = "orange"; }
         }
 
-        // 3. Depth
+        // 3. Depth (50 niveles para no apagarse al despegar del piso)
         const bids = depth.bids || [];
         const asks = depth.asks || [];
         const bVal = bids.reduce((acc: number, [p, q]: any) => acc + parseFloat(p) * parseFloat(q), 0);
         const aVal = asks.reduce((acc: number, [p, q]: any) => acc + parseFloat(p) * parseFloat(q), 0);
         const obi = (bVal + aVal) > 0 ? (bVal / (bVal + aVal)) * 100 : 50;
         let obiStatus = "red";
-        if (obi >= 50) { obiStatus = "green"; score++; }
-        else if (obi >= 34) { obiStatus = "orange"; }
+        if (obi >= 42) { obiStatus = "green"; score++; }
+        else if (obi >= 32) { obiStatus = "orange"; }
 
         // 4. Bitcoin
         let btcStatus = "green";
         let btcDesc = "Estable";
-        if (btcDrop5 <= -0.22) { btcStatus = "red"; btcDesc = "En caída"; }
-        else if (btcDrop5 <= -0.10) { btcStatus = "orange"; btcDesc = "Corrección"; }
+        if (btcDrop5 <= -0.25) { btcStatus = "red"; btcDesc = "En caída"; }
+        else if (btcDrop5 <= -0.15) { btcStatus = "orange"; btcDesc = "Corrección"; }
         else { score++; }
 
         const triggerPrice = w.lowestPrice * (1 + reqBounce / 100);

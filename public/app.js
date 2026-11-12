@@ -707,10 +707,10 @@
           
           // Detect missing requirements for tactical label
           const missing = [];
-          if (h.bounceStatus !== "green") missing.push(`Rebote (${(h.bouncePct || 0).toFixed(2)}% / +${(h.reqBouncePct || 0.42).toFixed(2)}%)`);
+          if (h.bounceStatus !== "green") missing.push(`Rebote (${(h.bouncePct || 0).toFixed(2)}% / +${(h.reqBouncePct || 0.35).toFixed(2)}%)`);
           if (h.candleStatus !== "green") missing.push("Vela 5m verde");
-          if (h.cvdStatus !== "green") missing.push(`CVD ballenas (${(h.cvdRatio || 50).toFixed(0)}% / 54%)`);
-          if (h.obiStatus !== "green") missing.push(`Libro Depth (${(h.obiRatio || 50).toFixed(0)}% / 52%)`);
+          if (h.cvdStatus !== "green") missing.push(`CVD ballenas (${(h.cvdRatio || 50).toFixed(0)}% / 50%)`);
+          if (h.obiStatus !== "green") missing.push(`Libro Depth (${(h.obiRatio || 50).toFixed(0)}% / 42%)`);
           if (h.btcStatus !== "green") missing.push(`BTC ${h.btcDesc}`);
 
           return `<div style="background:rgba(15,23,42,0.92); border:1px solid ${h.score === 5 ? 'rgba(16,185,129,0.5)' : 'rgba(255,255,255,0.1)'}; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow:0 4px 14px rgba(0,0,0,0.35);">
@@ -739,7 +739,7 @@
             <!-- Semáforo de 5 Requisitos Institucionales -->
             <div style="display:flex; flex-direction:column; gap:5px;">
               <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
-                <span style="font-size:11px; color:#cbd5e1;">1. Rebote Suelo (+${(h.reqBouncePct || 0.42).toFixed(2)}%)</span>
+                <span style="font-size:11px; color:#cbd5e1;">1. Rebote Suelo (+${(h.reqBouncePct || 0.35).toFixed(2)}%)</span>
                 <span class="semaforo-pill ${h.bounceStatus}">
                   ${h.bounceStatus === 'green' ? '🟢 Cumplido' : (h.bounceStatus === 'orange' ? '🟠 En camino' : '🔴 En el suelo')} (+${(h.bouncePct || 0).toFixed(2)}%)
                 </span>
@@ -751,15 +751,15 @@
                 </span>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
-                <span style="font-size:11px; color:#cbd5e1;">3. CVD Ballenas (≥ 54%)</span>
+                <span style="font-size:11px; color:#cbd5e1;">3. CVD Ballenas (≥ 50%)</span>
                 <span class="semaforo-pill ${h.cvdStatus}">
                   ${h.cvdStatus === 'green' ? '🟢 Compras' : (h.cvdStatus === 'orange' ? '🟠 Neutral' : '🔴 Ventas')} ${(h.cvdRatio || 50).toFixed(0)}%
                 </span>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
-                <span style="font-size:11px; color:#cbd5e1;">4. Libro Profundidad (≥ 52%)</span>
+                <span style="font-size:11px; color:#cbd5e1;">4. Libro Profundidad (≥ 42%)</span>
                 <span class="semaforo-pill ${h.obiStatus}">
-                  ${h.obiStatus === 'green' ? '🟢 Muro Bids' : (h.obiStatus === 'orange' ? '🟠 Equilibrado' : '🔴 Presión Asks')} ${(h.obiRatio || 50).toFixed(0)}%
+                  ${h.obiStatus === 'green' ? '🟢 Camino Libre' : (h.obiStatus === 'orange' ? '🟠 Equilibrado' : '🔴 Muro Venta')} ${(h.obiRatio || 50).toFixed(0)}%
                 </span>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:5px;">
