@@ -97,6 +97,7 @@ export class DashboardServer {
   // Caché (último valor bueno conocido)
   private prices: Record<string, number> = {};
   private radarMeta: Record<string, { rsi: number; dropPct: number }> = {};
+  private huntingTelemetry: Record<string, any> = {};
   private usdtFree: number | null = null;
   private usdtEarn: number | null = null;
   private futuresBalance: number | null = null;
@@ -275,6 +276,112 @@ export class DashboardServer {
         };
       } catch {}
     }
+  }
+
+  private async refreshHuntingTelemetry() {
+    const rawBuys = this.readJson(".trailing-buys.json");
+    if (!Array.isArray(rawBuys) || rawBuys.length === 0) {
+      this.huntingTelemetry = {};
+      return;
+    }
+
+    let btcDrop5 = 0;
+    try {
+      const bRes = await fetch(`${BINANCE_PUBLIC}/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=3`);
+      if (bRes.ok) {
+        const btcK: any[] = await bRes.json();
+        if (btcK.length > 0) {
+          const lB = btcK[btcK.length - 1];
+          btcDrop5 = ((parseFloat(lB[4]) - parseFloat(lB[1])) / parseFloat(lB[1])) * 100;
+        }
+      }
+    } catch {}
+
+    const nextTelem: Record<string, any> = {};
+
+    for (const [sym, w] of rawBuys) {
+      try {
+        const [kRes, dRes] = await Promise.all([
+          fetch(`${BINANCE_PUBLIC}/api/v3/klines?symbol=${sym}&interval=5m&limit=4`),
+          fetch(`${BINANCE_PUBLIC}/api/v3/depth?symbol=${sym}&limit=15`)
+        ]);
+
+        const k5 = kRes.ok ? await kRes.json() : [];
+        const depth = dRes.ok ? await dRes.json() : { bids: [], asks: [] };
+        const curPrice = this.prices[sym] || w.lowestPrice;
+        const bounce = ((curPrice - w.lowestPrice) / w.lowestPrice) * 100;
+        const reqBounce = 0.42;
+
+        let score = 0;
+
+        // 1. Rebote
+        let bounceStatus = "red";
+        if (bounce >= reqBounce) { bounceStatus = "green"; score++; }
+        else if (bounce >= reqBounce * 0.45) { bounceStatus = "orange"; }
+
+        // 2. Vela 5m
+        let isGreen = false;
+        let candleStatus = "red";
+        let candleDesc = "Roja";
+        let cvdRatio = 50;
+        let cvdStatus = "red";
+        if (k5.length > 0) {
+          const l5 = k5[k5.length - 1];
+          const o5 = parseFloat(l5[1]), c5 = parseFloat(l5[4]);
+          isGreen = c5 > o5;
+          if (isGreen) { candleStatus = "green"; candleDesc = "Verde"; score++; }
+          else if (Math.abs((c5 - o5) / o5) * 100 <= 0.05) { candleStatus = "orange"; candleDesc = "Doji"; }
+
+          const totQ = parseFloat(l5[7] || "0");
+          const buyQ = parseFloat(l5[10] || "0");
+          cvdRatio = totQ > 0 ? (buyQ / totQ) * 100 : 50;
+          if (cvdRatio >= 54) { cvdStatus = "green"; score++; }
+          else if (cvdRatio >= 45) { cvdStatus = "orange"; }
+        }
+
+        // 3. Depth
+        const bids = depth.bids || [];
+        const asks = depth.asks || [];
+        const bVal = bids.reduce((acc: number, [p, q]: any) => acc + parseFloat(p) * parseFloat(q), 0);
+        const aVal = asks.reduce((acc: number, [p, q]: any) => acc + parseFloat(p) * parseFloat(q), 0);
+        const obi = (bVal + aVal) > 0 ? (bVal / (bVal + aVal)) * 100 : 50;
+        let obiStatus = "red";
+        if (obi >= 52) { obiStatus = "green"; score++; }
+        else if (obi >= 36) { obiStatus = "orange"; }
+
+        // 4. Bitcoin
+        let btcStatus = "green";
+        let btcDesc = "Estable";
+        if (btcDrop5 <= -0.22) { btcStatus = "red"; btcDesc = "En caída"; }
+        else if (btcDrop5 <= -0.10) { btcStatus = "orange"; btcDesc = "Corrección"; }
+        else { score++; }
+
+        const triggerPrice = w.lowestPrice * (1 + reqBounce / 100);
+
+        nextTelem[sym] = {
+          symbol: sym,
+          curPrice,
+          lowestPrice: w.lowestPrice,
+          armedPrice: w.armedPrice,
+          triggerPrice,
+          bouncePct: bounce,
+          reqBouncePct: reqBounce,
+          bounceStatus,
+          isGreen,
+          candleStatus,
+          candleDesc,
+          cvdRatio,
+          cvdStatus,
+          obiRatio: obi,
+          obiStatus,
+          btcStatus,
+          btcDesc,
+          score,
+          totalScore: 5
+        };
+      } catch {}
+    }
+    this.huntingTelemetry = nextTelem;
   }
 
   private describeError(e: any): string {
@@ -821,6 +928,7 @@ export class DashboardServer {
     const radar = radarSymbols.map((sym) => {
       const meta = this.radarMeta[sym];
       const watch = rawBuys.find(([s]) => s === sym)?.[1];
+      const telem = this.huntingTelemetry[sym];
       return {
         symbol: sym,
         curPrice: this.prices[sym] ?? null,
@@ -828,6 +936,8 @@ export class DashboardServer {
         dropPct: meta ? meta.dropPct : null,
         isHunting: !!watch,
         lowestPrice: watch?.lowestPrice ?? null,
+        armedPrice: watch?.armedPrice ?? null,
+        huntingData: telem ?? null,
       };
     });
 
@@ -1025,6 +1135,7 @@ export class DashboardServer {
       },
       positions,
       radar,
+      huntingWatches: Object.values(this.huntingTelemetry),
       performance: {
         totalPnlUsdt: totalMergedPnl,
         totalPnlCop: totalMergedPnl * copRate,
@@ -1148,6 +1259,7 @@ export class DashboardServer {
     };
     every("cloudData", 5000, () => this.refreshCloudData());
     every("prices", 2000, () => this.refreshPrices());
+    every("hunting", 3000, () => this.refreshHuntingTelemetry());
     every("account", 15000, () => this.refreshAccount());
     every("radar", 60000, () => this.refreshRadar());
     every("fng", 300000, () => this.refreshFng());

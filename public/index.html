@@ -46,6 +46,32 @@
       100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); transform: scale(1); }
     }
 
+    .semaforo-pill {
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      white-space: nowrap;
+    }
+    .semaforo-pill.green {
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+    .semaforo-pill.orange {
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+    .semaforo-pill.red {
+      background: rgba(239, 68, 68, 0.18);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -2769,9 +2795,27 @@
           </div>
         </div>
         <div id="sec-body-spot-radar" class="sec-collapsible-body">
-          <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
-            Monitorea caídas ≥ 1.5% o RSI sobrevendido para seguir el piso y comprar en el rebote exacto (+0.25%).
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+            Monitorea caídas y sobreventas institucionales. Solo compra cuando el semáforo confirma suelo Wyckoff, volumen CVD de ballenas y libro favorable.
           </p>
+
+          <!-- 🎯 SEMÁFORO DE CACERÍA EN VIVO (TRAILING BUY) -->
+          <div id="caceria-live-box" style="display:none; margin-bottom:16px; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.8)); border:1px solid rgba(59,130,246,0.35); border-radius:10px; padding:14px; box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:18px;">🏹</span>
+                <div>
+                  <strong style="color:#f1f5f9; font-size:13px; letter-spacing:0.02em;">Semáforo de Cacería en Vivo</strong>
+                  <span style="font-size:11px; color:#94a3b8; display:block;">Requisitos para compra: 🟢 Cumplido | 🟠 Casi listo | 🔴 Bloqueado</span>
+                </div>
+              </div>
+              <span id="caceria-live-badge" style="font-size:11px; font-weight:700; color:#34d399; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.3); padding:3px 9px; border-radius:6px;">0 cazando</span>
+            </div>
+            <div id="caceria-live-cards" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap:12px;">
+              <!-- Se inyectan las tarjetas vivas -->
+            </div>
+          </div>
+
           <div class="table-responsive">
             <table class="radar-table">
               <thead>

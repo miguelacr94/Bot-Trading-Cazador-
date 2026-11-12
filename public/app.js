@@ -680,11 +680,57 @@
     setStyle(empty, "display", "none");
   }
 
-  // ---------- radar (reconciliación por símbolo) ----------
+  // ---------- radar (reconciliación por símbolo + semáforo en vivo) ----------
   function renderRadar(list) {
     const tbody = $("radar-tbody");
     const existing = new Map();
     tbody.querySelectorAll("tr").forEach((r) => existing.set(r.dataset.symbol, r));
+
+    const huntingCoins = (list || []).filter((r) => r.isHunting && r.huntingData);
+    const liveBox = $("caceria-live-box");
+    const liveCards = $("caceria-live-cards");
+    const liveBadge = $("caceria-live-badge");
+
+    if (liveBox && liveCards) {
+      if (huntingCoins.length > 0) {
+        liveBox.style.display = "block";
+        if (liveBadge) liveBadge.textContent = `${huntingCoins.length} cazando piso`;
+        liveCards.innerHTML = huntingCoins.map((r) => {
+          const h = r.huntingData;
+          const scoreColor = h.score >= 4 ? "#34d399" : (h.score >= 2 ? "#fbbf24" : "#f87171");
+          return `<div style="background:rgba(15,23,42,0.85); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong style="font-size:14px; color:#f8fafc;">${r.symbol.replace("USDT", "")}/USDT</strong>
+              <span style="font-size:11px; font-weight:700; color:${scoreColor}; background:rgba(0,0,0,0.4); padding:2px 7px; border-radius:4px; border:1px solid ${scoreColor}44;">${h.score}/5 Listo</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:#94a3b8; background:rgba(0,0,0,0.25); padding:6px 8px; border-radius:6px;">
+              <div>Piso: <b style="color:#e2e8f0;">$${fmt(r.lowestPrice)}</b></div>
+              <div>Actual: <b style="color:#e2e8f0;">$${fmt(r.curPrice)}</b></div>
+              <div>Disparo: <b style="color:#34d399;">$${fmt(h.triggerPrice)}</b></div>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:4px;">
+              <span class="semaforo-pill ${h.bounceStatus}" title="Rebote desde piso: +${(h.bouncePct || 0).toFixed(2)}% (Exige: >= +${(h.reqBouncePct || 0.42).toFixed(2)}%)">
+                ${h.bounceStatus === 'green' ? '🟢' : (h.bounceStatus === 'orange' ? '🟠' : '🔴')} Rebote +${(h.bouncePct || 0).toFixed(2)}%
+              </span>
+              <span class="semaforo-pill ${h.candleStatus}" title="Vela 5m: ${h.candleDesc}">
+                ${h.candleStatus === 'green' ? '🟢' : (h.candleStatus === 'orange' ? '🟠' : '🔴')} Vela 5m ${h.isGreen ? '▲' : '▼'}
+              </span>
+              <span class="semaforo-pill ${h.cvdStatus}" title="CVD Compras agresivas: ${(h.cvdRatio || 50).toFixed(0)}% (Exige: >= 54%)">
+                ${h.cvdStatus === 'green' ? '🟢' : (h.cvdStatus === 'orange' ? '🟠' : '🔴')} CVD ${(h.cvdRatio || 50).toFixed(0)}%
+              </span>
+              <span class="semaforo-pill ${h.obiStatus}" title="Libro Depth: ${(h.obiRatio || 50).toFixed(0)}% Bids">
+                ${h.obiStatus === 'green' ? '🟢' : (h.obiStatus === 'orange' ? '🟠' : '🔴')} Depth ${(h.obiRatio || 50).toFixed(0)}%
+              </span>
+              <span class="semaforo-pill ${h.btcStatus}" title="Semáforo Bitcoin: ${h.btcDesc}">
+                ${h.btcStatus === 'green' ? '🟢' : (h.btcStatus === 'orange' ? '🟠' : '🔴')} BTC ${h.btcDesc}
+              </span>
+            </div>
+          </div>`;
+        }).join("");
+      } else {
+        liveBox.style.display = "none";
+      }
+    }
 
     list.forEach((r) => {
       let row = existing.get(r.symbol);
@@ -709,12 +755,25 @@
         setText(f("rsi"), `RSI ${r.rsi.toFixed(1)}`);
         setClass(f("rsi"), "rsi-pill " + (r.rsi <= 45 ? "rsi-dip" : "rsi-neutral"));
       }
-      let st, color;
-      if (r.isHunting) { st = `🎯 Cazando piso ($${fmt(r.lowestPrice)})`; color = "var(--accent-green)"; }
-      else if (r.dropPct != null && r.dropPct >= 1.5) { st = "🔻 Caída detectada"; color = "var(--accent-blue)"; }
-      else { st = "📡 Escaneando"; color = "var(--text-dim)"; }
-      setText(f("status"), st);
-      setStyle(f("status"), "color", color);
+
+      const statEl = f("status");
+      if (r.isHunting && r.huntingData) {
+        const h = r.huntingData;
+        const scoreColor = h.score >= 4 ? "#34d399" : (h.score >= 2 ? "#fbbf24" : "#f87171");
+        statEl.innerHTML = `<div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+          <span style="color:var(--accent-green); font-weight:700; font-size:0.75rem;">🎯 Cazando ($${fmt(r.lowestPrice)})</span>
+          <span style="font-size:0.65rem; font-weight:700; color:${scoreColor}; background:rgba(0,0,0,0.3); padding:1px 5px; border-radius:3px;">${h.score}/5</span>
+          <span class="semaforo-pill ${h.bounceStatus}">${h.bounceStatus === 'green' ? '🟢' : (h.bounceStatus === 'orange' ? '🟠' : '🔴')} Rebote</span>
+          <span class="semaforo-pill ${h.candleStatus}">${h.candleStatus === 'green' ? '🟢' : (h.candleStatus === 'orange' ? '🟠' : '🔴')} Vela</span>
+          <span class="semaforo-pill ${h.cvdStatus}">${h.cvdStatus === 'green' ? '🟢' : (h.cvdStatus === 'orange' ? '🟠' : '🔴')} CVD</span>
+        </div>`;
+      } else if (r.isHunting) {
+        statEl.innerHTML = `<span style="color:var(--accent-green); font-weight:700;">🎯 Cazando piso ($${fmt(r.lowestPrice)})</span>`;
+      } else if (r.dropPct != null && r.dropPct >= 1.5) {
+        statEl.innerHTML = `<span style="color:var(--accent-blue);">🔻 Caída detectada</span>`;
+      } else {
+        statEl.innerHTML = `<span style="color:var(--text-dim);">📡 Escaneando</span>`;
+      }
 
       const actEl = f("action");
       if (actEl) {
