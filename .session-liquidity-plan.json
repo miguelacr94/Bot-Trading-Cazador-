@@ -1,13 +1,13 @@
 {
   "sessionKey": "COSECHA_PRENOCTURNA",
   "sessionTitle": "🌆 Cosecha Vespertina & Acumulación (17:00 - 20:00 COT)",
-  "totalFreeUsdt": 16.04478106,
-  "reservedUsdt": 16.04478106,
+  "totalFreeUsdt": 1.089038480000002,
+  "reservedUsdt": 18.99,
   "spendableUsdt": 0,
   "lotFractionPct": 0.25,
   "trailingBounceTrigger": 0.35,
   "harvestCallbackPct": 0.2,
   "reason": "Preparación para el drenaje nocturno. El 45% de la cuenta se protege en USDT líquido.",
   "recommendation": "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para cerrar en verde y acumular USDT para la noche.",
-  "updatedAt": 1794434634385
+  "updatedAt": 1794608824268
 }

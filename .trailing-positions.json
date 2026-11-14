@@ -1,89 +1,17 @@
 [
   [
-    "NEARUSDT",
+    "ETHUSDT",
     {
-      "symbol": "NEARUSDT",
-      "lotId": "NEARUSDT",
+      "symbol": "ETHUSDT",
+      "lotId": "ETHUSDT",
       "lotIndex": 1,
-      "buyPrice": 3.7508,
-      "qty": 22.66718281,
-      "investedUsdt": 85.02,
-      "highestPrice": 3.755,
+      "buyPrice": 1993.21,
+      "qty": 0.0075,
+      "investedUsdt": 14.9491,
+      "highestPrice": 1993.21,
       "activated": false,
-      "buyTime": 1794029299311,
+      "buyTime": 1794538524011,
       "strategy": "trailing_rebound",
-      "partialProfitTaken": false
-    }
-  ],
-  [
-    "SUIUSDT",
-    {
-      "symbol": "SUIUSDT",
-      "lotId": "SUIUSDT",
-      "lotIndex": 1,
-      "buyPrice": 0.8342,
-      "qty": 47.4525,
-      "investedUsdt": 39.58,
-      "highestPrice": 0.8345,
-      "activated": false,
-      "buyTime": 1794434445856,
-      "strategy": "trailing_rebound",
-      "customMinGainPct": 0.65,
-      "customCallbackPct": 0.2,
-      "partialProfitTaken": false
-    }
-  ],
-  [
-    "DOGEUSDT",
-    {
-      "symbol": "DOGEUSDT",
-      "lotId": "DOGEUSDT",
-      "lotIndex": 1,
-      "buyPrice": 0.06843,
-      "qty": 285.714,
-      "investedUsdt": 19.55,
-      "highestPrice": 0.06845,
-      "activated": false,
-      "buyTime": 1794434445856,
-      "strategy": "trailing_rebound",
-      "customMinGainPct": 0.65,
-      "customCallbackPct": 0.2,
-      "partialProfitTaken": false
-    }
-  ],
-  [
-    "XRPUSDT",
-    {
-      "symbol": "XRPUSDT",
-      "lotId": "XRPUSDT",
-      "lotIndex": 1,
-      "buyPrice": 1.0614,
-      "qty": 14.6,
-      "investedUsdt": 15.5,
-      "highestPrice": 1.062,
-      "activated": false,
-      "buyTime": 1794434445856,
-      "strategy": "trailing_rebound",
-      "customMinGainPct": 0.65,
-      "customCallbackPct": 0.2,
-      "partialProfitTaken": false
-    }
-  ],
-  [
-    "SOLUSDT",
-    {
-      "symbol": "SOLUSDT",
-      "lotId": "SOLUSDT",
-      "lotIndex": 1,
-      "buyPrice": 84.64,
-      "qty": 0.116,
-      "investedUsdt": 9.82,
-      "highestPrice": 84.65,
-      "activated": false,
-      "buyTime": 1794434445856,
-      "strategy": "trailing_rebound",
-      "customMinGainPct": 0.65,
-      "customCallbackPct": 0.2,
       "partialProfitTaken": false
     }
   ],
@@ -100,6 +28,88 @@
       "activated": false,
       "buyTime": 1794422804000,
       "strategy": "trailing_rebound",
+      "partialProfitTaken": false,
+      "lastDcaTime": 1794607842011,
+      "dcaCount": 1
+    }
+  ],
+  [
+    "NEARUSDT",
+    {
+      "symbol": "NEARUSDT",
+      "lotId": "NEARUSDT",
+      "lotIndex": 1,
+      "buyPrice": 3.7508,
+      "qty": 22.66718281,
+      "investedUsdt": 85.02,
+      "highestPrice": 3.755,
+      "activated": false,
+      "buyTime": 1794029299311,
+      "strategy": "trailing_rebound",
+      "partialProfitTaken": false
+    }
+  ],
+  [
+    "BTCUSDT",
+    {
+      "symbol": "BTCUSDT",
+      "lotId": "BTCUSDT",
+      "lotIndex": 1,
+      "buyPrice": 71411.29,
+      "qty": 0.00034,
+      "investedUsdt": 24.2798,
+      "highestPrice": 71411.29,
+      "activated": false,
+      "buyTime": 1794526243637,
+      "strategy": "trailing_rebound",
+      "partialProfitTaken": false
+    }
+  ],
+  [
+    "PEPEUSDT_lot_2_1794585048597",
+    {
+      "symbol": "PEPEUSDT",
+      "lotId": "PEPEUSDT_lot_2_1794585048597",
+      "lotIndex": 2,
+      "buyPrice": 0.00000453,
+      "qty": 6031489.47,
+      "investedUsdt": 27.35,
+      "highestPrice": 0.00000453,
+      "activated": false,
+      "buyTime": 1794585048597,
+      "strategy": "smart_dca",
+      "partialProfitTaken": false
+    }
+  ],
+  [
+    "PEPEUSDT_lot_3_1794607661331",
+    {
+      "symbol": "PEPEUSDT",
+      "lotId": "PEPEUSDT_lot_3_1794607661331",
+      "lotIndex": 3,
+      "buyPrice": 0.00000439,
+      "qty": 2701168.13,
+      "investedUsdt": 11.87,
+      "highestPrice": 0.00000441,
+      "activated": true,
+      "buyTime": 1794607661331,
+      "strategy": "smart_dca",
+      "partialProfitTaken": false
+    }
+  ],
+  [
+    "PEPEUSDT_lot_4_1794607842011",
+    {
+      "symbol": "PEPEUSDT",
+      "lotId": "PEPEUSDT_lot_4_1794607842011",
+      "lotIndex": 4,
+      "buyPrice": 0.0000044,
+      "qty": 3521475,
+      "investedUsdt": 15.51,
+      "highestPrice": 0.0000044,
+      "activated": false,
+      "buyTime": 1794607842011,
+      "strategy": "smart_dca",
       "partialProfitTaken": false
     }
   ]

@@ -1198,6 +1198,52 @@ export class TrailingMasterBot {
   async executeSmartDca(pos: ActivePosition, usdtAmount: number): Promise<boolean> {
     try {
       const cleanSym = (pos.symbol || "").split("_")[0];
+
+      // 🛡️ REGLA INSTITUCIONAL CONTRA COMPRAS APRESURADAS:
+      // 1. Revisar lotes existentes de esta moneda
+      const existingLots = Array.from(this.activeTrailingPositions.entries()).filter(([k, p]) => {
+        const pSym = (p.symbol || k).split("_")[0];
+        return pSym === cleanSym;
+      });
+
+      // Límite estricto de máximo 3 lotes por moneda (Lote 1 base + Lote 2 DCA + Lote 3 Capitulación)
+      if (existingLots.length >= 3) {
+        console.log(`🛡️ [SMART DCA TOPE MÁXIMO] ${cleanSym} ya tiene ${existingLots.length} lotes activos. No se permiten más compras para proteger la diversificación y liquidez.`);
+        await this.notifier.send(`🛡️ <i>Smart DCA cancelado en ${cleanSym}: ya alcanzó el límite máximo de ${existingLots.length} lotes. No se sobreexpone capital.</i>`);
+        return false;
+      }
+
+      // 2. Cooldown temporal y separación de precio frente al lote más reciente
+      if (existingLots.length > 0) {
+        const recentLots = existingLots.map(([k, p]) => p).sort((a, b) => (b.buyTime || 0) - (a.buyTime || 0));
+        const lastLot = recentLots[0];
+        if (lastLot) {
+          const timeSinceLastLotMin = (Date.now() - (lastLot.buyTime || 0)) / (60 * 1000);
+          const minCooldownMinutes = 45; // Mínimo 45 minutos de respiro
+          if (timeSinceLastLotMin < minCooldownMinutes) {
+            console.log(`🛡️ [SMART DCA BLOQUEADO] ${cleanSym} ya compró el Lote #${lastLot.lotIndex} hace ${timeSinceLastLotMin.toFixed(1)} min. Cooldown activo de ${minCooldownMinutes} min para evitar compras apresuradas.`);
+            await this.notifier.send(`⏳ <i>Smart DCA cancelado en ${cleanSym}: ya se compró un lote hace ${timeSinceLastLotMin.toFixed(0)} min. Se exige esperar al menos ${minCooldownMinutes} min antes de otra recompra.</i>`);
+            return false;
+          }
+
+          // Separación de precio mínima del -2.5% frente al último lote
+          let curPrice = 0;
+          try {
+            const t = await this.client.tickerPrice(cleanSym);
+            curPrice = parseFloat(t.data.price);
+          } catch {}
+          if (curPrice > 0 && lastLot.buyPrice > 0) {
+            const priceDropFromLastLotPct = ((lastLot.buyPrice - curPrice) / lastLot.buyPrice) * 100;
+            const minDropRequiredPct = 2.5; // Al menos 2.5% más barato que el último lote
+            if (priceDropFromLastLotPct < minDropRequiredPct) {
+              console.log(`🛡️ [SMART DCA BLOQUEADO] ${cleanSym} precio actual (${curPrice}) no tiene suficiente separación (-${priceDropFromLastLotPct.toFixed(2)}% vs ${minDropRequiredPct}% req) frente al último lote (${lastLot.buyPrice}). Compra apresurada evitada.`);
+              await this.notifier.send(`⏳ <i>Smart DCA cancelado en ${cleanSym}: el precio actual no tiene suficiente descuento (-${priceDropFromLastLotPct.toFixed(2)}% vs -${minDropRequiredPct}% requerido) frente al último lote comprado. Evitando comprar al mismo nivel.</i>`);
+              return false;
+            }
+          }
+        }
+      }
+
       const investStr = (usdtAmount - 0.15).toFixed(2);
       console.log(`🛡️ [Smart DCA] Ejecutando orden de seguridad de ${investStr} USDT en ${cleanSym}...`);
 
@@ -1219,10 +1265,6 @@ export class TrailingMasterBot {
       const buyPriceThisLot = spent / newQty;
 
       // Calcular número exacto de lote según lotes activos de este activo
-      const existingLots = Array.from(this.activeTrailingPositions.entries()).filter(([k, p]) => {
-        const pSym = (p.symbol || k).split("_")[0];
-        return pSym === cleanSym;
-      });
       const lotIndex = existingLots.length + 1;
       const newLotId = `${cleanSym}_lot_${lotIndex}_${Date.now()}`;
 
