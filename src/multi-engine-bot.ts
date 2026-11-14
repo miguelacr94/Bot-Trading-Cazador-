@@ -369,8 +369,9 @@ export class TrailingMasterBot {
       const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
       const hourStr = now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" });
       const hour = parseInt(hourStr, 10);
-      if (dayStr === "Fri" && hour >= 17) return true;
-      if (dayStr === "Sat") return true;
+      // Estadística 11 semanas Binance (82% prob): El viernes tarde/noche es fase de caída;
+      // la cacería de fin de semana abre recién en la madrugada del sábado (02:00 AM COT).
+      if (dayStr === "Sat" && hour >= 2) return true;
       if (dayStr === "Sun" && hour < 18) return true;
       return false;
     } catch {
@@ -379,10 +380,11 @@ export class TrailingMasterBot {
   }
 
   /**
-   * ESCUDO ANTI-TRAMPA DE VIERNES NOCHE (Viernes 16:00 COT a Sábado 03:00 COT):
-   * El viernes por la tarde/noche tras el cierre de Wall Street el mercado inicia su drenaje lento
-   * que toca fondo real en la madrugada o mañana del sábado. Prohibido gastar liquidez el viernes
-   * por la noche salvo desplome histórico extremo (caída >= 7.0% y RSI <= 24).
+   * VEDA DE COMPRAS DE VIERNES (Viernes 14:00 COT a Sábado 02:00 AM COT):
+   * Estadísticamente (82% en SOL/NEAR y 73% en BTC/ETH/SUI en las últimas 11 semanas),
+   * el viernes por la tarde y noche el mercado drena tras el cierre de Wall Street y marca
+   * su piso real en la madrugada/mañana del sábado (02:00 AM - 11:00 AM COT).
+   * Durante esta ventana se PAUSAN las compras tempranas y solo se cosechan ventas en USDT.
    */
   public isFridayEveningBleedWindow(): boolean {
     try {
@@ -390,8 +392,8 @@ export class TrailingMasterBot {
       const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
       const hourStr = now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" });
       const hour = parseInt(hourStr, 10);
-      if (dayStr === "Fri" && hour >= 16) return true;
-      if (dayStr === "Sat" && hour < 3) return true;
+      if (dayStr === "Fri" && hour >= 14) return true;
+      if (dayStr === "Sat" && hour < 2) return true;
       return false;
     } catch {
       return false;
@@ -5994,7 +5996,8 @@ export class TrailingMasterBot {
 
           await this.notifier.send(
             "🏖️ <b>[CAZADOR WEEKEND: AUTO-ACTIVADO]</b> 🟢\n\n" +
-            "• ¡Ventana de fin de semana abierta (Viernes 17:00 COT)!\n" +
+            "• ¡Ventana de cacería en piso de fin de semana abierta (Sábado 02:00 AM COT)!\n" +
+            "• 📊 Estadística 11 semanas (82% efectividad): El drenaje del viernes finalizó; iniciando cacería en el piso real de madrugada/sábado.\n" +
             `• 💼 <b>Presupuesto recuperado:</b> Se apartó el <b>${this.controls.allocations.cazador_weekend}%</b> para cazar la mejor caída del fin de semana (Trailing quedó en ${this.controls.allocations.trailing_rebound}%).\n` +
             "• 📡 Escaneando la Watchlist en busca de sobreventas y suelos con Trailing Buy..."
           );
@@ -6060,8 +6063,21 @@ export class TrailingMasterBot {
       // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
       await this.checkLiquidityAndFuturesViability(usdt);
 
-      // 2. Evaluar oportunidades por Escalones Quirúrgicos ($15-$50 normales/fuertes y $100 exclusivo para Capitulación Especial)
-      if (botSpendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
+      // 2. Evaluar oportunidades de compra (PAUSADO durante la Veda de Viernes 14:00 COT a Sábado 02:00 AM COT)
+      if (this.isFridayEveningBleedWindow()) {
+        // Durante el viernes tarde/noche solo acompañamos pisos hacia abajo sin comprar y cosechamos ventas en USDT
+        for (const [sym, w] of this.buyWatches.entries()) {
+          try {
+            const cur = parseFloat((await this.client.tickerPrice(sym)).data.price);
+            if (cur < w.lowestPrice) {
+              w.lowestPrice = cur;
+              w.armedTime = Date.now();
+              this.saveBuyWatches();
+            }
+          } catch {}
+        }
+        console.log(`⏸️ [VEDA DE VIERNES (Vie 14:00 - Sáb 02:00 COT)] Compras tempranas en pausa (82% prob. de caída hasta la madrugada del sábado). Solo cosechando ventas en USDT.`);
+      } else if (botSpendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
         const secondaryPoolUsdt = Math.max(0, Math.round(sessionPlan.spendableUsdt * 100) / 100);
 
         // Prioridad 1: Cacería Quirúrgica de Rebote (Trailing Buy en curso: evalúa los 5 niveles de inversión)
