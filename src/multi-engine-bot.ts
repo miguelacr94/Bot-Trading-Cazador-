@@ -5233,6 +5233,12 @@ export class TrailingMasterBot {
     if (this.pendingOpportunity) return false;
     if (usdt < this.minUsdtToTrade) return false;
 
+    // Filtro Macro: No armar nuevas compras de fin de semana si Bitcoin está cayendo en cascada
+    const macro = await this.getLiveMacroRegime();
+    if (macro.isMacroStorm && !macro.isBtcCapitulationFloor) {
+      return false;
+    }
+
     // Si ya hay buyWatches activas, evaluarlas primero con el bounce
     if (this.buyWatches.size > 0) {
       const bought = await this.checkBuyWatches(usdt);
@@ -5281,12 +5287,22 @@ export class TrailingMasterBot {
         const candleRange = Math.max(1e-9, highs[lastIdx] - lows[lastIdx]);
         const lowerWickRatio = (Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / candleRange;
 
-        // Criterio de caída o sobreventa en fin de semana
-        if ((dropPct >= 1.5 && rsi <= 55) || (rsi <= 45 && dropPct >= 0.8) || (rsi <= 38) || (bb.percentB <= 0.10 && rsi <= 48)) {
-          const bbBonus = bb.percentB <= 0.15 ? 4.0 : 0;
+        // 🛡️ CALIBRACIÓN ESTRICTA DE FIN DE SEMANA:
+        // En fin de semana hay baja liquidez y ruido. Jamás armar con caídas menores al -3.5% ni con RSI > 40.
+        const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE");
+        const minDropReq = isMeme ? 5.2 : 3.5;
+        const maxRsiReq = isMeme ? 36 : 38;
+
+        const qualifiesWeekend =
+          (dropPct >= minDropReq && rsi <= maxRsiReq) ||
+          (rsi <= 30 && dropPct >= (minDropReq - 1.0)) ||
+          (bb.percentB <= 0.06 && rsi <= 38 && lowerWickRatio >= 0.25);
+
+        if (qualifiesWeekend) {
+          const bbBonus = bb.percentB <= 0.08 ? 4.0 : 0;
           const wickBonus = lowerWickRatio >= 0.30 ? 3.0 : 0;
           const volBonus = coinRange24hPct >= 3.8 ? 3.5 : 0;
-          const score = (dropPct * 1.5) + Math.max(0, (48 - rsi) * 2.0) + bbBonus + wickBonus + volBonus;
+          const score = (dropPct * 1.8) + Math.max(0, (40 - rsi) * 2.2) + bbBonus + wickBonus + volBonus;
           candidates.push({ symbol: sym, curPrice, dropPct, rsi, score, coinRange24hPct, convictionTier });
         }
       } catch (e: any) {}
