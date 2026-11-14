@@ -9,18 +9,18 @@
   },
   "autoPilot": true,
   "approvalTimeoutSec": 180,
-  "maxPositions": 8,
+  "maxPositions": 4,
   "allocations": {
-    "trailing_rebound": 50,
     "smart_dca": 30,
+    "micro_grid": 0,
     "cazador_weekend": 20,
-    "micro_grid": 0
+    "trailing_rebound": 50
   },
   "baseAllocations": {
-    "trailing_rebound": 50,
     "smart_dca": 30,
+    "micro_grid": 0,
     "cazador_weekend": 20,
-    "micro_grid": 0
+    "trailing_rebound": 50
   },
   "strategySettings": {
     "futures": {
@@ -48,7 +48,7 @@
     },
     "walletSplit": {
       "manualUsdt": 0,
-      "lastUpdated": 1794670203971,
+      "lastUpdated": 1794672679082,
       "autoQuarantineDeposits": false,
       "lastKnownTotalFreeUsdt": 0.18189927
     },
@@ -90,27 +90,27 @@
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1794673624234,
+      "expiresAt": 1794676187941,
       "isCurrent": true,
       "timeframe": "4h",
-      "updatedAt": 1794670024234,
-      "btcRange24h": 6.004476370867484,
+      "updatedAt": 1794672587941,
+      "btcRange24h": 6.25105084539454,
       "stopLossPct": 6
     },
     "micro_grid": {
       "porQue": "Cuando el mercado tiene volatilidad amplia (≥ 2.2%), Micro-Grid se pausa automáticamente y cede su cuota de capital a Cazador Trailing y Smart DCA para capturar recorridos más grandes (+0.8% a +3.5%).",
-      "reason": "Mercado direccional activo (6.0%). Presupuesto en Cazador Trailing.",
+      "reason": "Mercado direccional activo (6.3%). Presupuesto en Cazador Trailing.",
       "status": "applied",
       "session": "Fin de Semana (Bolsas Cerradas / Libros Delgados)",
       "criterios": [
-        "Rango Bitcoin: 6.00% (Mercado con ondas direccionales)",
+        "Rango Bitcoin: 6.25% (Mercado con ondas direccionales)",
         "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
       ],
-      "expiresAt": 1794673624234,
+      "expiresAt": 1794676187941,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794670024234,
-      "btcRange24h": 6.004476370867484,
+      "updatedAt": 1794672587941,
+      "btcRange24h": 6.25105084539454,
       "stopLossPct": 2
     },
     "cazador_weekend": {
@@ -123,29 +123,29 @@
         "Puntaje cuantitativo: Caída + RSI + Banda Inferior Bollinger + Mecha",
         "Confirmación de giro en 5m antes de comprar + Salida en apertura CME"
       ],
-      "expiresAt": 1794673624234,
+      "expiresAt": 1794676187941,
       "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1794670024234,
-      "btcRange24h": 6.004476370867484,
+      "updatedAt": 1794672587941,
+      "btcRange24h": 6.25105084539454,
       "stopLossPct": 5
     },
     "trailing_rebound": {
       "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m junto con el filtro de giro de vela de 5m permite capturar el suelo exacto y cobrar rebotes rápidos (+1.2% a +2.5%) sin entrar anticipado ni vender jamás en pérdida.",
-      "reason": "Alta velocidad detectada (BTC 6.0%, Memes 11.0%). Sesión Fin de Semana (Bolsas Cerradas / Libros Delgados).",
+      "reason": "Alta velocidad detectada (BTC 6.3%, Memes 13.5%). Sesión Fin de Semana (Bolsas Cerradas / Libros Delgados).",
       "status": "applied",
       "session": "Fin de Semana (Bolsas Cerradas / Libros Delgados)",
       "criterios": [
-        "Rango Bitcoin: 6.00% | Escudo Macro BTC 15m activo",
-        "Rango Memecoins: 11.00% (Líder PEPE con 11.0%)",
+        "Rango Bitcoin: 6.25% | Escudo Macro BTC 15m activo",
+        "Rango Memecoins: 13.50% (Líder PEPE con 13.5%)",
         "Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m",
         "Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)"
       ],
-      "expiresAt": 1794673624234,
+      "expiresAt": 1794676187941,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1794670024234,
-      "btcRange24h": 6.004476370867484,
+      "updatedAt": 1794672587941,
+      "btcRange24h": 6.25105084539454,
       "stopLossPct": 3.5
     }
   },
@@ -188,6 +188,6 @@
   "memeWatchlist": [
     "PEPEUSDT"
   ],
-  "updatedAt": 1794670203122,
+  "updatedAt": 1794672679527,
   "wideGapLotSize": 100
 }

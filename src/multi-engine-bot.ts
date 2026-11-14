@@ -311,8 +311,8 @@ export class TrailingMasterBot {
   }
 
   private controls: StrategyControls = {
-    maxPositions: 8,
-    wideGapLotSize: 50,
+    maxPositions: 4,
+    wideGapLotSize: 100,
     strategies: {
       trailing_rebound: true,
       smart_dca: true,
@@ -321,10 +321,10 @@ export class TrailingMasterBot {
       wide_gap_sniper: true
     },
     allocations: {
-      trailing_rebound: 70,
+      trailing_rebound: 50,
       smart_dca: 30,
       micro_grid: 0,
-      cazador_weekend: 0
+      cazador_weekend: 20
     },
     baseAllocations: {
       trailing_rebound: 50,
@@ -360,19 +360,209 @@ export class TrailingMasterBot {
   private lastDetectedRegime: "QUIET" | "TRENDING" | null = null;
 
   /**
-   * Margen de retroceso (Callback) adaptado a la volatilidad de cada par.
+   * Reloj Estadístico Institucional en Hora Colombia (America/Bogota, UTC-5).
+   * Basado en el estudio de 18 semanas (3,000 horas / 15,000 velas en Binance).
    */
-  
-  public isWeekendWindow(): boolean {
+  public getCotTimeInfo(): { dayStr: string; hour: number; minute: number; timeDec: number } {
     try {
       const now = new Date();
       const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
-      const hourStr = now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" });
-      const hour = parseInt(hourStr, 10);
-      // Estadística 11 semanas Binance (82% prob): El viernes tarde/noche es fase de caída;
-      // la cacería de fin de semana abre recién en la madrugada del sábado (02:00 AM COT).
-      if (dayStr === "Sat" && hour >= 2) return true;
-      if (dayStr === "Sun" && hour < 18) return true;
+      const hour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+      const minute = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
+      const safeHour = isNaN(hour) ? 0 : (hour === 24 ? 0 : hour);
+      const safeMin = isNaN(minute) ? 0 : minute;
+      return { dayStr, hour: safeHour, minute: safeMin, timeDec: safeHour + safeMin / 60 };
+    } catch {
+      return { dayStr: "Mon", hour: 12, minute: 0, timeDec: 12.0 };
+    }
+  }
+
+  /**
+   * 🟢 HORAS PISO HISTÓRICAS (DESBLOQUEO 100%: PRESUPUESTO CERRADO 60% + ABIERTO 40%):
+   * Momentos del ciclo diario y semanal donde estadísticamente se forman los suelos más profundos
+   * y los mayores retornos a +4h en Binance (18 semanas de datos):
+   * 1. Piso #1 de Madrugada (00:30 AM - 04:00 AM COT, Lun-Vie y Dom): #1 mejor compra del día (+0.22% retorno 4h a las 02:00 AM, previo al rally de Londres 03:00 AM).
+   * 2. Piso #2 de Mediodía NY (11:30 AM - 01:30 PM COT, Lun-Jue; Jueves desde 10:15 AM post-barrido macro): Fin del drenaje matutino de Wall Street (51 mínimos diarios).
+   * 3. Piso #3 Pre-Asia (08:00 PM - 09:45 PM COT / 20:00 - 21:45 COT, Lun-Jue): Suelo previo al impulso de apertura asiática (42 mínimos diarios).
+   * 4. Gran Piso de Fin de Semana (Sábado 02:00 AM - 12:00 PM COT y Domingo 02:00 PM - 04:30 PM COT): Donde el 82% de los fines de semana marcan su suelo real.
+   */
+  public isHistoricalFloorWindow(): { active: boolean; label: string } {
+    const { dayStr, timeDec } = this.getCotTimeInfo();
+    const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(dayStr);
+    const isMonToThu = ["Mon", "Tue", "Wed", "Thu"].includes(dayStr);
+
+    // 1. Piso de Madrugada (00:30 AM - 04:00 AM COT) en días de semana y domingo
+    // (El sábado madrugada entra en el Gran Piso de Sábado desde las 02:00 AM)
+    if ((isWeekday || dayStr === "Sun") && timeDec >= 0.5 && timeDec <= 4.0) {
+      return { active: true, label: "🟢 PISO #1 MADRUGADA PRE-LONDRES (00:30-04:00 AM COT | Presupuesto 100% Desbloqueado)" };
+    }
+
+    // 2. Piso de Mediodía Wall Street (11:30 AM - 01:30 PM COT) + Efecto Jueves Post-Noticias (10:15 AM - 01:30 PM COT)
+    if (dayStr === "Thu" && timeDec >= 10.25 && timeDec <= 13.5) {
+      return { active: true, label: "🟢 PISO ESPECIAL JUEVES POST-BARRIDO NY (10:15 AM-01:30 PM COT | Presupuesto 100% Desbloqueado)" };
+    }
+    if (isMonToThu && timeDec >= 11.5 && timeDec <= 13.5) {
+      return { active: true, label: "🟢 PISO #2 MEDIODÍA NY POST-DRENAJE (11:30 AM-01:30 PM COT | Presupuesto 100% Desbloqueado)" };
+    }
+
+    // 3. Piso Pre-Asia (20:00 - 21:45 COT, Lunes a Jueves)
+    if (isMonToThu && timeDec >= 20.0 && timeDec <= 21.75) {
+      return { active: true, label: "🟢 PISO #3 PRE-ASIA (08:00 PM-09:45 PM COT | Presupuesto 100% Desbloqueado)" };
+    }
+
+    // 4. Gran Piso de Fin de Semana (Sábado 02:00 AM - 12:00 PM COT y Domingo 14:00 - 16:30 COT pre-CME)
+    if (dayStr === "Sat" && timeDec >= 2.0 && timeDec <= 12.0) {
+      return { active: true, label: "🏖️ GRAN PISO SÁBADO MADRUGADA/MAÑANA (02:00 AM-12:00 PM COT | 82% Efectividad Histórica)" };
+    }
+    if (dayStr === "Sun" && timeDec >= 14.0 && timeDec <= 16.5) {
+      return { active: true, label: "🏖️ PISO DOMINGO PRE-APERTURA CME (02:00 PM-04:30 PM COT | Presupuesto 100% Desbloqueado)" };
+    }
+
+    return { active: false, label: "" };
+  }
+
+  /**
+   * 🏆 HORAS TECHO HISTÓRICAS (MODO COSECHA ACTIVA — CEÑIR TRAILING TP PARA VENDER EN LA CIMA):
+   * Horas donde estadísticamente el mercado alcanza su pico intradía antes de girarse a la baja:
+   * 1. Techo Matutino Pre-NY (06:00 AM - 09:50 AM COT, Lun-Vie): 55 techos diarios (y 27% de los techos del viernes) antes del desplome de las 10:00 AM.
+   * 2. Techo Pre-Cierre NY (03:30 PM - 04:45 PM COT / 15:30 - 16:45 COT, Lun-Vie): Antes de la liquidación de las 05:00 PM COT.
+   * 3. Techo Nocturno Apertura Asia (10:45 PM - 12:30 AM COT / 22:45 - 00:30 COT, Lun-Jue): 133 techos diarios antes del retroceso de las 01:30-02:00 AM.
+   * 4. Techo Dominical CME (Domingo 05:30 PM - 11:30 PM COT / 17:30 - 23:30 COT): Rally alcista del domingo (+1.00% prom) antes del ajuste del lunes madrugada.
+   */
+  public isHistoricalPeakHarvestWindow(): { active: boolean; label: string } {
+    const { dayStr, timeDec } = this.getCotTimeInfo();
+    const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(dayStr);
+
+    if (isWeekday && timeDec >= 6.0 && timeDec <= 9.85) {
+      return {
+        active: true,
+        label: dayStr === "Fri"
+          ? "🏆 HORA TECHO VIERNES MAÑANA (06:00-09:50 AM COT | Cosechando antes del fin de semana)"
+          : "🏆 HORA TECHO APERTURA NY (06:00-09:50 AM COT | Cosechando antes del drenaje de las 10 AM)"
+      };
+    }
+    if (isWeekday && timeDec >= 15.5 && timeDec <= 16.75) {
+      return { active: true, label: "🏆 HORA TECHO PRE-CIERRE WALL STREET (03:30-04:45 PM COT | Cosechando antes de las 5 PM)" };
+    }
+    if (["Mon", "Tue", "Wed", "Thu"].includes(dayStr) && (timeDec >= 22.75 || timeDec < 0.5)) {
+      return { active: true, label: "🏆 HORA TECHO APERTURA ASIA (10:45 PM-12:30 AM COT | Cosechando antes del piso de 2 AM)" };
+    }
+    if (dayStr === "Sun" && timeDec >= 17.5 && timeDec <= 23.5) {
+      return { active: true, label: "🏆 HORA TECHO RALLY DOMINGO CME (05:30-11:30 PM COT | Cosechando pico semanal)" };
+    }
+    return { active: false, label: "" };
+  }
+
+  /**
+   * ⏸️ HORAS PAUSA / TRAMPA HISTÓRICAS (COMPRAS NORMALES EN PAUSA — SOLO EXCEPCIÓN ATÍPICA):
+   * Horas con retorno futuro negativo comprobado en las 18 semanas de Binance:
+   * 1. Drenaje Matutino Wall Street (08:30 AM - 11:30 AM COT, Lun-Vie; Jueves hasta 10:15 AM): Peor retorno a 4h del día (-0.21% a las 09:00 AM, -0.09% a las 10:00 AM).
+   * 2. Liquidación Cierre NY (04:15 PM - 06:15 PM COT / 16:15 - 18:15 COT, Lun-Jue): Caída de las 5:00 PM (-0.071%, 54% velas rojas).
+   * 3. Techo Nocturno Asia (10:30 PM - 12:30 AM COT / 22:30 - 00:30 COT, Lun-Jue): Evita comprar en el pico de las 11 PM justo antes de que caiga a las 2 AM.
+   * 4. Veda de Viernes (Viernes 02:00 PM / 14:00 COT a Sábado 02:00 AM COT): Evita comprar el viernes tarde/noche antes del piso del sábado madrugada.
+   */
+  public isHistoricalPauseWindow(): { paused: boolean; reason: string } {
+    const { dayStr, timeDec } = this.getCotTimeInfo();
+    const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(dayStr);
+    const isMonToThu = ["Mon", "Tue", "Wed", "Thu"].includes(dayStr);
+
+    // 1. Veda de Viernes Tarde/Noche (Viernes >= 14:00 a Sábado < 02:00 AM COT)
+    if ((dayStr === "Fri" && timeDec >= 14.0) || (dayStr === "Sat" && timeDec < 2.0)) {
+      return {
+        paused: true,
+        reason: "⏸️ VEDA DE VIERNES (Vie 02:00 PM - Sáb 02:00 AM COT): 82% de los fines de semana caen más profundo en la madrugada del sábado."
+      };
+    }
+
+    // 2. Trampa Matutina Wall Street (08:30 AM - 11:30 AM COT; Jueves 08:30 - 10:15 AM COT)
+    const morningPauseEnd = dayStr === "Thu" ? 10.25 : 11.5;
+    if (isWeekday && timeDec >= 8.5 && timeDec < morningPauseEnd) {
+      return {
+        paused: true,
+        reason: "⏸️ PAUSA DRENAJE MATUTINO NY (08:30 - 11:30 AM COT): Peor retorno histórico a 4h (-0.21%). Esperando piso de mediodía (11:30 AM)."
+      };
+    }
+
+    // 3. Liquidación Cierre Wall Street (16:15 - 18:15 COT, Lunes a Jueves)
+    if (isMonToThu && timeDec >= 16.25 && timeDec <= 18.25) {
+      return {
+        paused: true,
+        reason: "⏸️ PAUSA CIERRE WALL STREET (04:15 - 06:15 PM COT): Drenaje institucional de las 5:00 PM. Esperando Piso Pre-Asia (08:00 PM)."
+      };
+    }
+
+    // 4. Techo Apertura Asia (22:30 - 00:30 COT)
+    if ((isMonToThu && timeDec >= 22.5) || (["Tue", "Wed", "Thu", "Fri"].includes(dayStr) && timeDec < 0.5)) {
+      return {
+        paused: true,
+        reason: "⏸️ PAUSA TECHO NOCTURNO ASIA (10:30 PM - 12:30 AM COT): Hora de pico estadístico (133 techos). Guardando liquidez para el Piso de Madrugada (00:30 - 03:30 AM)."
+      };
+    }
+
+    return { paused: false, reason: "" };
+  }
+
+  /**
+   * ⚡ LLAVE MAESTRA DE EXCEPCIÓN POR EVENTO ATÍPICO (FLASH CRASH / CAPITULACIÓN EN HORA PAUSADA):
+   * Permite romper cualquier pausa horaria ÚNICAMENTE si ocurre un desplome extraordinario con absorción real de ballenas,
+   * para jamás desaprovechar un cisne negro o barrido extremo de Bitcoin.
+   */
+  public isAtypicalMarketException(params: {
+    symbol: string;
+    dropPct: number;
+    rsi: number;
+    lowerWickRatio?: number;
+    rvol?: number;
+    bouncePct?: number;
+    cvdPct?: number;
+  }): boolean {
+    const isMeme = this.memeWatchlist.includes(params.symbol) || params.symbol.includes("PEPE") || params.symbol.includes("DOGE");
+    const minCrashDrop = isMeme ? 6.5 : 5.8;
+    const maxCrashRsi = 26.0;
+    const hasExtremeDropAndRsi = params.dropPct >= minCrashDrop && params.rsi <= maxCrashRsi;
+    const hasClimaxAbsorption = (params.lowerWickRatio ?? 0.35) >= 0.35 || (params.rvol ?? 1.8) >= 1.8;
+    const hasConfirmedTurnaround = (params.bouncePct ?? 0.55) >= 0.55 && (params.cvdPct ?? 55) >= 55;
+    return hasExtremeDropAndRsi && hasClimaxAbsorption && hasConfirmedTurnaround;
+  }
+
+  /**
+   * ⚓ ANCLA DE GIRO EN BITCOIN 15M (CORRELACIÓN LÍDER-SEGUIDOR):
+   * Como las altcoins siguen a BTC al milímetro en las caídas, antes de disparar un bloque en una altcoin
+   * verifica que BTCUSDT ya haya dejado de caer en 15m (vela verde o mecha inferior >= 28% y sin caída activa).
+   */
+  public async verifyBtc15mLeaderAnchor(targetSymbol: string): Promise<{ ok: boolean; reason: string }> {
+    if (targetSymbol === "BTCUSDT") return { ok: true, reason: "Activo líder BTC" };
+    try {
+      const btcK15 = await this.client.klines("BTCUSDT", "15m", { limit: 3 });
+      if (!btcK15?.data || btcK15.data.length < 2) return { ok: true, reason: "Sin datos BTC 15m" };
+      const last = btcK15.data[btcK15.data.length - 1];
+      const prev = btcK15.data[btcK15.data.length - 2];
+      const bo = parseFloat(last[1]), bh = parseFloat(last[2]), bl = parseFloat(last[3]), bc = parseFloat(last[4]);
+      const prevLow = parseFloat(prev[3]);
+      const range = bh - bl;
+      const lowerWick = range > 0 ? (Math.min(bo, bc) - bl) / range : 0;
+      const candleChangePct = bo > 0 ? ((bc - bo) / bo) * 100 : 0;
+      const isBtcGreenOrWick = bc >= bo || lowerWick >= 0.28 || (candleChangePct > -0.12 && bl >= prevLow * 0.999);
+
+      if (!isBtcGreenOrWick || candleChangePct <= -0.30) {
+        return {
+          ok: false,
+          reason: `Ancla BTC 15m aún bajista (${candleChangePct.toFixed(2)}%, mecha ${(lowerWick * 100).toFixed(0)}%). Esperando que BTC confirme suelo.`
+        };
+      }
+      return { ok: true, reason: `BTC 15m estable/girando (${candleChangePct >= 0 ? "+" : ""}${candleChangePct.toFixed(2)}%)` };
+    } catch {
+      return { ok: true, reason: "Fallback BTC 15m" };
+    }
+  }
+
+  public isWeekendWindow(): boolean {
+    try {
+      const { dayStr, timeDec } = this.getCotTimeInfo();
+      // Estadística 18 semanas Binance (82% prob): El viernes tarde/noche es fase de caída;
+      // la cacería de fin de semana abre recién en la madrugada del sábado (02:00 AM COT) hasta el domingo 18:00 COT.
+      if (dayStr === "Sat" && timeDec >= 2.0) return true;
+      if (dayStr === "Sun" && timeDec < 18.0) return true;
       return false;
     } catch {
       return false;
@@ -381,19 +571,15 @@ export class TrailingMasterBot {
 
   /**
    * VEDA DE COMPRAS DE VIERNES (Viernes 14:00 COT a Sábado 02:00 AM COT):
-   * Estadísticamente (82% en SOL/NEAR y 73% en BTC/ETH/SUI en las últimas 11 semanas),
+   * Estadísticamente (82% en SOL/NEAR y 73% en BTC/ETH/SUI en las últimas 18 semanas),
    * el viernes por la tarde y noche el mercado drena tras el cierre de Wall Street y marca
-   * su piso real en la madrugada/mañana del sábado (02:00 AM - 11:00 AM COT).
-   * Durante esta ventana se PAUSAN las compras tempranas y solo se cosechan ventas en USDT.
+   * su piso real en la madrugada/mañana del sábado (02:00 AM - 12:00 PM COT).
    */
   public isFridayEveningBleedWindow(): boolean {
     try {
-      const now = new Date();
-      const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
-      const hourStr = now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" });
-      const hour = parseInt(hourStr, 10);
-      if (dayStr === "Fri" && hour >= 14) return true;
-      if (dayStr === "Sat" && hour < 2) return true;
+      const { dayStr, timeDec } = this.getCotTimeInfo();
+      if (dayStr === "Fri" && timeDec >= 14.0) return true;
+      if (dayStr === "Sat" && timeDec < 2.0) return true;
       return false;
     } catch {
       return false;
@@ -788,8 +974,8 @@ export class TrailingMasterBot {
         const dbCtrl = await supabaseDb.loadStrategyControls();
         if (dbCtrl && dbCtrl.strategies) {
           this.controls = dbCtrl;
-          if (this.controls.maxPositions === undefined) this.controls.maxPositions = 8;
-          if (this.controls.wideGapLotSize === undefined) this.controls.wideGapLotSize = 50;
+          if (this.controls.maxPositions === undefined) this.controls.maxPositions = 4;
+          if (this.controls.wideGapLotSize === undefined) this.controls.wideGapLotSize = 100;
           if (!this.controls.coreWatchlist) this.controls.coreWatchlist = dbCtrl.coreWatchlist || CORE_WATCHLIST;
           if (!this.controls.memeWatchlist) this.controls.memeWatchlist = dbCtrl.memeWatchlist || MEME_WATCHLIST;
           this.autoPilot = this.controls.autoPilot !== false;
@@ -808,8 +994,8 @@ export class TrailingMasterBot {
         if (this.controls.stopLossPct === undefined) this.controls.stopLossPct = 4.0;
         if (!this.controls.timeframe) this.controls.timeframe = "1h";
         if (!this.controls.rejectedSuggestions) this.controls.rejectedSuggestions = {};
-        if (this.controls.maxPositions === undefined) this.controls.maxPositions = 8;
-        if (this.controls.wideGapLotSize === undefined) this.controls.wideGapLotSize = 50;
+        if (this.controls.maxPositions === undefined) this.controls.maxPositions = 4;
+        if (this.controls.wideGapLotSize === undefined) this.controls.wideGapLotSize = 100;
         if (this.controls.cashReservePct === undefined) this.controls.cashReservePct = 25;
         if (this.controls.maxPerCoinPct === undefined) this.controls.maxPerCoinPct = 30;
 
@@ -1264,6 +1450,13 @@ export class TrailingMasterBot {
             }
           }
         }
+      }
+
+      // 3. Ancla Líder-Seguidor en Bitcoin 15m: evitar promediar en altcoins si BTC sigue cayendo en 15m
+      const btcAnchor = await this.verifyBtc15mLeaderAnchor(cleanSym);
+      if (!btcAnchor.ok) {
+        console.log(`⚓ [SMART DCA RETENIDO POR ANCLA BTC 15M] ${cleanSym}: ${btcAnchor.reason}`);
+        return false;
       }
 
       const investStr = (usdtAmount - 0.15).toFixed(2);
@@ -1928,6 +2121,8 @@ export class TrailingMasterBot {
         const isWeekendChop = this.isWeekendWindow() && !this.isSundayCmeReopenWindow();
         const isPreNightHarvest = this.isPreNightHarvestWindow();
         const isPreWeekendHarvest = this.isPreWeekendAccumulationWindow();
+        const peakHarvestWin = this.isHistoricalPeakHarvestWindow();
+        const isHistoricalPeakHarvest = peakHarvestWin.active;
 
         // 🛡️ CANDADO AUTOMÁTICO CERO DEVOLUCIÓN (RATCHET FLOOR):
         // Prohibido activar candados con ganancias microscópicas (< +0.80% bruto) que vendan por centavos ($0.004 - $0.03).
@@ -2056,10 +2251,14 @@ export class TrailingMasterBot {
           let callback = pos.strategy === "micro_grid" ? 0.12 : this.getCallbackPct(symbol, pos);
           let minGain = pos.customMinGainPct || (pos.strategy === "micro_grid" ? 0.58 : 0.72);
 
-          // 🦎 ADAPTACIÓN CAMALEÓN DE SALIDA SEGÚN RÉGIMEN EN VIVO:
-          // • En Tendencia Alcista Fuerte (btcStress <= 0.22): amplía el margen de persecución (callback * 1.20) para exprimir corridas de +1.5% a +3.5%.
-          // • En Lateral Comprimido / Corrección Bajista / Anti-Estancamiento: ajusta el callback pero siempre exigiendo ganancia real (>= +0.65% bruto).
-          if (!pos.customMinGainPct && macro.btcStressIndex <= 0.22 && !isPreNightHarvest && !isStagnantPosition) {
+          // 🦎 ADAPTACIÓN CAMALEÓN DE SALIDA SEGÚN RÉGIMEN EN VIVO Y HORAS TECHO HISTÓRICAS:
+          // • En Hora Techo Estadística (06:00-09:50 AM Pre-Drenaje NY, 15:30-16:45 Pre-Cierre NY, 22:45-00:30 Pico Asia, Viernes Mañana, Domingo CME):
+          //   ceñir callback a 0.14%-0.15% con ganancia >= +0.68% bruto para cosechar en la cima antes del retroceso programado.
+          // • En Tendencia Alcista Fuerte (btcStress <= 0.22 fuera de Hora Techo): amplía el margen de persecución (callback * 1.20) para exprimir corridas de +1.5% a +3.5%.
+          if (!pos.customMinGainPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
+            callback = Math.min(callback, 0.15);
+            minGain = 0.68;
+          } else if (!pos.customMinGainPct && macro.btcStressIndex <= 0.22 && !isPreNightHarvest && !isStagnantPosition) {
             callback = Number((callback * 1.20).toFixed(2));
             minGain = 0.85;
           } else if (!pos.customMinGainPct && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode) && gainPct >= 0.65) {
@@ -3006,12 +3205,6 @@ export class TrailingMasterBot {
         const takerBuyQuoteVol = parseFloat(lastKRow[10] || "0");
         const takerBuyRatioPct = totalQuoteVol > 0 ? (takerBuyQuoteVol / totalQuoteVol) * 100 : 50;
 
-        // Centinela Nocturno: En ventana nocturna (20:00 - 02:30 COT) exigir sobreventa extrema (RSI <= 26)
-        const isNight = this.isNightWindow();
-        if (isNight && rsi > 26) {
-          // Filtrar compras en la noche para no comprar caídas tempranas en libros delgados
-          continue;
-        }
         const maxRecent = Math.max(...highs.slice(-20));
         const low24 = Math.min(...lows.slice(-candlesIn24h));
         const high24 = Math.max(...highs.slice(-candlesIn24h));
@@ -3019,6 +3212,14 @@ export class TrailingMasterBot {
         const drop24hPct = high24 > 0 ? ((high24 - curPrice) / high24) * 100 : dropRecentPct;
         // La caída real considera tanto la onda reciente (últimas 20 velas) como el retroceso desde el techo de 24h
         const dropPct = Math.max(dropRecentPct, drop24hPct);
+
+        // ⏸️ RELOJ ESTADÍSTICO (18 SEMANAS BINANCE):
+        // En Horas Pausa / Trampa (08:30-11:30 AM, 16:15-18:15 PM, 22:30-00:30 AM, Viernes 14:00 - Sábado 02:00 AM),
+        // solo se permite armar vigilancia si estamos ante una Capitulación / Evento Atípico (caída >= 5.2% y RSI <= 28).
+        const pauseWin = this.isHistoricalPauseWindow();
+        if (pauseWin.paused && !(dropPct >= (isMeme ? 6.0 : 5.2) && rsi <= 28)) {
+          continue;
+        }
         const coinRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
         const upsideGapPct = curPrice > 0 ? ((high24 - curPrice) / curPrice) * 100 : dropPct;
         // Ubicación Fibonacci real dentro del canal de 24h (0.0 = fondo absoluto, 1.0 = techo 24h)
@@ -3212,12 +3413,27 @@ export class TrailingMasterBot {
           continue;
         }
 
-        // 🛡️ ESCUDO VIERNES NOCHE (Viernes 16:00 a Sábado 03:00 COT):
-        // El viernes por la noche las monedas apenas inician la caída de fin de semana que toca fondo en la madrugada o mañana del sábado.
-        // Prohibido gastar el efectivo el viernes en la noche salvo capitulación histórica (caída >= 7.0% y RSI <= 24).
-        if (this.isFridayEveningBleedWindow() && !(effectiveDropSoFar >= 7.0 && (w.rsi || 40) <= 24)) {
-          console.log(`🌙 [ESCUDO VIERNES NOCHE: ${sym}] Reteniendo disparo (caída actual -${effectiveDropSoFar.toFixed(2)}%). Guardando liquidez para el piso profundo de la madrugada / sábado.`);
+        // ⏸️ FILTRO DE HORAS PAUSA HISTÓRICAS + LLAVE MAESTRA DE EXCEPCIÓN POR EVENTO ATÍPICO:
+        // Durante las horas trampa detectadas en las 18 semanas de Binance (08:30-11:30 AM, 16:15-18:15 PM, 22:30-00:30 AM, Viernes 14:00 - Sábado 02:00 AM),
+        // las compras normales se pausan y solo se sigue bajando el lowestPrice.
+        // EXCEPCIÓN: Si ocurre un Evento Atípico / Flash Crash (caída >= 5.8% core / 6.5% meme y RSI <= 26 con rebote >= +0.55%), se rompe la pausa.
+        const pauseState = this.isHistoricalPauseWindow();
+        const isAtypicalCrashCandidate = this.isAtypicalMarketException({
+          symbol: sym,
+          dropPct: effectiveDropSoFar,
+          rsi: w.rsi || 40,
+          rvol: w.rvol || 1.8,
+          bouncePct: bounce,
+          cvdPct: 55
+        });
+        if (pauseState.paused && !isAtypicalCrashCandidate) {
+          if (bounce >= 0.35) {
+            console.log(`${pauseState.reason} [${sym} caída -${effectiveDropSoFar.toFixed(2)}%, RSI ${(w.rsi || 40).toFixed(1)} no califica como Evento Atípico >= -5.8% / RSI <= 26].`);
+          }
           continue;
+        }
+        if (pauseState.paused && isAtypicalCrashCandidate) {
+          console.log(`⚡ [LLAVE MAESTRA DE EXCEPCIÓN ATÍPICA ACTIVADA: ${sym}] Flash Crash detectado (-${effectiveDropSoFar.toFixed(2)}% | RSI ${(w.rsi || 25).toFixed(1)}) durante hora pausada. Desbloqueando Presupuesto Abierto.`);
         }
 
         // En fin de semana exigir un rebote más sólido (+0.55% reinas, +0.65% memes) para evitar falsos rebotes de 5m
@@ -3225,9 +3441,12 @@ export class TrailingMasterBot {
           ? (isMemeCoin ? 0.65 : 0.55)
           : (isMemeCoin ? 0.48 : 0.38);
 
-        const effectiveSpendable = (strat === "cazador_weekend" && this.isWeekendWindow())
-          ? Math.max(sessionPlan.spendableUsdt, botAvailableUsdt)
-          : sessionPlan.spendableUsdt;
+        const floorState = this.isHistoricalFloorWindow();
+        const effectiveSpendable = (floorState.active || (strat === "cazador_weekend" && this.isWeekendWindow()))
+          ? Math.max(sessionPlan.spendableUsdt, botAvailableUsdt * 0.95)
+          : (pauseState.paused && isAtypicalCrashCandidate
+            ? Math.max(sessionPlan.spendableUsdt, botAvailableUsdt * 0.40)
+            : sessionPlan.spendableUsdt);
 
         // 🎯 PROTECCIÓN DE BLOQUE $100 USDT (PROHIBIDO PICOTEAR MIGAJAS DE $12 - $25 USDT):
         // Si en la billetera solo hay $13 o $17 USDT (producto de una venta pequeña), NO gastarlos en abrir otra moneda diminuta.
@@ -3251,17 +3470,24 @@ export class TrailingMasterBot {
               sym !== "BTCUSDT" ? this.client.klines("BTCUSDT", "5m", { limit: 6 }) : Promise.resolve({ data: [] })
             ]);
 
-            // Indicador 5: Filtro Bitcoin (5m > -0.20% y 15m estable)
-            if (sym !== "BTCUSDT" && btcK5?.data?.length >= 3) {
-              const b5 = btcK5.data[btcK5.data.length - 1];
-              const bPrev15 = btcK5.data[btcK5.data.length - 3];
-              const bo5 = parseFloat(b5[1]), bc5 = parseFloat(b5[4]);
-              const bo15 = parseFloat(bPrev15[1]);
-              const btcDrop5 = ((bc5 - bo5) / bo5) * 100;
-              const btcDrop15 = ((bc5 - bo15) / bo15) * 100;
-              if (btcDrop5 <= -0.20 || btcDrop15 <= -0.45) {
-                console.log(`🚦 [SEMÁFORO RETENIDO - BTC: ${sym}] BTC débil (5m: ${btcDrop5.toFixed(2)}%, 15m: ${btcDrop15.toFixed(2)}%). Esperando piso de BTC.`);
+            // Indicador 5: Ancla Líder-Seguidor en Bitcoin (5m > -0.20% + Giro Estructural 15m confirmado)
+            if (sym !== "BTCUSDT") {
+              const btcAnchor15 = await this.verifyBtc15mLeaderAnchor(sym);
+              if (!btcAnchor15.ok) {
+                console.log(`⚓ [SEMÁFORO RETENIDO - ANCLA BTC 15M: ${sym}] ${btcAnchor15.reason}`);
                 continue;
+              }
+              if (btcK5?.data?.length >= 3) {
+                const b5 = btcK5.data[btcK5.data.length - 1];
+                const bPrev15 = btcK5.data[btcK5.data.length - 3];
+                const bo5 = parseFloat(b5[1]), bc5 = parseFloat(b5[4]);
+                const bo15 = parseFloat(bPrev15[1]);
+                const btcDrop5 = ((bc5 - bo5) / bo5) * 100;
+                const btcDrop15 = ((bc5 - bo15) / bo15) * 100;
+                if (btcDrop5 <= -0.20 || btcDrop15 <= -0.45) {
+                  console.log(`🚦 [SEMÁFORO RETENIDO - BTC: ${sym}] BTC débil (5m: ${btcDrop5.toFixed(2)}%, 15m: ${btcDrop15.toFixed(2)}%). Esperando piso de BTC.`);
+                  continue;
+                }
               }
             }
 
@@ -3352,12 +3578,13 @@ export class TrailingMasterBot {
                 ? "ALTA_VOLATILIDAD"
                 : (coinVol >= 2.5 && upsideGapPct >= 1.5 ? "IMPULSO" : "ESTANDAR"));
 
-          // Verificar cupo de monedas activas: permitimos hasta 8 monedas para dar cabida plena a las brechas de NEAR/SUI/AVAX/SOL
+          // 🎯 CONCENTRACIÓN DE BALAS FUERTES ($50 - $100 USDT):
+          // Límite de 4 monedas activas para nuevas entradas (mientras las posiciones existentes terminan de venderse en verde)
           const uniqueActiveNow = this.getUniqueActiveSymbols().size;
-          const configuredMax = Math.max(8, this.controls?.maxPositions || 8);
-          const stdCap = configuredMax - 1;
+          const configuredMax = this.controls?.maxPositions || 4;
+          const stdCap = Math.max(1, configuredMax - 1);
           if (uniqueActiveNow >= configuredMax) {
-            console.log(`🎯 [CUPO LLENO] ${uniqueActiveNow}/${configuredMax} monedas activas en cartera. Esperando salida.`);
+            console.log(`🎯 [CUPO CONCENTRADO $100 LLENO] ${uniqueActiveNow}/${configuredMax} monedas activas en cartera. Esperando venta para concentrar capital en bloques de $50–$100 USDT.`);
             continue;
           }
           if (uniqueActiveNow >= stdCap && convictionTier !== "ALTA_VOLATILIDAD" && convictionTier !== "MAXIMA_BRECHA") {
@@ -5424,157 +5651,111 @@ export class TrailingMasterBot {
 
 
 
-  // --- PARÁMETROS DEL CENTINELA NOCTURNO (PROTECCIÓN 20:00 - 02:30 COT) ---
+  // --- PARÁMETROS DEL CENTINELA NOCTURNO CORREGIDO CON 18 SEMANAS DE BINANCE ---
+  // Nota histórica crítica: 00:30 AM a 04:00 AM COT es el PISO #1 DE COMPRA del ciclo diario (+0.22% 4h)
+  // y 20:00 a 21:45 COT es el PISO #3 PRE-ASIA. El único tramo nocturno de trampa es el Techo Asia (22:30 - 00:30 COT).
   public isNightWindow(): boolean {
-    const hour = parseInt(new Date().toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
-    // Ventana de bajo volumen y caza de liquidaciones: 20:00 a 02:30 COT
-    return hour >= 20 || hour < 3;
+    const { timeDec } = this.getCotTimeInfo();
+    return timeDec >= 22.5 || timeDec < 0.5;
   }
 
-  
   public isPreNightHarvestWindow(): boolean {
-    const d = new Date();
-    const hour = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
-    const minute = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
-    return (hour >= 16 && hour < 19) || (hour === 19 && minute <= 30);
+    const { timeDec } = this.getCotTimeInfo();
+    return timeDec >= 15.5 && timeDec <= 18.25;
   }
 
   public isNYImpulseWindow(): boolean {
-    const d = new Date();
-    const hour = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
-    const minute = parseInt(d.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
-    return (hour === 8 && minute >= 30) || (hour > 8 && hour < 14);
+    const { timeDec } = this.getCotTimeInfo();
+    return timeDec >= 11.5 && timeDec < 15.5;
   }
 
   /**
-   * Ventana de Acumulación y Cosecha Pre-Weekend (Viernes 06:00 a 16:59 COT):
-   * Asegura liquidez fresca antes de que se abra Cazador Weekend a las 17:00 COT.
+   * Ventana de Cosecha de Viernes Mañana (Viernes 06:00 a 13:59 COT):
+   * Recoge ganancias en el techo del viernes (27% de los techos semanales ocurren entre 06:00 y 10:00 AM)
+   * antes de que inicie la Veda de Viernes a las 14:00 COT.
    */
   public isPreWeekendAccumulationWindow(): boolean {
     try {
-      const now = new Date();
-      const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
-      const hour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
-      return dayStr === "Fri" && hour >= 6 && hour < 17;
+      const { dayStr, timeDec } = this.getCotTimeInfo();
+      return dayStr === "Fri" && timeDec >= 6.0 && timeDec < 14.0;
     } catch {
       return false;
     }
   }
 
   public getSessionLiquidityPlan(totalFreeUsdt: number): SessionLiquidityPlan {
-    const now = new Date();
-    const cotHour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
-    const cotMin = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
-
-    // Reserva base permanente desde la configuración (Mínimo 25% siempre protegido)
-    const baseReservePct = (this.controls?.cashReservePct ?? 25) / 100;
-
-    // Definición horaria de las bolsas institucionales (COT = UTC-5)
-    const isLondon = cotHour >= 3 && cotHour < 7; // 03:00 - 07:00 COT (Apertura Europea)
-    const isNY = (cotHour === 8 && cotMin >= 30) || (cotHour > 8 && cotHour < 14); // 08:30 - 14:00 COT (Wall Street)
-    const isAfternoonSlide = cotHour >= 14 && cotHour < 17; // 14:00 - 17:00 COT (Cierre NY y deslizamiento)
-    const isPreNight = cotHour >= 17 && cotHour < 20; // 17:00 - 20:00 COT (Cosecha previa a Asia)
-    const isNight = cotHour >= 20 || cotHour < 3; // 20:00 - 03:00 COT (Drenaje nocturno y trampas)
+    const { dayStr, timeDec } = this.getCotTimeInfo();
+    const floorWin = this.isHistoricalFloorWindow();
+    const peakHarvestWin = this.isHistoricalPeakHarvestWindow();
+    const pauseWin = this.isHistoricalPauseWindow();
     const isPreWeekend = this.isPreWeekendAccumulationWindow();
     const isWeekend = this.isWeekendWindow();
 
     let sessionKey: SessionLiquidityPlan["sessionKey"] = "REGULAR";
-    let sessionTitle = "🔄 Sesión Regular / Transición";
-    let reservePct = baseReservePct; // Por defecto siempre respetar mínimo el 25%
-    let lotFractionPct = 0.40;
+    let sessionTitle = "💼 Doble Bolsillo Semanal (40% Abierto Activo | 60% Cerrado Esperando Hora Piso)";
+    // En horas normales de transición: 60% Presupuesto Cerrado blindado para Hora Piso, 40% Presupuesto Abierto activo
+    let reservePct = 0.60;
+    let lotFractionPct = 0.55;
     let trailingBounceTrigger = 0.35;
-    let harvestCallbackPct: number | undefined = undefined;
-    let reason = "Flujo estándar intradía. Manteniendo colchón de reserva protegido del 25%.";
-    let recommendation = "🔄 Operación cautelosa. El 25% del capital queda blindado ante caídas imprevistas.";
+    let harvestCallbackPct: number | undefined = peakHarvestWin.active ? 0.15 : undefined;
+    let reason = "Arquitectura de Doble Bolsillo (18 semanas Binance): 60% del USDT guardado en el Bolsillo Cerrado para las Horas Piso (00:30-04:00 AM, 11:30 AM-01:30 PM, 08:00-09:45 PM) y 40% activo en el Bolsillo Abierto.";
+    let recommendation = "💼 Operando con Presupuesto Abierto (40%). Los bloques grandes de $50–$100 USDT se desbloquean al 100% en la próxima Hora Piso.";
 
-    if (isNight) {
+    if (floorWin.active) {
+      // 🟢 HORA PISO ESTADÍSTICA ACTIVA: Desbloqueo del 100% (Presupuesto Cerrado 60% + Presupuesto Abierto 40% unidos)
+      sessionKey = "LONDRES_REBOTE";
+      sessionTitle = floorWin.label;
+      reservePct = 0.0; // Desbloquea el 100% del efectivo disponible para disparar bloques fuertes de $50 - $100 USDT
+      lotFractionPct = 0.85;
+      trailingBounceTrigger = 0.30;
+      reason = "Hora Piso comprobada en 18 semanas de historial Binance (máxima tasa de formación de suelos y retorno positivo a +4h). Presupuesto Cerrado (60%) + Presupuesto Abierto (40%) 100% DESBLOQUEADOS.";
+      recommendation = "🎯 Modo Francotirador $100 USDT Activo: 100% del capital disponible habilitado para cazar el suelo con confirmación 15m + 5m + Ancla BTC.";
+    } else if (pauseWin.paused) {
+      // ⏸️ HORA PAUSA / TRAMPA ESTADÍSTICA ACTIVA: Compras normales pausadas, solo Excepción por Evento Atípico (40%)
       sessionKey = "NOCTURNO_DRENAJE";
-      sessionTitle = "🌙 Drenaje Nocturno (Caza de Stops / Vacío de Liquidez)";
-      reservePct = 0.50; // CONGELAR EL 50% PARA LONDRES A LAS 03:00 COT
-      lotFractionPct = 0.20;
-      trailingBounceTrigger = 0.45;
-      reason = "Bajo volumen y alto riesgo de caza de stops (Win Rate 38%-43%). El 50% de la caja queda CONGELADA para aprovechar los suelos de Londres a las 03:00 COT.";
-      recommendation = "🌙 Mantener reserva congelada. Compras bloqueadas salvo pánico extremo (RSI <= 26 con vela de rechazo).";
+      sessionTitle = peakHarvestWin.active ? `${peakHarvestWin.label} + Pausa de Compras` : pauseWin.reason;
+      reservePct = 0.60; // 60% blindado; el 40% restante solo se dispara si se activa isAtypicalMarketException
+      lotFractionPct = 0.40;
+      trailingBounceTrigger = 0.55;
+      harvestCallbackPct = 0.15;
+      reason = `${pauseWin.reason} Compras estándar detenidas; solo se autoriza la Llave Maestra de Excepción por Evento Atípico (Flash Crash >= -5.8%, RSI <= 26, Mecha >= 35% y CVD >= 55%).`;
+      recommendation = "⏸️ Pausa Horaria Estadística: Cosechando ventas en la cima con Trailing ceñido (0.15%) y guardando munición para la próxima Hora Piso.";
     } else if (isPreWeekend) {
       sessionKey = "COSECHA_PRENOCTURNA";
-      sessionTitle = "🏖️ Acumulación Pre-Weekend (Viernes 06:00 - 17:00 COT)";
-      reservePct = Math.max(0.40, baseReservePct);
-      lotFractionPct = 0.30;
+      sessionTitle = "🏆 Cosecha de Viernes Mañana (06:00 AM - 02:00 PM COT)";
+      reservePct = 0.60;
+      lotFractionPct = 0.40;
       trailingBounceTrigger = 0.40;
       harvestCallbackPct = 0.15;
-      reason = "Preparación estratégica de viernes: se blinda al menos el 25% del portafolio total y se cosechan posiciones en verde (+0.60%) para llegar a las 17:00 COT con liquidez garantizada para Cazador Weekend.";
-      recommendation = "🏖️ Prioridad Cosecha: Recoger ganancias en verde y guardar presupuesto garantizado para el fin de semana.";
-    } else if (isLondon) {
-      sessionKey = "LONDRES_REBOTE";
-      sessionTitle = "🏰 Rebote de Londres (Apertura Europea / Absorción)";
-      reservePct = 0.15; // En Londres se libera la reserva para cazar el rebote de mayor win rate (64%-71%)
-      lotFractionPct = 0.60;
-      trailingBounceTrigger = 0.25;
-      reason = "Máxima tasa de acierto del ciclo (64%-71%). La liquidez guardada en la noche se despliega en los suelos confirmados.";
-      recommendation = "🏰 Modo Ofensivo Activo: Despliegue de lotes al 60% cazando suelos con Trailing Buy sensible (+0.25%).";
-    } else if (isNY) {
+      reason = "El 27% de los techos del viernes ocurren en la mañana antes del drenaje de fin de semana. Se cosechan posiciones en verde (callback 0.15%) y se blinda el 60% para la madrugada del sábado.";
+      recommendation = "🏆 Prioridad Cosecha de Viernes: Recoger ganancias antes de las 02:00 PM COT y acumular bloques de $50–$100 USDT para el sábado madrugada.";
+    } else if (peakHarvestWin.active) {
+      sessionKey = "COSECHA_PRENOCTURNA";
+      sessionTitle = peakHarvestWin.label;
+      reservePct = 0.60;
+      lotFractionPct = 0.45;
+      trailingBounceTrigger = 0.38;
+      harvestCallbackPct = 0.15;
+      reason = "Ventana de Hora Techo histórica. Trailing Take Profit ceñido a 0.15% para asegurar ganancias en la cima antes del retroceso estadístico.";
+      recommendation = "🏆 Cosechar subidas en USDT y mantener el 60% reservado para la siguiente Hora Piso.";
+    } else if (dayStr === "Sun" && timeDec >= 16.5 && timeDec <= 23.5) {
       sessionKey = "NY_IMPULSO";
-      sessionTitle = "🗽 Impulso Wall Street (Máxima Liquidez y Volumen)";
-      reservePct = 0.25; // 25% de reserva base permanente
+      sessionTitle = "🚀 Impulso Dominical y Apertura CME (Domingo Tarde/Noche)";
+      reservePct = 0.50;
       lotFractionPct = 0.50;
       trailingBounceTrigger = 0.35;
-      reason = "Mayor volumen del día. Se opera la expansión manteniendo el 25% en caja protegida.";
-      recommendation = "🗽 Dejar correr posiciones con Trailing Take Profit y guardar el 25% para retrocesos.";
-    } else if (isAfternoonSlide) {
-      sessionKey = "COSECHA_PRENOCTURNA";
-      sessionTitle = "📉 Enfriamiento Post-Wall Street (14:00 - 17:00 COT)";
-      reservePct = 0.35; // ELEVAR RESERVA AL 35% ANTE EL CIERRE DE NY
-      lotFractionPct = 0.30;
-      trailingBounceTrigger = 0.40;
-      reason = "Cierre de contado en Nueva York. Los operadores institucionales toman ganancias y el mercado suele deslizarse a la baja. Reserva elevada al 35%.";
-      recommendation = "📉 Proteger el 35% de la caja. No comprar rebotes débiles; esperar confirmación profunda de soporte.";
-    } else if (isPreNight) {
-      sessionKey = "COSECHA_PRENOCTURNA";
-      sessionTitle = "🌆 Cosecha Vespertina & Acumulación (17:00 - 20:00 COT)";
-      reservePct = 0.45; // ELEVAR RESERVA AL 45% PARA LA NOCHE
-      lotFractionPct = 0.25;
-      harvestCallbackPct = 0.20;
-      reason = "Preparación para el drenaje nocturno. El 45% de la cuenta se protege en USDT líquido.";
-      recommendation = "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para cerrar en verde y acumular USDT para la noche.";
+      harvestCallbackPct = 0.16;
+      reason = "El domingo es el día más alcista de la semana (+1.00% retorno neto promedio). Se dejan correr las compras del sábado y se cosechan en los picos de la noche.";
+      recommendation = "🚀 Exprimir el rally dominical con Trailing TP y cosechar antes de la medianoche.";
     }
 
-    // 🛡️ BÓVEDA DE RESERVA ESTRATÉGICA BASADA EN PORTAFOLIO TOTAL (ANTI-SEQUÍA DE SALDO):
-    // Evita que las compras normales de Cazador Trailing (Lote 1) entre semana agoten el 100% del USDT,
-    // garantizando presupuesto intocable para Fin de Semana (Cazador Weekend), Días Quietos (Micro-Grid) y Rescates (Smart DCA).
-    let activeInvested = 0;
-    for (const p of this.activeTrailingPositions.values()) {
-      activeInvested += (p.investedUsdt || 0);
-    }
-    const totalPortfolioEst = activeInvested + totalFreeUsdt;
-
-    // Piso estratégico que Cazador Trailing (Tier 1) NO puede gastar:
-    // - Viernes Pre-Weekend (06:00-17:00 COT): mín. 25% del portafolio total (o $50 USDT) para asegurar munición a las 17:00 COT.
-    // - Fin de Semana (Vie 17:00 - Dom 18:00 COT): se libera la bóveda (solo retiene 10% o $15 USDT para emergencias DCA).
-    // - Lunes a Jueves: mín. 18% del portafolio total (o $35 USDT) reservado para Días Quietos (Micro-Grid), Weekend y Smart DCA.
-    let strategicFloorUsdt = 0;
-    if (activeInvested > 0) {
-      if (isPreWeekend) {
-        strategicFloorUsdt = Math.max(50, Math.round(totalPortfolioEst * 0.25 * 100) / 100);
-      } else if (isWeekend) {
-        strategicFloorUsdt = Math.max(15, Math.round(totalPortfolioEst * 0.10 * 100) / 100);
-      } else {
-        strategicFloorUsdt = Math.max(35, Math.round(totalPortfolioEst * 0.18 * 100) / 100);
-      }
-
-      // 🛡️ REGLA DE LIQUIDEZ ACTIVA:
-      // Si el piso estratégico deja menos de $10 USDT libres para compras mínimas,
-      // se modera el piso (reservando máx 40% del saldo libre) para asegurar que el bot pueda
-      // entrar en nuevas oportunidades con Trailing Rebound y no quedar congelado al 100%.
-      if (totalFreeUsdt >= 20 && (totalFreeUsdt - strategicFloorUsdt) < this.minUsdtToTrade) {
-        strategicFloorUsdt = Math.min(strategicFloorUsdt, Math.round(totalFreeUsdt * 0.40 * 100) / 100);
-      }
-    }
-
-    // Calcular montos exactos respetando los mínimos de Binance ($10 USDT) y el Piso Estratégico
-    let reservedUsdt = Math.max(strategicFloorUsdt, Math.round(totalFreeUsdt * reservePct * 100) / 100);
-    if (totalFreeUsdt >= this.minUsdtToTrade && (totalFreeUsdt - reservedUsdt) < this.minUsdtToTrade) {
-      // Garantizar al menos 1 lote quirúrgico si hay saldo suficiente (>= $18 USDT)
-      reservedUsdt = totalFreeUsdt >= 18 ? Math.max(0, Math.round((totalFreeUsdt - Math.max(18, totalFreeUsdt * 0.65)) * 100) / 100) : 0;
+    // Cálculo limpio de los Dos Bolsillos (Presupuesto Cerrado vs Presupuesto Abierto):
+    // En Hora Piso (floorWin.active): 100% del USDT libre se vuelve gastable (spendableUsdt = totalFreeUsdt).
+    // Fuera de Hora Piso: 60% queda en reservedUsdt (Bolsillo Cerrado) y 40% en spendableUsdt (Bolsillo Abierto),
+    // pero si el usuario tiene entre $35 y $85 USDT y aparece una oportunidad de Máxima Brecha / Reina $100, permitimos reunir el bloque mínimo de $35 USDT.
+    let reservedUsdt = floorWin.active ? 0 : Math.round(totalFreeUsdt * reservePct * 100) / 100;
+    if (!floorWin.active && !pauseWin.paused && totalFreeUsdt >= 35 && (totalFreeUsdt - reservedUsdt) < 35) {
+      reservedUsdt = Math.max(0, Math.round((totalFreeUsdt - 35) * 100) / 100);
     }
     let spendableUsdt = Math.max(0, Math.round((totalFreeUsdt - reservedUsdt) * 100) / 100);
 
@@ -6055,62 +6236,54 @@ export class TrailingMasterBot {
       this.lastSessionKey = sessionPlan.sessionKey;
 
       const uniqueActiveCount = this.getUniqueActiveSymbols().size;
-      // Capacidad ampliada: permite hasta 8 monedas activas simultáneas para dar espacio a la nueva estrategia de Brechas (NEAR/SUI/AVAX/SOL)
-      const configuredMax = Math.max(8, this.controls?.maxPositions || 8);
+      // 🎯 Concentración de capital en bloques de $50 - $100 USDT (máximo 4 monedas para nuevas entradas)
+      const configuredMax = this.controls?.maxPositions || 4;
       const maxUniqueCoins = configuredMax;
-      console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva: ${sessionPlan.reservedUsdt.toFixed(2)}) | Monedas: ${uniqueActiveCount}/${maxUniqueCoins} (${this.activeTrailingPositions.size} lotes) | Cazando piso: ${this.buyWatches.size}`);
+      console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva Cerrada: ${sessionPlan.reservedUsdt.toFixed(2)}) | Monedas: ${uniqueActiveCount}/${maxUniqueCoins} (${this.activeTrailingPositions.size} lotes) | Cazando piso: ${this.buyWatches.size}`);
 
       // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
       await this.checkLiquidityAndFuturesViability(usdt);
 
-      // 2. Evaluar oportunidades de compra (PAUSADO durante la Veda de Viernes 14:00 COT a Sábado 02:00 AM COT)
-      if (this.isFridayEveningBleedWindow()) {
-        // Durante el viernes tarde/noche solo acompañamos pisos hacia abajo sin comprar y cosechamos ventas en USDT
-        for (const [sym, w] of this.buyWatches.entries()) {
-          try {
-            const cur = parseFloat((await this.client.tickerPrice(sym)).data.price);
-            if (cur < w.lowestPrice) {
-              w.lowestPrice = cur;
-              w.armedTime = Date.now();
-              this.saveBuyWatches();
-            }
-          } catch {}
-        }
-        console.log(`⏸️ [VEDA DE VIERNES (Vie 14:00 - Sáb 02:00 COT)] Compras tempranas en pausa (82% prob. de caída hasta la madrugada del sábado). Solo cosechando ventas en USDT.`);
-      } else if (botSpendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
+      // 2. Evaluar oportunidades de compra respetando Horas Piso, Horas Pausa y Excepción por Evento Atípico
+      const pauseWin = this.isHistoricalPauseWindow();
+      if (pauseWin.paused) {
+        console.log(`${pauseWin.reason} (Vigilando únicamente Eventos Atípicos / Flash Crash >= -5.8% con RSI <= 26).`);
+      }
+
+      if (botSpendableUsdt >= this.minUsdtToTrade && !this.pendingOpportunity) {
         const secondaryPoolUsdt = Math.max(0, Math.round(sessionPlan.spendableUsdt * 100) / 100);
 
-        // Prioridad 1: Cacería Quirúrgica de Rebote (Trailing Buy en curso: evalúa los 5 niveles de inversión)
+        // Prioridad 1: Cacería Quirúrgica de Rebote (en Hora Pausa solo dispara si se activa isAtypicalMarketException)
         let bought = false;
         if (this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins && this.buyWatches.size > 0 && secondaryPoolUsdt >= this.minUsdtToTrade) {
-          bought = await this.checkBuyWatches(secondaryPoolUsdt);
+          bought = await this.checkBuyWatches(botSpendableUsdt);
         }
 
-        // Prioridad 2: Smart DCA (Refuerzo de Lote 2/3 en caídas profundas confirmadas)
-        const dcaTriggered = !bought && secondaryPoolUsdt >= this.minUsdtToTrade
+        // Prioridad 2: Smart DCA (Refuerzo de Lote 2/3 en caídas profundas confirmadas; bloqueado en Veda de Viernes salvo caída extrema >= -6.5%)
+        const dcaTriggered = !bought && !pauseWin.paused && secondaryPoolUsdt >= this.minUsdtToTrade
           ? await this.checkSmartDcaOpportunities(secondaryPoolUsdt)
           : false;
 
-        // Prioridad 3: Centinela Alpha
+        // Prioridad 3: Centinela Alpha (solo fuera de Horas Pausa)
         let alphaTriggered = false;
-        if (!bought && !dcaTriggered && secondaryPoolUsdt >= this.minUsdtToTrade && this.controls.strategies?.centinela_alpha) {
+        if (!bought && !dcaTriggered && !pauseWin.paused && secondaryPoolUsdt >= this.minUsdtToTrade && this.controls.strategies?.centinela_alpha) {
           alphaTriggered = await this.evaluateCentinelaAlpha(secondaryPoolUsdt);
         }
 
-        // Prioridad 4: Fin de Semana
+        // Prioridad 4: Fin de Semana (Sábado 02:00 AM a Domingo 18:00 COT)
         let weekendTriggered = false;
-        if (!bought && !dcaTriggered && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && uniqueActiveCount < maxUniqueCoins && secondaryPoolUsdt >= this.minUsdtToTrade) {
+        if (!bought && !dcaTriggered && !pauseWin.paused && this.isWeekendWindow() && this.controls.strategies.cazador_weekend && uniqueActiveCount < maxUniqueCoins && secondaryPoolUsdt >= this.minUsdtToTrade) {
           weekendTriggered = await this.evaluateCazadorWeekend(secondaryPoolUsdt, activeSymbols);
         }
 
         // Prioridad 5: Día Quieto / Lateral (Micro-Grid)
         let gridTriggered = false;
         const gridUnlockedUsdt = Math.min(20, secondaryPoolUsdt);
-        if (!bought && !dcaTriggered && !weekendTriggered && this.controls.strategies.micro_grid && uniqueActiveCount < maxUniqueCoins && gridUnlockedUsdt >= this.minUsdtToTrade) {
+        if (!bought && !dcaTriggered && !weekendTriggered && !pauseWin.paused && this.controls.strategies.micro_grid && uniqueActiveCount < maxUniqueCoins && gridUnlockedUsdt >= this.minUsdtToTrade) {
           gridTriggered = await this.evaluateMicroGrid(gridUnlockedUsdt, activeSymbols);
         }
 
-        // Prioridad 6: Escaneo de nuevos pisos para armar Cacerías (Trailing Buy)
+        // Prioridad 6: Escaneo de nuevos pisos para armar Cacerías (en Hora Pausa solo arma si hay Flash Crash >= -5.2% y RSI <= 28)
         if (!bought && !dcaTriggered && !weekendTriggered && !gridTriggered && this.controls.strategies.trailing_rebound && uniqueActiveCount < maxUniqueCoins) {
           await this.scanForDips(activeSymbols);
         }
