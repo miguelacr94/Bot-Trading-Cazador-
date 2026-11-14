@@ -1558,38 +1558,49 @@ export class TrailingMasterBot {
 
   
   /**
-   * 🤖 ESTRATEGIA AUTÓNOMA CENTINELA ALPHA (Recuperación y Caza Institucional)
-   * Gestiona de forma 100% independiente el 20% del presupuesto para recuperar el capital.
+   * 🤖 ESTRATEGIA AUTÓNOMA CENTINELA ALPHA (Recuperación y Caza Institucional Calibrada 18 Semanas)
+   * Gestiona de forma 100% independiente su cuota de presupuesto respetando Horas Piso, Pausas, Ancla BTC 15m y Bloques >= $35-$100 USDT.
    */
   async evaluateCentinelaAlpha(usdt: number): Promise<boolean> {
     try {
       if (!this.controls.strategies?.centinela_alpha) return false;
+
+      // Respetar límite de concentración de posiciones
+      const uniqueActiveNow = this.getUniqueActiveSymbols().size;
+      const configuredMax = this.controls?.maxPositions || 4;
+      if (uniqueActiveNow >= configuredMax) return false;
 
       // Verificar si ya tenemos una posición abierta gestionada por Centinela Alpha
       for (const p of this.activeTrailingPositions.values()) {
         if (p.strategy === "centinela_alpha") return false;
       }
 
-      if (usdt < 12) return false;
+      // Prohibido abrir micro-operaciones: exigir bloque mínimo de $35 USDT (priorizando $50-$100 en Hora Piso)
+      if (usdt < 35) return false;
 
+      // Filtro Macro y Reloj Estadístico (18 semanas Binance)
+      const macro = await this.getLiveMacroRegime();
+      if (macro.isMacroStorm && !macro.isBtcCapitulationFloor) return false;
+
+      const pauseWin = this.isHistoricalPauseWindow();
+      const floorWin = this.isHistoricalFloorWindow();
       const allocPct = this.controls.allocations?.centinela_alpha || 20;
-      const budgetUsdt = Math.min(30, Math.max(12, Math.floor(usdt * (allocPct / 100) * 100) / 100));
+      const effectivePool = floorWin.active ? usdt : Math.min(usdt, Math.max(35, usdt * (allocPct / 100)));
+      const budgetUsdt = Math.min(100, Math.max(35, Math.floor(effectivePool * 100) / 100));
+      if (budgetUsdt > usdt || budgetUsdt < 35) return false;
 
-      const candidates = this.watchlist;
-      let bestAsset: { symbol: string; score: number; reason: string; rsi: number; curPrice: number; tf: "15m" | "1h"; callback: number } | null = null;
+      const candidates = this.coreWatchlist; // Solo monedas reina de alta liquidez
+      let bestAsset: { symbol: string; score: number; reason: string; rsi: number; curPrice: number; tf: "15m" | "1h"; callback: number; dropPct: number } | null = null;
 
       for (const sym of candidates) {
-        let isAlreadyOpen = false;
-        for (const p of this.activeTrailingPositions.values()) {
-          if (p.symbol === sym) { isAlreadyOpen = true; break; }
-        }
-        if (isAlreadyOpen || this.buyWatches.has(sym)) continue;
+        if (this.hasActivePositionForSymbol(sym) || this.buyWatches.has(sym)) continue;
 
         const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE");
-        const tf: "15m" | "1h" = isMeme ? "15m" : "1h";
+        if (isMeme) continue;
+        const tf: "15m" | "1h" = "1h";
 
         try {
-          const klines = await this.client.klines(sym, tf, { limit: 35 });
+          const klines = await this.client.klines(sym, tf, { limit: 40 });
           const data = klines.data;
           const opens = data.map((k: any) => parseFloat(k[1]));
           const highs = data.map((k: any) => parseFloat(k[2]));
@@ -1598,7 +1609,8 @@ export class TrailingMasterBot {
 
           const curPrice = closes[closes.length - 1];
           const rsi = this.calculateRSI(closes, 14);
-          const maxRecent = Math.max(...highs.slice(-20));
+          const stoch = this.calculateStochRSI(closes, 14, 14, 3, 3);
+          const maxRecent = Math.max(...highs.slice(-24));
           const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
 
           const lastIdx = closes.length - 1;
@@ -1606,23 +1618,37 @@ export class TrailingMasterBot {
           const lowerWick = Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx];
           const wickRatio = candleRange > 0 ? (lowerWick / candleRange) : 0;
 
-          // Exigir flujo de compra agresiva real (CVD >= 55%) y sobreventa estricta (RSI <= 31, caída >= 3.0%, mecha >= 35%)
+          // Exigir flujo de compra agresiva real (CVD >= 55%) y sobreventa estricta (RSI <= 31, StochRSI <= 20, caída >= 3.5%, mecha >= 35%)
           const totQuote = parseFloat(data[lastIdx][7] || "0");
           const buyQuote = parseFloat(data[lastIdx][10] || "0");
           const takerBuyRatio = totQuote > 0 ? (buyQuote / totQuote) * 100 : 50;
 
-          if (rsi <= 31 && dropPct >= 3.0 && wickRatio >= 0.35 && takerBuyRatio >= 55.0 && !isMeme) {
-            const score = (35 - rsi) * 2.5 + (wickRatio * 30) + (dropPct * 1.5) + ((takerBuyRatio - 50) * 0.8);
+          // Si estamos en Hora Pausa, solo permitir si cumple Llave Maestra de Excepción Atípica
+          if (pauseWin.paused) {
+            const isAtypical = this.isAtypicalMarketException({
+              symbol: sym,
+              dropPct,
+              rsi,
+              lowerWickRatio: wickRatio,
+              bouncePct: 0.60,
+              cvdPct: takerBuyRatio
+            });
+            if (!isAtypical) continue;
+          }
+
+          if (rsi <= 31 && stoch.k <= 20 && dropPct >= 3.5 && wickRatio >= 0.35 && takerBuyRatio >= 55.0) {
+            const score = (35 - rsi) * 2.5 + (wickRatio * 30) + (dropPct * 1.8) + ((takerBuyRatio - 50) * 0.8);
 
             if (!bestAsset || score > bestAsset.score) {
               bestAsset = {
                 symbol: sym,
                 score,
-                reason: `RSI ${rsi.toFixed(1)} en ${tf.toUpperCase()} | CVD Compras ${takerBuyRatio.toFixed(1)}% | Rechazo ${(wickRatio * 100).toFixed(0)}% | Caída -${dropPct.toFixed(1)}%`,
+                reason: `RSI ${rsi.toFixed(1)} | StochRSI ${stoch.k.toFixed(0)} en ${tf.toUpperCase()} | CVD Compras ${takerBuyRatio.toFixed(1)}% | Rechazo ${(wickRatio * 100).toFixed(0)}% | Caída -${dropPct.toFixed(1)}%`,
                 rsi,
                 curPrice,
                 tf,
-                callback: 0.22
+                callback: 0.25,
+                dropPct
               };
             }
           }
@@ -1630,6 +1656,13 @@ export class TrailingMasterBot {
       }
 
       if (!bestAsset) return false;
+
+      // Verificar Ancla Líder-Seguidor en Bitcoin 15m antes de ejecutar
+      const btcAnchor = await this.verifyBtc15mLeaderAnchor(bestAsset.symbol);
+      if (!btcAnchor.ok) {
+        console.log(`⚓ [CENTINELA ALPHA RETENIDO POR ANCLA BTC 15M] ${bestAsset.symbol}: ${btcAnchor.reason}`);
+        return false;
+      }
 
       console.log(`🤖 [CENTINELA ALPHA] Oportunidad detectada en ${bestAsset.symbol}: ${bestAsset.reason}`);
       const buyStr = (budgetUsdt - 0.15).toFixed(2);
@@ -1661,6 +1694,7 @@ export class TrailingMasterBot {
         buyTime: Date.now(),
         strategy: "centinela_alpha",
         customCallbackPct: bestAsset.callback,
+        customMinGainPct: 0.85,
         customTimeframe: bestAsset.tf
       });
       this.saveTrailingPositions();
@@ -1810,19 +1844,35 @@ export class TrailingMasterBot {
           continue;
         }
 
-        const dcaAllocWeight = Math.max(0.35, Math.min(0.65, ((this.controls.allocations?.smart_dca || 40) / 100)));
-        const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
-        const spendableForDca = sessionPlan.spendableUsdt >= this.minUsdtToTrade ? sessionPlan.spendableUsdt : usdt;
+        // ⚓ ANCLA BITCOIN 15M EN SMART DCA: No promediar altcoins si BTC sigue cayendo en 15m
+        const btcAnchor = await this.verifyBtc15mLeaderAnchor(cleanSym);
+        if (!btcAnchor.ok) {
+          console.log(`⚓ [SMART DCA RETENIDO POR ANCLA BTC 15M] ${cleanSym}: ${btcAnchor.reason}`);
+          continue;
+        }
+
+        const floorWin = this.isHistoricalFloorWindow();
+        const pauseWin = this.isHistoricalPauseWindow();
         const absDrop = Math.abs(dropFromLot1);
+
+        // Si estamos en Hora Pausa, solo permitir Smart DCA si hay Capitulación Extrema (caída >= 6.5% y RSI <= 26)
+        if (pauseWin.paused && !(absDrop >= 6.5 && rsi <= 26)) {
+          continue;
+        }
+
+        const dcaAllocWeight = Math.max(0.45, Math.min(0.85, ((this.controls.allocations?.smart_dca || 30) / 100) + (floorWin.active ? 0.35 : 0)));
+        const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
+        // En Hora Piso se desbloquea el 100% del USDT para un rescate contundente ($35 - $100 USDT)
+        const spendableForDca = floorWin.active ? usdt : (sessionPlan.spendableUsdt >= 30 ? sessionPlan.spendableUsdt : usdt * 0.50);
         const isMeme = this.memeWatchlist.includes(cleanSym) || cleanSym.includes("PEPE") || cleanSym.includes("BONK") || cleanSym.includes("DOGE");
         const btcRange = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.0;
 
-        // 📐 DISTANCIA DINÁMICA POR VOLATILIDAD (ATR 1H + Rango 24h Real + Estrés Macro BTC):
-        // En monedas que se mueven 10%-14% al día (ej. NEAR/SOL/AVAX/BONK) o bajo presión de BTC, prohibido quemar el Lote 2 con -2.5%.
-        // Se auto-expande continuamente entre -3.8% y -7.5% según el ATR de la moneda y el estrés de Bitcoin.
+        // 📐 DISTANCIA DINÁMICA POR VOLATILIDAD + SINCRONIZACIÓN CON HORAS PISO:
+        // Fuera de Hora Piso exige +0.8% adicional de descuento para preferir promediar en los suelos horarios comprobados (00:30-04:00 AM, 11:30 AM-01:30 PM, 20:00-21:45 PM, Sábado madrugada).
+        const nonFloorPenalty = floorWin.active ? 0 : 0.8;
         const reqDropLot2 = Math.max(
-          3.8,
-          Math.min(7.5, Math.max(atr1hPct * 3.0, 2.4 + realRange24hPct * 0.34) * (1 + macro.btcStressIndex * 0.28))
+          3.8 + nonFloorPenalty,
+          Math.min(7.8, Math.max(atr1hPct * 3.0, 2.4 + realRange24hPct * 0.34) * (1 + macro.btcStressIndex * 0.28) + nonFloorPenalty)
         );
         const reqDropLot3 = Math.max(6.5, reqDropLot2 + 2.5);
 
@@ -5334,7 +5384,7 @@ export class TrailingMasterBot {
         };
       }
 
-      // 4. Sugerencia Cazador Weekend (Anomalía Fin de Semana)
+      // 4. Sugerencia Cazador Weekend (Anomalía Fin de Semana Calibrada 18 Semanas)
       const isWeekendCurrent = currentSettings.cazador_weekend?.timeframe === "1h";
       const isWeekendRejected = !!(this.controls.rejectedSuggestions.cazador_weekend && this.controls.rejectedSuggestions.cazador_weekend > now);
 
@@ -5342,13 +5392,13 @@ export class TrailingMasterBot {
         this.controls.suggestions!.cazador_weekend = {
           timeframe: "1h",
           stopLossPct: 5.0,
-          reason: "Ventana de fin de semana abierta (Vie 17:00 a Dom 18:00 COT).",
+          reason: "Ventana de cacería en piso abierta (Sábado 02:00 AM a Domingo 06:00 PM COT).",
           criterios: [
-            "Bolsas mundiales cerradas: caza de barridas de liquidez de fin de semana",
-            "Puntaje cuantitativo: Caída + RSI + Banda Inferior Bollinger + Mecha",
-            "Confirmación de giro en 5m antes de comprar + Salida en apertura CME"
+            "Veda de Viernes superada (82% de los fines de semana marcan suelo en sábado madrugada/mañana)",
+            "Filtro institucional: Caída ≥ -3.5% (Clásicas) / -5.2% (Memes), RSI ≤ 36-38, StochRSI ≤ 25",
+            "Confirmación multitemporal 15m + 5m + Ancla BTC 15m + Salida en Rally CME (Domingo noche)"
           ],
-          porQue: "Durante el fin de semana los creadores de mercado provocan caídas de bajo volumen. Cazador Weekend selecciona el Top 1 de mayor sobreventa y espera el giro real en 5m para comprar en el piso y vender en el impulso de apertura de futuros CME (domingo noche/lunes).",
+          porQue: "Según el estudio de 18 semanas en Binance, el viernes tarde/noche es fase de drenaje y el suelo real se forma entre sábado 02:00 AM y 12:00 PM COT. Cazador Weekend opera exclusivamente en este piso con bloques fuertes ($50–$100 USDT) para vender en el impulso alcista del domingo.",
           session,
           btcRange24h: btcRange,
           updatedAt: now,
@@ -5360,12 +5410,14 @@ export class TrailingMasterBot {
         this.controls.suggestions!.cazador_weekend = {
           timeframe: "1h",
           stopLossPct: 5.0,
-          reason: "En espera hasta el viernes a las 17:00 COT.",
+          reason: this.isFridayEveningBleedWindow()
+            ? "⏸️ Veda de Viernes activa (Vie 14:00 a Sáb 02:00 AM COT): esperando piso de madrugada."
+            : "En espera hasta el sábado a las 02:00 AM COT (tras la Veda de Viernes).",
           criterios: [
-            "Días hábiles de semana (mercados institucionales de Londres y NY abiertos)",
-            "Presupuesto cedido automáticamente a Cazador Trailing y Smart DCA"
+            "Viernes 14:00 a Sábado 02:00 AM COT: Pausa de compras para evitar el drenaje del viernes (82% prob.)",
+            "Días hábiles: Presupuesto cedido al sistema de Doble Bolsillo (60% Horas Piso / 40% Abierto)"
           ],
-          porQue: "Entre semana el flujo institucional opera en Londres y Wall Street, por lo que Cazador Weekend descansa y cede su cuota de capital a las estrategias principales hasta el viernes a las 17:00 COT.",
+          porQue: "Para evitar comprar apresuradamente el viernes por la noche antes de la caída de madrugada, Cazador Weekend permanece en pausa hasta el sábado a las 02:00 AM COT.",
           session,
           btcRange24h: btcRange,
           updatedAt: now,
@@ -5454,14 +5506,20 @@ export class TrailingMasterBot {
   }
 
   /**
-   * ESCÁNER MICRO-GRID: Opera compras rápidas en canales laterales estrechos durante días quietos o fines de semana planos.
+   * ESCÁNER MICRO-GRID CALIBRADO:
+   * Solo opera si el usuario lo activa explícitamente, respetando Horas Pausa, Ancla BTC 15m,
+   * sobreventa real (RSI <= 38, StochRSI <= 25) y bloque mínimo de $35 USDT para jamás pulverizar el capital en migajas.
    */
   async evaluateMicroGrid(usdt: number, activeSymbols: Set<string>): Promise<boolean> {
-    const btcRangeCur = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
-    const weekendQuietAssist = this.isWeekendWindow() && btcRangeCur < 2.2 && !this.isSundayCmeReopenWindow();
-    if (!this.controls.strategies.micro_grid && !weekendQuietAssist) return false;
+    if (!this.controls.strategies.micro_grid) return false;
     if (this.pendingOpportunity) return false;
-    if (usdt < this.minUsdtToTrade) return false;
+    if (usdt < 35) return false;
+
+    const pauseWin = this.isHistoricalPauseWindow();
+    if (pauseWin.paused) return false;
+
+    const macro = await this.getLiveMacroRegime();
+    if (macro.isMacroStorm && !macro.isBtcCapitulationFloor) return false;
 
     interface GridCandidate {
       sym: string;
@@ -5475,14 +5533,14 @@ export class TrailingMasterBot {
     }
     const candidates: GridCandidate[] = [];
 
-    for (const sym of this.watchlist) {
+    for (const sym of this.coreWatchlist) {
       try {
         if (activeSymbols.has(sym) || this.hasActivePositionForSymbol(sym) || this.buyWatches.has(sym)) {
           continue;
         }
 
         const gridTf = this.controls.strategySettings?.micro_grid?.timeframe || "15m";
-        const klinesRes = await this.client.klines(sym, gridTf, { limit: 24 });
+        const klinesRes = await this.client.klines(sym, gridTf, { limit: 35 });
         const data = klinesRes.data;
         const opens = data.map((k: any) => parseFloat(k[1]));
         const closes = data.map((k: any) => parseFloat(k[4]));
@@ -5490,22 +5548,23 @@ export class TrailingMasterBot {
         const lows = data.map((k: any) => parseFloat(k[3]));
 
         const curPrice = closes[closes.length - 1];
-        const min6h = Math.min(...lows);
-        const max6h = Math.max(...highs);
+        const min6h = Math.min(...lows.slice(-24));
+        const max6h = Math.max(...highs.slice(-24));
         const channelRangePct = ((max6h - min6h) / min6h) * 100;
 
-        // Canal lateral calibrado con backtest de 30 días: rango entre 0.65% y 3.20%
-        if (channelRangePct >= 0.65 && channelRangePct <= 3.20) {
+        // Canal lateral calibrado: rango entre 1.10% y 3.40% para garantizar margen suficiente de ganancia neta
+        if (channelRangePct >= 1.10 && channelRangePct <= 3.40) {
           const positionInChannel = (curPrice - min6h) / (max6h - min6h);
           const upsideGapPct = curPrice > 0 ? ((max6h - curPrice) / curPrice) * 100 : channelRangePct;
           const rsi = this.calculateRSI(closes, 14);
+          const stoch = this.calculateStochRSI(closes, 14, 14, 3, 3);
           const bb = this.calculateBollingerBands(closes, 20, 2.0);
           const lastIdx = closes.length - 1;
-          const isGreenOrWick = closes[lastIdx] >= opens[lastIdx] || ((Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / Math.max(1e-9, highs[lastIdx] - lows[lastIdx])) >= 0.28;
+          const isGreenOrWick = closes[lastIdx] >= opens[lastIdx] || ((Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / Math.max(1e-9, highs[lastIdx] - lows[lastIdx])) >= 0.30;
 
-          // Si el precio está en el 32% inferior del canal (o %B <= 0.25), RSI <= 46 (incluyendo sobreventa profunda < 34) y vela de soporte:
-          if ((positionInChannel <= 0.32 || bb.percentB <= 0.25) && rsi <= 46 && isGreenOrWick) {
-            const score = upsideGapPct * 2.0 + (48 - rsi) * 0.4 + (1 - positionInChannel) * 3.0;
+          // Exigir piso real del canal (22% inferior o %B <= 0.15), RSI <= 38, StochRSI <= 25 y vela de absorción
+          if ((positionInChannel <= 0.22 || bb.percentB <= 0.15) && rsi <= 38 && stoch.k <= 25 && upsideGapPct >= 0.95 && isGreenOrWick) {
+            const score = upsideGapPct * 2.2 + (42 - rsi) * 0.6 + (1 - positionInChannel) * 3.5;
             candidates.push({ sym, curPrice, min6h, channelRangePct, upsideGapPct, rsi, percentB: bb.percentB, score });
           }
         }
@@ -5513,22 +5572,22 @@ export class TrailingMasterBot {
     }
 
     if (candidates.length === 0) return false;
-    // Elegir la moneda con MAYOR brecha libre hacia el techo del canal lateral
     candidates.sort((a, b) => b.score - a.score);
     const best = candidates[0];
 
+    const btcAnchor = await this.verifyBtc15mLeaderAnchor(best.sym);
+    if (!btcAnchor.ok) return false;
+
     const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(usdt);
     const gridPoolUsdt = Math.max(sessionPlan.spendableUsdt || 0, usdt);
-    let amountToUse = this.calculateSessionLotSize(best.sym, gridPoolUsdt, sessionPlan.lotFractionPct || 0.45, "micro_grid", 1, best.rsi, best.channelRangePct, best.upsideGapPct);
-    // Escalar tope de Micro-Grid según la amplitud del canal: $15 en canales pequeños (<1.4%) hasta $25 en canales amplios (>=2.0%)
-    const dynamicGridCap = best.channelRangePct >= 2.0 ? 25 : (best.channelRangePct >= 1.4 ? 20 : 15);
-    amountToUse = Math.min(amountToUse, dynamicGridCap);
-    if (amountToUse < this.minUsdtToTrade) return false;
+    const amountToUse = Math.min(gridPoolUsdt, Math.max(35, Math.min(50, gridPoolUsdt * 0.50)));
+    if (amountToUse < 35) return false;
 
-    console.log(`🌐 [MICRO-GRID BRECHA TOP] Entrada en ${best.sym}: precio ${best.curPrice} cerca de base ${best.min6h} (Canal ${best.channelRangePct.toFixed(2)}% | Brecha +${best.upsideGapPct.toFixed(2)}% | RSI ${best.rsi.toFixed(1)} | Inversión ${amountToUse} USDT)`);
+    console.log(`🌐 [MICRO-GRID CALIBRADO] Entrada en ${best.sym}: precio ${best.curPrice} cerca de base ${best.min6h} (Canal ${best.channelRangePct.toFixed(2)}% | Brecha +${best.upsideGapPct.toFixed(2)}% | RSI ${best.rsi.toFixed(1)} | Inversión ${amountToUse.toFixed(2)} USDT)`);
     const ok = await this.executeSmartBuy(best.sym, amountToUse, `Micro-Grid Canal Lateral (${best.channelRangePct.toFixed(2)}% | Brecha +${best.upsideGapPct.toFixed(2)}%)`, "micro_grid", {
       coinRange24hPct: best.channelRangePct,
-      upsideGapPct: best.upsideGapPct
+      upsideGapPct: best.upsideGapPct,
+      customMinGainPct: 0.72
     });
     return ok;
   }
@@ -5536,7 +5595,11 @@ export class TrailingMasterBot {
   async evaluateCazadorWeekend(usdt: number, activeSymbols: Set<string>): Promise<boolean> {
     if (!this.controls.strategies.cazador_weekend || !this.isWeekendWindow()) return false;
     if (this.pendingOpportunity) return false;
-    if (usdt < this.minUsdtToTrade) return false;
+    if (usdt < 35) return false;
+
+    // Respetar Hora Pausa (ej. Veda de Viernes)
+    const pauseWin = this.isHistoricalPauseWindow();
+    if (pauseWin.paused) return false;
 
     // Filtro Macro: No armar nuevas compras de fin de semana si Bitcoin está cayendo en cascada
     const macro = await this.getLiveMacroRegime();
@@ -5550,14 +5613,22 @@ export class TrailingMasterBot {
       if (bought) return true;
     }
 
+    const { dayStr, timeDec } = this.getCotTimeInfo();
+    // En Sábado 02:00 AM a 12:00 PM COT estamos en el Gran Piso de Fin de Semana (82% de probabilidad histórica)
+    // En Sábado tarde (12:00 PM a 11:59 PM) somos más exigentes (+0.6% extra de caída requerida) para evitar compras en rango plano
+    const isPrimeSaturdayMorningFloor = (dayStr === "Sat" && timeDec >= 2.0 && timeDec <= 12.5) || (dayStr === "Sun" && (timeDec <= 4.0 || (timeDec >= 14.0 && timeDec <= 16.5)));
+    const extraDropOutsidePrime = isPrimeSaturdayMorningFloor ? 0 : 0.6;
+
     interface WeekendCandidate {
       symbol: string;
       curPrice: number;
       dropPct: number;
+      upsideGapPct: number;
+      high24: number;
       rsi: number;
       score: number;
       coinRange24hPct: number;
-      convictionTier: "ESTANDAR" | "IMPULSO" | "ALTA_VOLATILIDAD";
+      convictionTier: "ESTANDAR" | "IMPULSO" | "ALTA_VOLATILIDAD" | "MAXIMA_BRECHA";
     }
 
     const candidates: WeekendCandidate[] = [];
@@ -5577,6 +5648,7 @@ export class TrailingMasterBot {
         const lows = data.map((k: any) => parseFloat(k[3]));
 
         const rsi = this.calculateRSI(closes, 14);
+        const stoch = this.calculateStochRSI(closes, 14, 14, 3, 3);
         const bb = this.calculateBollingerBands(closes, 20, 2.0);
         const curPrice = closes[closes.length - 1];
         const maxRecent = Math.max(...highs.slice(-36));
@@ -5584,42 +5656,47 @@ export class TrailingMasterBot {
         const low24 = Math.min(...lows.slice(-24));
         const high24 = Math.max(...highs.slice(-24));
         const coinRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
-        const convictionTier: "ESTANDAR" | "IMPULSO" | "ALTA_VOLATILIDAD" =
-          (coinRange24hPct >= 3.8 && (dropPct >= 2.0 || rsi <= 39)) || coinRange24hPct >= 4.8
-            ? "ALTA_VOLATILIDAD"
-            : (coinRange24hPct >= 2.6 ? "IMPULSO" : "ESTANDAR");
+        const upsideGapPct = curPrice > 0 ? ((high24 - curPrice) / curPrice) * 100 : dropPct;
+        const convictionTier: "ESTANDAR" | "IMPULSO" | "ALTA_VOLATILIDAD" | "MAXIMA_BRECHA" =
+          (coinRange24hPct >= 5.0 && dropPct >= 3.5) || upsideGapPct >= 4.2
+            ? "MAXIMA_BRECHA"
+            : ((coinRange24hPct >= 3.8 && (dropPct >= 2.5 || rsi <= 37)) || coinRange24hPct >= 4.8
+              ? "ALTA_VOLATILIDAD"
+              : (coinRange24hPct >= 2.6 ? "IMPULSO" : "ESTANDAR"));
         const lastIdx = closes.length - 1;
         const candleRange = Math.max(1e-9, highs[lastIdx] - lows[lastIdx]);
         const lowerWickRatio = (Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / candleRange;
 
-        // 🛡️ CALIBRACIÓN ESTRICTA DE FIN DE SEMANA:
-        // En fin de semana hay baja liquidez y ruido. Jamás armar con caídas menores al -3.5% ni con RSI > 40.
+        // 🛡️ CALIBRACIÓN ESTRICTA DE FIN DE SEMANA (18 SEMANAS BINANCE):
+        // Exigir caída profunda (>= 3.6% en Hora Piso Sábado Mañana o >= 4.2% fuera de ella), RSI <= 36-37 y StochRSI <= 25.
         const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE");
-        const minDropReq = isMeme ? 5.2 : 3.5;
-        const maxRsiReq = isMeme ? 36 : 38;
+        const minDropReq = (isMeme ? 5.2 : 3.6) + extraDropOutsidePrime;
+        const maxRsiReq = isMeme ? 35 : 37;
 
         const qualifiesWeekend =
-          (dropPct >= minDropReq && rsi <= maxRsiReq) ||
-          (rsi <= 30 && dropPct >= (minDropReq - 1.0)) ||
-          (bb.percentB <= 0.06 && rsi <= 38 && lowerWickRatio >= 0.25);
+          stoch.k <= 25 &&
+          ((dropPct >= minDropReq && rsi <= maxRsiReq) ||
+           (rsi <= 29 && dropPct >= (minDropReq - 0.6)) ||
+           (bb.percentB <= 0.05 && rsi <= 36 && dropPct >= 3.2 && lowerWickRatio >= 0.30));
 
         if (qualifiesWeekend) {
           const bbBonus = bb.percentB <= 0.08 ? 4.0 : 0;
-          const wickBonus = lowerWickRatio >= 0.30 ? 3.0 : 0;
-          const volBonus = coinRange24hPct >= 3.8 ? 3.5 : 0;
-          const score = (dropPct * 1.8) + Math.max(0, (40 - rsi) * 2.2) + bbBonus + wickBonus + volBonus;
-          candidates.push({ symbol: sym, curPrice, dropPct, rsi, score, coinRange24hPct, convictionTier });
+          const wickBonus = lowerWickRatio >= 0.30 ? 3.5 : 0;
+          const volBonus = coinRange24hPct >= 4.2 ? 4.0 : 0;
+          const queenBonus = !isMeme ? 3.0 : 0; // Priorizar Reinas (SOL/NEAR/BTC/ETH/SUI/AVAX) para bloques de $70-$100 USDT
+          const score = (dropPct * 1.9) + Math.max(0, (40 - rsi) * 2.3) + bbBonus + wickBonus + volBonus + queenBonus;
+          candidates.push({ symbol: sym, curPrice, dropPct, upsideGapPct, high24, rsi, score, coinRange24hPct, convictionTier });
         }
       } catch (e: any) {}
     }
 
     if (candidates.length === 0) return false;
 
-    // Ordenar de mayor a menor puntuación (la caída más profunda y con mayor sobreventa)
+    // Ordenar de mayor a menor puntuación (la caída más profunda y con mayor potencial de rebote de $100 USDT)
     candidates.sort((a, b) => b.score - a.score);
     const best = candidates[0];
 
-    // Armar Trailing Buy para cazar el piso exacto de fin de semana
+    // Armar Trailing Buy completo con high24h y upsideGapPct para activar el Escalón Francotirador $100 USDT
     this.buyWatches.set(best.symbol, {
       symbol: best.symbol,
       armedPrice: best.curPrice,
@@ -5627,23 +5704,26 @@ export class TrailingMasterBot {
       armedTime: Date.now(),
       rsi: best.rsi,
       dropPct: best.dropPct,
+      upsideGapPct: best.upsideGapPct,
+      high24h: best.high24,
       coinRange24hPct: best.coinRange24hPct,
       convictionTier: best.convictionTier,
       strategy: "cazador_weekend"
     });
     this.saveBuyWatches();
 
-    const trigger = best.curPrice * (1 + 0.35 / 100);
-    console.log("🏖️ [CAZADOR WEEKEND] Oportunidad top armada en " + best.symbol + " (Caída: -" + best.dropPct.toFixed(2) + "% | RSI: " + best.rsi.toFixed(1) + " | Score: " + best.score.toFixed(1) + ")");
+    const isBestMeme = this.memeWatchlist.includes(best.symbol) || best.symbol.includes("PEPE");
+    const bounceReq = isBestMeme ? 0.65 : 0.55;
+    console.log("🏖️ [CAZADOR WEEKEND CALIBRADO] Oportunidad top armada en " + best.symbol + " (Caída: -" + best.dropPct.toFixed(2) + "% | Brecha: +" + best.upsideGapPct.toFixed(2) + "% | RSI: " + best.rsi.toFixed(1) + " | Score: " + best.score.toFixed(1) + ")");
 
     await this.notifier.send(
       "🏖️ <b>[CAZADOR WEEKEND ARMADO: " + best.symbol + "]</b> 🎯\n\n" +
-      "• Caída de fin de semana: <b>-" + best.dropPct.toFixed(2) + "%</b> (RSI: <b>" + best.rsi.toFixed(1) + "</b>)\n" +
-      "• Puntuación de rebote: <b>" + best.score.toFixed(1) + " pts</b> (Top 1 de watchlist)\n" +
-      "• Precio actual: <b>" + best.curPrice + "</b>\n" +
+      "• Caída de fin de semana: <b>-" + best.dropPct.toFixed(2) + "%</b> | Brecha al techo: <b>+" + best.upsideGapPct.toFixed(2) + "%</b> (RSI: <b>" + best.rsi.toFixed(1) + "</b>)\n" +
+      "• Puntuación cuantitativa: <b>" + best.score.toFixed(1) + " pts</b> (Top 1 de watchlist [" + best.convictionTier + "])\n" +
+      "• Precio actual: <b>$" + best.curPrice + "</b>\n" +
       "• 🔻 Rastreo de piso activo: persiguiendo el suelo tick a tick.\n" +
-      "• 🏹 Disparará compra al confirmar rebote de <b>+0.35%</b> desde el piso.\n" +
-      "• 🚀 <b>Salida:</b> El Trailing Take Profit (+0.80% a +3.5%) perseguirá el pico más alto (domingo noche/lunes o el día que más suba) para vender en la cima."
+      "• 🏹 Disparará bloque fuerte ($50–$100 USDT) al confirmar rebote de <b>+" + bounceReq.toFixed(2) + "%</b> + Vela 15m/5m + Ancla BTC 15m.\n" +
+      "• 🚀 <b>Salida:</b> El Trailing Take Profit perseguirá el rally del domingo / apertura CME para vender en la cima."
     );
 
     return true;

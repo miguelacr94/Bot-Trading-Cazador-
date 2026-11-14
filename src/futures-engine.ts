@@ -825,6 +825,76 @@ export class FuturesEngine {
     }
   }
 
+  /**
+   * Reloj Estadístico de Futuros Bi-Direccional (18 Semanas Binance, Hora Colombia COT):
+   * - isLongFloorWindow: Horas Piso donde estadísticamente se forman los suelos para LONG (00:30-04:00 AM, 11:30 AM-01:30 PM, 20:00-21:45 PM, Sábado 02:00 AM-12:00 PM).
+   * - isShortDumpWindow: Horas Techo / Drenaje donde estadísticamente inician las caídas para SHORT (08:30-11:30 AM, 16:00-18:15 PM, 22:30-00:30 AM, Viernes 14:00 - Sábado 02:00 AM).
+   * - isSundayBullRally: Domingo 16:30 a 23:30 COT (+1.00% retorno alcista promedio), donde se favorecen LONGs y se bloquean SHORTs tempranos.
+   */
+  public getFuturesStatisticalClock(): {
+    isLongFloorWindow: boolean;
+    isShortDumpWindow: boolean;
+    isSundayBullRally: boolean;
+  } {
+    try {
+      const now = new Date();
+      const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
+      const hour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
+      const minute = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
+      const safeH = isNaN(hour) ? 12 : (hour === 24 ? 0 : hour);
+      const safeM = isNaN(minute) ? 0 : minute;
+      const timeDec = safeH + safeM / 60;
+      const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(dayStr);
+      const isMonToThu = ["Mon", "Tue", "Wed", "Thu"].includes(dayStr);
+
+      const isLongFloorWindow =
+        ((isWeekday || dayStr === "Sun") && timeDec >= 0.5 && timeDec <= 4.0) ||
+        (dayStr === "Thu" && timeDec >= 10.25 && timeDec <= 13.5) ||
+        (isMonToThu && timeDec >= 11.5 && timeDec <= 13.5) ||
+        (isMonToThu && timeDec >= 20.0 && timeDec <= 21.75) ||
+        (dayStr === "Sat" && timeDec >= 2.0 && timeDec <= 12.0) ||
+        (dayStr === "Sun" && timeDec >= 14.0 && timeDec <= 16.5);
+
+      const morningDumpEnd = dayStr === "Thu" ? 10.25 : 11.5;
+      const isShortDumpWindow =
+        (dayStr === "Fri" && timeDec >= 14.0) ||
+        (dayStr === "Sat" && timeDec < 2.0) ||
+        (isWeekday && timeDec >= 8.5 && timeDec < morningDumpEnd) ||
+        (isMonToThu && timeDec >= 16.0 && timeDec <= 18.25) ||
+        (isMonToThu && timeDec >= 22.5) ||
+        (["Tue", "Wed", "Thu", "Fri"].includes(dayStr) && timeDec < 0.5);
+
+      const isSundayBullRally = dayStr === "Sun" && timeDec >= 16.5 && timeDec <= 23.5;
+
+      return { isLongFloorWindow, isShortDumpWindow, isSundayBullRally };
+    } catch {
+      return { isLongFloorWindow: false, isShortDumpWindow: false, isSundayBullRally: false };
+    }
+  }
+
+  private async checkBtc15mFuturesAlignment(symbol: string, side: "LONG" | "SHORT"): Promise<boolean> {
+    if (symbol === "BTCUSDT") return true;
+    try {
+      const btcK = await this.fetchKlines("BTCUSDT", "15m", 3);
+      if (btcK.length < 2) return true;
+      const last = btcK[btcK.length - 1];
+      const range = Math.max(1e-9, last.high - last.low);
+      const lowerWick = (Math.min(last.open, last.close) - last.low) / range;
+      const upperWick = (last.high - Math.max(last.open, last.close)) / range;
+      const changePct = ((last.close - last.open) / last.open) * 100;
+
+      if (side === "LONG") {
+        // Para LONG en altcoins, BTC no debe estar cayendo con fuerza y debe mostrar vela verde o absorción inferior
+        return changePct > -0.25 && (last.close >= last.open || lowerWick >= 0.28);
+      } else {
+        // Para SHORT en altcoins, BTC no debe estar subiendo con fuerza y debe mostrar vela roja o rechazo superior
+        return changePct < 0.25 && (last.close <= last.open || upperWick >= 0.28);
+      }
+    } catch {
+      return true;
+    }
+  }
+
   private async evaluateSymbolWithData(symbol: string): Promise<any> {
     const hasPosition = this.positions.find((p) => p.symbol === symbol);
     // 1. Obtener velas 1H (Macro) y 15M (Gatillo)
@@ -853,10 +923,9 @@ export class FuturesEngine {
     const upperWick = lastCandle15m.high - Math.max(lastCandle15m.open, lastCandle15m.close);
     const lowerWickRatio = lowerWick / totalRange;
 
-    // Centinela Nocturno Futuros: De 20:00 a 02:30 COT exigir absorción más exigente (>= 45%) para evitar trampas
-    const hourCot = parseInt(new Date().toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
-    const isNightCot = hourCot >= 20 || hourCot < 3;
-    const minWickRequired = isNightCot ? 0.45 : 0.35;
+    // Reloj Estadístico 18 semanas: solo exigir mecha >= 45% en el tramo trampa de apertura asiática (22:30 - 00:30 COT)
+    const clock = this.getFuturesStatisticalClock();
+    const minWickRequired = clock.isShortDumpWindow && !clock.isLongFloorWindow ? 0.42 : 0.35;
     const upperWickRatio = upperWick / totalRange;
 
     // --- DETECTOR DE LOS 3 PATRONES DE ENTRADA MAESTROS (15M) ---
@@ -920,12 +989,17 @@ export class FuturesEngine {
     // Obtener Funding Rate para protección
     const fundingRate = await this.fetchFundingRate(symbol);
 
-    // --- EVALUACIÓN DE SEÑAL LONG ---
-    // Caso A: Tendencia macro alcista (> EMA50 1H) + retroceso a soporte (RSI <= 45) + patrón comprador
-    // Caso B: Capitulación y Absorción en el suelo (RSI <= 38 + patrón maestro alcista)
-    const isMacroBullish = curPrice1h >= ema50_1h * 0.995;
-    const isFloorAbsorption = rsi15m <= 38 && hasBullishCandleTrigger;
-    const isTrendPullback = isMacroBullish && rsi15m <= 45 && (lowerWickRatio >= (minWickRequired * 0.8) || isBullishEngulfing || isBullishSweep);
+    // --- EVALUACIÓN DE SEÑAL LONG CALIBRADA CON 18 SEMANAS DE BINANCE ---
+    // En Hora Piso (00:30-04:00 AM, 11:30 AM-01:30 PM, 20:00-21:45 PM, Sáb madrugada): umbrales óptimos de suelo (RSI <= 36 o pullback <= 42).
+    // En Hora de Drenaje / Pausa (08:30-11:30 AM, 16:00-18:15 PM, Vie tarde/noche): LONG bloqueado salvo Excepción Atípica (RSI <= 25 y mecha >= 45%).
+    const isMacroBullish = curPrice1h >= ema50_1h * 0.996;
+    const isAtypicalLongException = rsi15m <= 25 && lowerWickRatio >= 0.45 && hasBullishCandleTrigger;
+    const maxLongFloorRsi = clock.isLongFloorWindow ? 36 : 33;
+    const maxLongPullbackRsi = (clock.isLongFloorWindow || clock.isSundayBullRally) ? 42 : 38;
+    const isFloorAbsorption = !clock.isShortDumpWindow
+      ? (rsi15m <= maxLongFloorRsi && hasBullishCandleTrigger)
+      : isAtypicalLongException;
+    const isTrendPullback = !clock.isShortDumpWindow && isMacroBullish && rsi15m <= maxLongPullbackRsi && (lowerWickRatio >= minWickRequired || isBullishEngulfing || isBullishSweep);
     const isFundingSafeForLong = fundingRate < 0.0003;
 
     // Cooldown check
@@ -933,25 +1007,34 @@ export class FuturesEngine {
     const inCooldown = cd && Date.now() < cd;
 
     if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && (isFloorAbsorption || isTrendPullback) && isFundingSafeForLong) {
-      const rationale = isFloorAbsorption
-        ? `🔥 Suelo 15M [${bullPatternName}]: RSI (${rsi15m.toFixed(1)}) en zona de absorción`
-        : `📈 Pullback 1H (>EMA50) [${bullPatternName}]: Rebote en soporte 15M (RSI: ${rsi15m.toFixed(1)})`;
-      await this.openPosition(symbol, "LONG", curPrice, rationale);
+      const btcAlignedLong = await this.checkBtc15mFuturesAlignment(symbol, "LONG");
+      if (btcAlignedLong) {
+        const rationale = isAtypicalLongException
+          ? `⚡ Excepción Atípica LONG 15M [${bullPatternName}]: Capitulación extrema (RSI ${rsi15m.toFixed(1)})`
+          : (isFloorAbsorption
+            ? `🔥 Suelo 15M [${bullPatternName}]: RSI (${rsi15m.toFixed(1)}) en zona de absorción${clock.isLongFloorWindow ? " [Hora Piso]" : ""}`
+            : `📈 Pullback 1H (>EMA50) [${bullPatternName}]: Rebote en soporte 15M (RSI: ${rsi15m.toFixed(1)})`);
+        await this.openPosition(symbol, "LONG", curPrice, rationale);
+      }
     }
 
-    // --- EVALUACIÓN DE SEÑAL SHORT ---
-    // Caso A: Tendencia macro bajista (< EMA50 1H) + rebote agotado (RSI >= 50 + patrón maestro bajista)
-    // Caso B: Sobrecompra extrema (RSI >= 63 + patrón maestro bajista)
-    const isMacroBearish = curPrice1h <= ema50_1h * 1.005;
-    const isBearishRejection = isMacroBearish && rsi15m >= 50 && hasBearishCandleTrigger;
-    const isOverboughtReversal = rsi15m >= 63 && hasBearishCandleTrigger;
+    // --- EVALUACIÓN DE SEÑAL SHORT CALIBRADA CON 18 SEMANAS DE BINANCE ---
+    // En Hora de Drenaje / Techo (08:30-11:30 AM NY, 16:00-18:15 PM Cierre NY, 22:30-00:30 Asia, Vie tarde/noche): ventana ideal para SHORT.
+    // En Hora Piso o Rally Dominical CME: SHORT bloqueado salvo sobrecompra extrema (RSI >= 68 con vela de rechazo).
+    const isMacroBearish = curPrice1h <= ema50_1h * 1.002;
+    const minShortRejectionRsi = clock.isShortDumpWindow ? 54 : 58;
+    const isBearishRejection = !clock.isLongFloorWindow && !clock.isSundayBullRally && isMacroBearish && rsi15m >= minShortRejectionRsi && hasBearishCandleTrigger;
+    const isOverboughtReversal = rsi15m >= (clock.isLongFloorWindow || clock.isSundayBullRally ? 68 : 64) && hasBearishCandleTrigger;
     const isFundingSafeForShort = fundingRate > -0.0003;
 
     if (!hasPosition && !inCooldown && this.positions.length < this.state.maxActivePositions && (isBearishRejection || isOverboughtReversal) && isFundingSafeForShort) {
-      const rationale = isBearishRejection
-        ? `🔻 Rechazo 1H (<EMA50) [${bearPatternName}]: RSI 15M (${rsi15m.toFixed(1)})`
-        : `⚡ Giro Sobrecompra [${bearPatternName}]: RSI 15M (${rsi15m.toFixed(1)})`;
-      await this.openPosition(symbol, "SHORT", curPrice, rationale);
+      const btcAlignedShort = await this.checkBtc15mFuturesAlignment(symbol, "SHORT");
+      if (btcAlignedShort) {
+        const rationale = isBearishRejection
+          ? `🔻 Rechazo 1H (<EMA50) [${bearPatternName}]: RSI 15M (${rsi15m.toFixed(1)})${clock.isShortDumpWindow ? " [Hora Drenaje]" : ""}`
+          : `⚡ Giro Sobrecompra [${bearPatternName}]: RSI 15M (${rsi15m.toFixed(1)})`;
+        await this.openPosition(symbol, "SHORT", curPrice, rationale);
+      }
     }
 
     let statusText = "VIGILANDO";
