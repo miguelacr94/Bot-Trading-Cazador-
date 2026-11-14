@@ -378,6 +378,26 @@ export class TrailingMasterBot {
     }
   }
 
+  /**
+   * ESCUDO ANTI-TRAMPA DE VIERNES NOCHE (Viernes 16:00 COT a Sábado 03:00 COT):
+   * El viernes por la tarde/noche tras el cierre de Wall Street el mercado inicia su drenaje lento
+   * que toca fondo real en la madrugada o mañana del sábado. Prohibido gastar liquidez el viernes
+   * por la noche salvo desplome histórico extremo (caída >= 7.0% y RSI <= 24).
+   */
+  public isFridayEveningBleedWindow(): boolean {
+    try {
+      const now = new Date();
+      const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
+      const hourStr = now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" });
+      const hour = parseInt(hourStr, 10);
+      if (dayStr === "Fri" && hour >= 16) return true;
+      if (dayStr === "Sat" && hour < 3) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   public isNightMode(): boolean {
     try {
       const hour = new Date().toLocaleString("en-US", { timeZone: "America/Bogota", hour: "numeric", hour12: false });
@@ -3187,6 +3207,14 @@ export class TrailingMasterBot {
           console.log(`🧹 [PURGA CAZADOR WEEKEND: ${sym}] Vigilancia descartada por falta de sobreventa real (RSI ${(w.rsi || 45).toFixed(1)} > 38 | Caída -${effectiveDropSoFar.toFixed(2)}% < 3.8%).`);
           this.buyWatches.delete(sym);
           this.saveBuyWatches();
+          continue;
+        }
+
+        // 🛡️ ESCUDO VIERNES NOCHE (Viernes 16:00 a Sábado 03:00 COT):
+        // El viernes por la noche las monedas apenas inician la caída de fin de semana que toca fondo en la madrugada o mañana del sábado.
+        // Prohibido gastar el efectivo el viernes en la noche salvo capitulación histórica (caída >= 7.0% y RSI <= 24).
+        if (this.isFridayEveningBleedWindow() && !(effectiveDropSoFar >= 7.0 && (w.rsi || 40) <= 24)) {
+          console.log(`🌙 [ESCUDO VIERNES NOCHE: ${sym}] Reteniendo disparo (caída actual -${effectiveDropSoFar.toFixed(2)}%). Guardando liquidez para el piso profundo de la madrugada / sábado.`);
           continue;
         }
 
