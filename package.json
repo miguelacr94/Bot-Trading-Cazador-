@@ -20,6 +20,8 @@
     "motores": "tsx src/multi-engine-bot.ts",
     "start:prod": "node --max-old-space-size=64 dist/multi-engine-bot.js",
     "dashboard": "tsx src/dashboard-server.ts",
+    "microscalp": "tsx src/micro-scalper-engine.ts",
+    "microscalp:reset": "tsx src/micro-scalper-engine.ts --reset",
     "futures": "tsx src/futures-engine.ts",
     "futures:sim": "tsx src/futures-engine.ts",
     "test": "tsx test/safety-guard.test.ts",
