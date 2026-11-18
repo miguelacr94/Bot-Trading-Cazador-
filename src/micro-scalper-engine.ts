@@ -59,17 +59,17 @@ export class MicroScalperEngine {
   private isRunning: boolean = false;
   private timer: NodeJS.Timeout | null = null;
 
-  // Parámetros de Microscalping Institucional (Velas de 1 Minuto)
+  // Parámetros de Microscalping Relámpago Ultrarrápido (Velas de 1 Minuto)
   private readonly watchlist: string[] = ["SOLUSDT", "NEARUSDT", "SUIUSDT", "BTCUSDT", "ETHUSDT", "PEPEUSDT"];
   private readonly tradeAllocationUsdt: number = 33.33; // 3 balas de ~$33 para un balance de $100 USDT
   private readonly maxPositions: number = 3;
-  private readonly feeRate: number = 0.00075; // 0.075% comisión Binance con BNB (ida y vuelta)
-  private readonly activationGainPct: number = 0.40; // Activa persecución al +0.40%
-  private readonly breakEvenGainPct: number = 0.32;  // Candado de Cero Pérdidas al +0.32%
-  private readonly trailingCallbackPct: number = 0.12; // Vende si retrocede 0.12% desde la cima
-  private readonly hardTakeProfitPct: number = 1.35; // Salida instantánea ante un velón verde de +1.35%
-  private readonly maxHoldTimeMinutes: number = 20;  // Vencimiento de scalping: no quedarse atrapado si no hay impulso
-  private readonly stopLossPct: number = 0.85;       // Stop loss de protección scalper rápido (-0.85%)
+  private readonly feeRate: number = 0.00075; // 0.075% comisión Binance con BNB
+  private readonly activationGainPct: number = 0.22; // Cosecha rápida: activa trailing al +0.22%
+  private readonly breakEvenGainPct: number = 0.18;  // Candado de Cero Pérdidas al +0.18%
+  private readonly trailingCallbackPct: number = 0.07; // Vende si retrocede 0.07% desde el pico
+  private readonly hardTakeProfitPct: number = 0.65; // Salida instantánea ante impulso de +0.65%
+  private readonly maxHoldTimeMinutes: number = 10;  // Vencimiento rápido: 10 minutos máximo en scalping
+  private readonly stopLossPct: number = 0.60;       // Stop loss scalper ceñido (-0.60%)
 
   constructor() {
     this.client = new Spot();
@@ -184,8 +184,8 @@ export class MicroScalperEngine {
       if (this.state.positions.length >= this.maxPositions) break;
 
       try {
-        const klines = await this.client.klines(sym, "1m", { limit: 25 });
-        if (!klines?.data || klines.data.length < 20) continue;
+        const klines = await this.client.klines(sym, "1m", { limit: 50 });
+        if (!klines?.data || klines.data.length < 35) continue;
 
         const data = klines.data;
         const opens = data.map((k: any) => parseFloat(k[1]));
@@ -212,15 +212,16 @@ export class MicroScalperEngine {
         const drop10mPct = maxHigh10 > 0 ? ((maxHigh10 - curPrice) / maxHigh10) * 100 : 0;
 
         // Condiciones de Microscalping Institucional en 1 minuto:
-        // 1. Mecha de absorción en suelo (>= 35%) O StochRSI en sobreventa extrema (k <= 18)
+        // 1. Mecha de absorción en suelo (>= 35%) O StochRSI en sobreventa (k <= 22)
         // 2. Caída mínima de 0.35% a 0.60% en 10 minutos (no comprar techos)
-        // 3. CVD comprador en vela activa (>= 52% absorbiendo)
-        // 4. RSI 1m <= 38
+        // 3. CVD comprador en vela activa (>= 51.5% absorbiendo)
+        // 4. RSI 1m <= 42 y StochRSI <= 30 (nunca comprar con RSI caliente o neutral alto)
         const hasAbsorptionWick = lowerWickRatio >= 0.35;
         const isOversold = stoch1m.k <= 22 && rsi1m <= 38;
         const hasOrderFlowSupport = cvdRatio >= 51.5;
+        const isRsiHealthyForScalp = rsi1m <= 42 && stoch1m.k <= 30;
 
-        if ((hasAbsorptionWick || isOversold) && drop10mPct >= 0.40 && hasOrderFlowSupport) {
+        if ((hasAbsorptionWick || isOversold) && isRsiHealthyForScalp && drop10mPct >= 0.40 && hasOrderFlowSupport) {
           const reason = `Mecha 1m ${(lowerWickRatio * 100).toFixed(0)}% | Stoch ${stoch1m.k.toFixed(0)} | RSI ${rsi1m.toFixed(1)} | CVD ${cvdRatio.toFixed(0)}% | Caída -${drop10mPct.toFixed(2)}%`;
           this.openSimPosition(sym, curPrice, reason);
         }
@@ -308,17 +309,17 @@ export class MicroScalperEngine {
           exitReason = `🎯 TRAILING COSECHA (+${grossGainPct.toFixed(2)}% | Pico +${maxGainPct.toFixed(2)}%)`;
         }
         // Regla C: Ejecución de Candado Break-Even (se devuelve a costo tras haber subido)
-        else if (pos.breakEvenLocked && grossGainPct <= 0.08) {
+        else if (pos.breakEvenLocked && grossGainPct <= 0.05) {
           shouldExit = true;
           exitReason = `🔒 SALIDA PROTEGIDA BREAK-EVEN (+${grossGainPct.toFixed(2)}%)`;
         }
-        // Regla D: Stop Loss Rápido Scalper (-0.85%)
+        // Regla D: Stop Loss Rápido Scalper (-0.60%)
         else if (grossGainPct <= -this.stopLossPct) {
           shouldExit = true;
           exitReason = `🛑 STOP LOSS RÁPIDO (${grossGainPct.toFixed(2)}%)`;
         }
-        // Regla E: Time-Stop por falta de impulso (más de 20 minutos lateral)
-        else if (holdMinutes >= this.maxHoldTimeMinutes && grossGainPct >= -0.25) {
+        // Regla E: Time-Stop por falta de impulso (más de 10 minutos sin movimiento)
+        else if (holdMinutes >= this.maxHoldTimeMinutes) {
           shouldExit = true;
           exitReason = `⏱️ TIME-STOP (Sin impulso tras ${holdMinutes.toFixed(0)}m: ${grossGainPct.toFixed(2)}%)`;
         }
