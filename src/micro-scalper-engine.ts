@@ -76,6 +76,7 @@ export class MicroScalperEngine {
     this.notifier = new TelegramNotifier();
     this.stateFile = path.resolve(process.cwd(), ".micro-scalper-sim.json");
     this.state = this.loadState();
+    this.saveState();
   }
 
   private loadState(): MicroScalperState {
