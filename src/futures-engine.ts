@@ -826,19 +826,24 @@ export class FuturesEngine {
   }
 
   /**
-   * Reloj Estadístico de Futuros Bi-Direccional (18 Semanas Binance, Hora Colombia COT):
+   * Reloj Estadístico de Futuros Bi-Direccional (5.5 Años Binance 2021-2026, Hora Colombia COT):
    * - isLongFloorWindow: Horas Piso donde estadísticamente se forman los suelos para LONG (00:30-04:00 AM, 11:30 AM-01:30 PM, 20:00-21:45 PM, Sábado 02:00 AM-12:00 PM).
    * - isShortDumpWindow: Horas Techo / Drenaje donde estadísticamente inician las caídas para SHORT (08:30-11:30 AM, 16:00-18:15 PM, 22:30-00:30 AM, Viernes 14:00 - Sábado 02:00 AM).
-   * - isSundayBullRally: Domingo 16:30 a 23:30 COT (+1.00% retorno alcista promedio), donde se favorecen LONGs y se bloquean SHORTs tempranos.
+   * - isSundayBullRally: Domingo 16:30 a 23:30 COT (72% recuperación histórica), donde se favorecen LONGs y se bloquean SHORTs tempranos.
+   * - isEndOfMonthOrWedDrain: Días 26-31 (60% días rojos en 5 años) o Miércoles de Sacudón Macro (-4.6% mecha prom).
+   * - isTueThuBullExpansion: Martes Verde (+5.87% rebote NEAR) o Jueves de Rebote (+5.51% rebote NEAR).
    */
   public getFuturesStatisticalClock(): {
     isLongFloorWindow: boolean;
     isShortDumpWindow: boolean;
     isSundayBullRally: boolean;
+    isEndOfMonthOrWedDrain: boolean;
+    isTueThuBullExpansion: boolean;
   } {
     try {
       const now = new Date();
       const dayStr = now.toLocaleDateString("en-US", { timeZone: "America/Bogota", weekday: "short" });
+      const dayOfMonth = parseInt(now.toLocaleDateString("en-US", { timeZone: "America/Bogota", day: "numeric" }), 10) || 15;
       const hour = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", hour12: false, hour: "numeric" }), 10);
       const minute = parseInt(now.toLocaleTimeString("en-US", { timeZone: "America/Bogota", minute: "numeric" }), 10);
       const safeH = isNaN(hour) ? 12 : (hour === 24 ? 0 : hour);
@@ -865,10 +870,12 @@ export class FuturesEngine {
         (["Tue", "Wed", "Thu", "Fri"].includes(dayStr) && timeDec < 0.5);
 
       const isSundayBullRally = dayStr === "Sun" && timeDec >= 16.5 && timeDec <= 23.5;
+      const isEndOfMonthOrWedDrain = dayOfMonth >= 26 || dayStr === "Wed";
+      const isTueThuBullExpansion = dayStr === "Tue" || dayStr === "Thu";
 
-      return { isLongFloorWindow, isShortDumpWindow, isSundayBullRally };
+      return { isLongFloorWindow, isShortDumpWindow, isSundayBullRally, isEndOfMonthOrWedDrain, isTueThuBullExpansion };
     } catch {
-      return { isLongFloorWindow: false, isShortDumpWindow: false, isSundayBullRally: false };
+      return { isLongFloorWindow: false, isShortDumpWindow: false, isSundayBullRally: false, isEndOfMonthOrWedDrain: false, isTueThuBullExpansion: false };
     }
   }
 
@@ -989,13 +996,15 @@ export class FuturesEngine {
     // Obtener Funding Rate para protección
     const fundingRate = await this.fetchFundingRate(symbol);
 
-    // --- EVALUACIÓN DE SEÑAL LONG CALIBRADA CON 18 SEMANAS DE BINANCE ---
+    // --- EVALUACIÓN DE SEÑAL LONG CALIBRADA CON 5.5 AÑOS DE BINANCE (2021-2026) ---
     // En Hora Piso (00:30-04:00 AM, 11:30 AM-01:30 PM, 20:00-21:45 PM, Sáb madrugada): umbrales óptimos de suelo (RSI <= 36 o pullback <= 42).
+    // En Fin de Mes (Días 26-31) o Miércoles de Sacudón: exige -2 pts extra de RSI fuera de Hora Piso.
     // En Hora de Drenaje / Pausa (08:30-11:30 AM, 16:00-18:15 PM, Vie tarde/noche): LONG bloqueado salvo Excepción Atípica (RSI <= 25 y mecha >= 45%).
     const isMacroBullish = curPrice1h >= ema50_1h * 0.996;
     const isAtypicalLongException = rsi15m <= 25 && lowerWickRatio >= 0.45 && hasBullishCandleTrigger;
-    const maxLongFloorRsi = clock.isLongFloorWindow ? 36 : 33;
-    const maxLongPullbackRsi = (clock.isLongFloorWindow || clock.isSundayBullRally) ? 42 : 38;
+    const calLongAdj = (!clock.isLongFloorWindow && clock.isEndOfMonthOrWedDrain) ? -2 : 0;
+    const maxLongFloorRsi = (clock.isLongFloorWindow ? 36 : 33) + calLongAdj;
+    const maxLongPullbackRsi = ((clock.isLongFloorWindow || clock.isSundayBullRally || clock.isTueThuBullExpansion) ? 42 : 38) + calLongAdj;
     const isFloorAbsorption = !clock.isShortDumpWindow
       ? (rsi15m <= maxLongFloorRsi && hasBullishCandleTrigger)
       : isAtypicalLongException;
@@ -1018,11 +1027,11 @@ export class FuturesEngine {
       }
     }
 
-    // --- EVALUACIÓN DE SEÑAL SHORT CALIBRADA CON 18 SEMANAS DE BINANCE ---
-    // En Hora de Drenaje / Techo (08:30-11:30 AM NY, 16:00-18:15 PM Cierre NY, 22:30-00:30 Asia, Vie tarde/noche): ventana ideal para SHORT.
+    // --- EVALUACIÓN DE SEÑAL SHORT CALIBRADA CON 5.5 AÑOS DE BINANCE (2021-2026) ---
+    // En Hora de Drenaje / Techo (08:30-11:30 AM NY, 16:00-18:15 PM Cierre NY, 22:30-00:30 Asia, Vie tarde/noche) o Fin de Mes/Miércoles: ventana ideal para SHORT.
     // En Hora Piso o Rally Dominical CME: SHORT bloqueado salvo sobrecompra extrema (RSI >= 68 con vela de rechazo).
     const isMacroBearish = curPrice1h <= ema50_1h * 1.002;
-    const minShortRejectionRsi = clock.isShortDumpWindow ? 54 : 58;
+    const minShortRejectionRsi = (clock.isShortDumpWindow || clock.isEndOfMonthOrWedDrain) ? 54 : 58;
     const isBearishRejection = !clock.isLongFloorWindow && !clock.isSundayBullRally && isMacroBearish && rsi15m >= minShortRejectionRsi && hasBearishCandleTrigger;
     const isOverboughtReversal = rsi15m >= (clock.isLongFloorWindow || clock.isSundayBullRally ? 68 : 64) && hasBearishCandleTrigger;
     const isFundingSafeForShort = fundingRate > -0.0003;
