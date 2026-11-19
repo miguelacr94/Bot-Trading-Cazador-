@@ -38,6 +38,7 @@ export interface MicroScalpPosition {
 }
 
 export interface MicroScalperState {
+  enabled: boolean;
   initialBalance: number;
   balanceUsdt: number;
   inTradeUsdt: number;
@@ -85,12 +86,16 @@ export class MicroScalperEngine {
         const raw = fs.readFileSync(this.stateFile, "utf-8");
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.balanceUsdt === "number") {
-          return parsed;
+          return {
+            enabled: parsed.enabled ?? false,
+            ...parsed
+          };
         }
       }
     } catch {}
 
     return {
+      enabled: false,
       initialBalance: 100.0,
       balanceUsdt: 100.0,
       inTradeUsdt: 0.0,
@@ -118,8 +123,19 @@ export class MicroScalperEngine {
     return this.state;
   }
 
+  public setEnabled(val: boolean) {
+    this.state.enabled = val;
+    this.saveState();
+    console.log(`🔌 [MICROSCALPER SIMULADOR] Estado cambiado a: ${val ? "ENCENDIDO" : "APAGADO"}`);
+  }
+
+  public isEnabled(): boolean {
+    return this.state.enabled === true;
+  }
+
   public resetBalance(amount = 100.0) {
     this.state = {
+      enabled: this.state.enabled,
       initialBalance: amount,
       balanceUsdt: amount,
       inTradeUsdt: 0.0,
@@ -258,16 +274,18 @@ export class MicroScalperEngine {
     console.log(`   Razón: ${reason}`);
     console.log(`   Saldo Libre: $${this.state.balanceUsdt.toFixed(2)} | Invertido: $${this.state.inTradeUsdt.toFixed(2)} USDT`);
 
-    try {
-      this.notifier.send(
-        `⚡ <b>[MICROSCALPING SIMULADO: ENTRADA]</b>\n\n` +
-        `• <b>Moneda:</b> <code>${symbol}</code>\n` +
-        `• <b>Precio Entrada:</b> $${price}\n` +
-        `• <b>Monto Simulador:</b> $${investAmount.toFixed(2)} USDT\n` +
-        `• 🎯 <b>Gatillo:</b> ${reason}\n` +
-        `• 💼 <b>Balance Virtual:</b> $${(this.state.balanceUsdt + this.state.inTradeUsdt).toFixed(2)} USDT`
-      );
-    } catch {}
+    if (process.env.MICRO_SCALPER_TELEGRAM === "true") {
+      try {
+        this.notifier.send(
+          `⚡ <b>[MICROSCALPING SIMULADO: ENTRADA]</b>\n\n` +
+          `• <b>Moneda:</b> <code>${symbol}</code>\n` +
+          `• <b>Precio Entrada:</b> $${price}\n` +
+          `• <b>Monto Simulador:</b> $${investAmount.toFixed(2)} USDT\n` +
+          `• 🎯 <b>Gatillo:</b> ${reason}\n` +
+          `• 💼 <b>Balance Virtual:</b> $${(this.state.balanceUsdt + this.state.inTradeUsdt).toFixed(2)} USDT`
+        );
+      } catch {}
+    }
   }
 
   // 3. Gestión y Cosecha Trailing de Posiciones Activas
@@ -381,22 +399,25 @@ export class MicroScalperEngine {
     console.log(`   Estadísticas: ${this.state.wins}W / ${this.state.losses}L (${this.state.winRatePct.toFixed(1)}% Acierto) | PnL Acum: ${this.state.totalNetPnlUsdt >= 0 ? "+" : ""}$${this.state.totalNetPnlUsdt.toFixed(2)} USDT`);
     console.log(`======================================================\n`);
 
-    try {
-      this.notifier.send(
-        `${isWin ? "🎉" : "⚠️"} <b>[MICROSCALPING SIMULADO: CIERRE]</b>\n\n` +
-        `• <b>Moneda:</b> <code>${pos.symbol}</code>\n` +
-        `• <b>Entrada:</b> $${pos.entryPrice} ➡️ <b>Salida:</b> $${exitPrice}\n` +
-        `• 💰 <b>PnL Neto:</b> ${isWin ? "+" : ""}$${netPnlUsdt.toFixed(4)} USDT (<b>${isWin ? "+" : ""}${netPnlPct.toFixed(2)}%</b>)\n` +
-        `• ⏱️ <b>Duración:</b> ${Math.floor(durationSec / 60)}m ${durationSec % 60}s\n` +
-        `• 🎯 <b>Razón:</b> ${exitReason}\n` +
-        `• 📊 <b>Balance Total:</b> $${(this.state.balanceUsdt + this.state.inTradeUsdt).toFixed(2)} USDT (${this.state.winRatePct.toFixed(0)}% Acierto en ${this.state.totalTrades} trades)`
-      );
-    } catch {}
+    if (process.env.MICRO_SCALPER_TELEGRAM === "true") {
+      try {
+        this.notifier.send(
+          `${isWin ? "🎉" : "⚠️"} <b>[MICROSCALPING SIMULADO: CIERRE]</b>\n\n` +
+          `• <b>Moneda:</b> <code>${pos.symbol}</code>\n` +
+          `• <b>Entrada:</b> $${pos.entryPrice} ➡️ <b>Salida:</b> $${exitPrice}\n` +
+          `• 💰 <b>PnL Neto:</b> ${isWin ? "+" : ""}$${netPnlUsdt.toFixed(4)} USDT (<b>${isWin ? "+" : ""}${netPnlPct.toFixed(2)}%</b>)\n` +
+          `• ⏱️ <b>Duración:</b> ${Math.floor(durationSec / 60)}m ${durationSec % 60}s\n` +
+          `• 🎯 <b>Razón:</b> ${exitReason}\n` +
+          `• 📊 <b>Balance Total:</b> $${(this.state.balanceUsdt + this.state.inTradeUsdt).toFixed(2)} USDT (${this.state.winRatePct.toFixed(0)}% Acierto en ${this.state.totalTrades} trades)`
+        );
+      } catch {}
+    }
   }
 
   // 5. Bucle Principal de Ejecución
   public async tick(): Promise<void> {
     try {
+      if (!this.state.enabled) return; // Si está apagado, no opera
       await this.manageActivePositions();
       await this.scanForOpportunities();
     } catch (e: any) {

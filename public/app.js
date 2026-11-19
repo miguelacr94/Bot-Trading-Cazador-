@@ -2924,6 +2924,74 @@
     syncMasterEyeButton(currentSet);
   };
 
+  // ---------- MICRO-SCALPING SIMULADOR ($100 VIRTUAL) ON/OFF SWITCH ----------
+  window.updateMicroScalperUi = function (state) {
+    const isEnabled = state && state.enabled === true;
+    const badges = document.querySelectorAll(".micro-scalper-badge");
+    const toggleBtns = document.querySelectorAll(".btn-micro-scalper-toggle");
+
+    badges.forEach(b => {
+      if (isEnabled) {
+        b.textContent = "🟢 ACTIVO";
+        b.style.background = "rgba(16, 185, 129, 0.2)";
+        b.style.color = "#34d399";
+        b.style.border = "1px solid rgba(16, 185, 129, 0.4)";
+      } else {
+        b.textContent = "🔴 APAGADO";
+        b.style.background = "rgba(239, 68, 68, 0.2)";
+        b.style.color = "#f87171";
+        b.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+      }
+    });
+
+    toggleBtns.forEach(btn => {
+      const textEl = btn.querySelector(".micro-scalper-btn-text");
+      if (isEnabled) {
+        btn.style.background = "linear-gradient(135deg, #ef4444, #b91c1c)";
+        if (textEl) textEl.textContent = "Apagar Micro-Scalping";
+        else btn.textContent = "⏹️ Apagar";
+      } else {
+        btn.style.background = "linear-gradient(135deg, #10b981, #059669)";
+        if (textEl) textEl.textContent = "Encender Micro-Scalping";
+        else btn.textContent = "⚡ Encender";
+      }
+    });
+  };
+
+  window.toggleMicroScalper = async function () {
+    try {
+      const res = await fetch("/api/micro-scalper/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        window.updateMicroScalperUi(data.state);
+      }
+    } catch (e) {
+      console.error("Error al alternar estado de MicroScalper:", e);
+    }
+  };
+
+  window.resetMicroScalper = async function () {
+    if (!confirm("¿Reiniciar el simulador de micro-scalping a $100.00 USDT y borrar operaciones simuladas?")) return;
+    try {
+      const res = await fetch("/api/micro-scalper/reset", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        window.updateMicroScalperUi(data.state);
+        alert("Simulador de Micro-scalping reiniciado a $100.00 USDT limpios.");
+      }
+    } catch (e) {
+      console.error("Error al reiniciar MicroScalper:", e);
+    }
+  };
+
+  fetch("/api/micro-scalper/state")
+    .then(r => r.json())
+    .then(s => window.updateMicroScalperUi(s))
+    .catch(() => {});
+
   initEyeCollapsibleSections();
   initTabNavigation();
   initCrossoverModule();

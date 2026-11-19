@@ -1339,6 +1339,105 @@ export class DashboardServer {
         return;
       }
 
+      // --- APIS DE MICRO-SCALPING SIMULADOR ($100 VIRTUAL) ---
+      if (parsedUrl.pathname === "/api/micro-scalper/state" && req.method === "GET") {
+        try {
+          const f = path.resolve(process.cwd(), ".micro-scalper-sim.json");
+          let state = {
+            enabled: false,
+            initialBalance: 100.0,
+            balanceUsdt: 100.0,
+            inTradeUsdt: 0.0,
+            totalNetPnlUsdt: 0.0,
+            totalTrades: 0,
+            wins: 0,
+            losses: 0,
+            winRatePct: 0.0,
+            positions: [],
+            history: []
+          };
+          if (fs.existsSync(f)) {
+            state = { ...state, ...JSON.parse(fs.readFileSync(f, "utf-8")) };
+          }
+          res.writeHead(200, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(JSON.stringify(state));
+        } catch (e: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/micro-scalper/toggle" && req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => (body += chunk));
+        req.on("end", () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            const f = path.resolve(process.cwd(), ".micro-scalper-sim.json");
+            let state: any = {
+              enabled: false,
+              initialBalance: 100.0,
+              balanceUsdt: 100.0,
+              inTradeUsdt: 0.0,
+              totalNetPnlUsdt: 0.0,
+              totalTrades: 0,
+              wins: 0,
+              losses: 0,
+              winRatePct: 0.0,
+              positions: [],
+              history: []
+            };
+            if (fs.existsSync(f)) {
+              state = { ...state, ...JSON.parse(fs.readFileSync(f, "utf-8")) };
+            }
+            if (typeof data.enabled === "boolean") {
+              state.enabled = data.enabled;
+            } else {
+              state.enabled = !state.enabled;
+            }
+            state.lastUpdate = Date.now();
+            fs.writeFileSync(f, JSON.stringify(state, null, 2), "utf-8");
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, enabled: state.enabled, state }));
+          } catch (e: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/micro-scalper/reset" && req.method === "POST") {
+        try {
+          const f = path.resolve(process.cwd(), ".micro-scalper-sim.json");
+          const state = {
+            enabled: false,
+            initialBalance: 100.0,
+            balanceUsdt: 100.0,
+            inTradeUsdt: 0.0,
+            totalNetPnlUsdt: 0.0,
+            totalTrades: 0,
+            wins: 0,
+            losses: 0,
+            winRatePct: 0.0,
+            positions: [],
+            history: [],
+            lastUpdate: Date.now()
+          };
+          fs.writeFileSync(f, JSON.stringify(state, null, 2), "utf-8");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, state }));
+        } catch (e: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
+      }
+
       // --- APIS DE ACADEMIA & SIMULADOR DE VELAS ---
       if (parsedUrl.pathname === "/api/practice/state" && req.method === "GET") {
         try {
