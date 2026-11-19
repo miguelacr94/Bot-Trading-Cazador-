@@ -1080,16 +1080,14 @@ export class DashboardServer {
 
       if (matchedKey) {
         const existing = syncMap.get(matchedKey);
-        if (
-          existing &&
-          cOrderIdMatched &&
-          existing.pnlUsdt >= 0 &&
-          typeof l.pnlUsdt === "number" &&
-          l.pnlUsdt > existing.pnlUsdt
-        ) {
+        if (existing && typeof l.pnlUsdt === "number") {
           existing.avgBuy = l.buyPrice || existing.avgBuy;
+          existing.avgSell = l.sellPrice || existing.avgSell;
+          existing.costUsdt = l.costUsdt || (existing.qty * (l.buyPrice || existing.avgBuy));
+          existing.proceedsUsdt = l.proceedsUsdt || existing.proceedsUsdt;
+          existing.feesUsdt = l.feesUsdt !== undefined ? l.feesUsdt : existing.feesUsdt;
           existing.pnlUsdt = l.pnlUsdt;
-          existing.pnlPct = l.pnlPct || existing.pnlPct;
+          existing.pnlPct = l.pnlPct !== undefined ? l.pnlPct : existing.pnlPct;
         }
       } else {
         const key = String(l.orderId || (l.symbol + "_" + Math.round(l.time / 1000)));
@@ -1250,7 +1248,7 @@ export class DashboardServer {
         this.cachedRecoveryTracker = controls.recoveryTracker;
       }
 
-      const closed = await supabaseDb.loadClosedTrades(30);
+      const closed = await supabaseDb.loadClosedTrades(100);
       if (closed && closed.length > 0) {
         this.cachedDbTrades = closed;
       }
