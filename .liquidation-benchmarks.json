@@ -1,0 +1,106 @@
+{
+  "liquidatedAt": 1795193537148,
+  "dateStr": "Viernes 20 de Noviembre, 11:51 AM COT",
+  "benchmarks": {
+    "BTCUSDT": 59606.53,
+    "SOLUSDT": 69.54,
+    "SUIUSDT": 0.6568,
+    "ETHUSDT": 1647.8,
+    "PEPEUSDT": 0.00000342
+  },
+  "minDropRequiredPct": 5,
+  "primeDropRequiredPct": 8,
+  "closedPositions": [
+    {
+      "symbol": "SOLUSDT",
+      "lotId": "SOLUSDT",
+      "buyPrice": 78.038,
+      "exitPrice": 69.54,
+      "qty": 0.227772,
+      "costUsdt": 17.77,
+      "proceedsUsdt": 15.84,
+      "pnlUsdt": -1.93,
+      "pnlPct": -10.89
+    },
+    {
+      "symbol": "ETHUSDT",
+      "lotId": "ETHUSDT",
+      "buyPrice": 1993.21,
+      "exitPrice": 1647.8,
+      "qty": 0.0075,
+      "costUsdt": 14.95,
+      "proceedsUsdt": 12.36,
+      "pnlUsdt": -2.59,
+      "pnlPct": -17.33
+    },
+    {
+      "symbol": "PEPEUSDT",
+      "lotId": "PEPEUSDT",
+      "buyPrice": 0.00000493,
+      "exitPrice": 0.00000342,
+      "qty": 1995973.03,
+      "costUsdt": 9.85,
+      "proceedsUsdt": 6.83,
+      "pnlUsdt": -3.02,
+      "pnlPct": -30.63
+    },
+    {
+      "symbol": "SUIUSDT",
+      "lotId": "SUIUSDT",
+      "buyPrice": 0.7968,
+      "exitPrice": 0.6568,
+      "qty": 16.4835,
+      "costUsdt": 13.13,
+      "proceedsUsdt": 10.83,
+      "pnlUsdt": -2.31,
+      "pnlPct": -17.57
+    },
+    {
+      "symbol": "BTCUSDT",
+      "lotId": "BTCUSDT_lot_2_1795079621076",
+      "buyPrice": 63805.08,
+      "exitPrice": 59606.53,
+      "qty": 0.00053946,
+      "costUsdt": 34.42,
+      "proceedsUsdt": 32.16,
+      "pnlUsdt": -2.26,
+      "pnlPct": -6.58
+    },
+    {
+      "symbol": "BTCUSDT",
+      "lotId": "BTCUSDT",
+      "buyPrice": 71411.29,
+      "exitPrice": 59606.53,
+      "qty": 0.00034,
+      "costUsdt": 24.28,
+      "proceedsUsdt": 20.27,
+      "pnlUsdt": -4.01,
+      "pnlPct": -16.53
+    },
+    {
+      "symbol": "PEPEUSDT",
+      "lotId": "PEPEUSDT_lot_2_1794585048597",
+      "buyPrice": 0.00000453,
+      "exitPrice": 0.00000342,
+      "qty": 6031489.47,
+      "costUsdt": 27.35,
+      "proceedsUsdt": 20.63,
+      "pnlUsdt": -6.72,
+      "pnlPct": -24.5
+    },
+    {
+      "symbol": "SUIUSDT",
+      "lotId": "SUIUSDT_lot_2_1795088719100",
+      "buyPrice": 0.7335,
+      "exitPrice": 0.6568,
+      "qty": 47.4525,
+      "costUsdt": 34.81,
+      "proceedsUsdt": 31.17,
+      "pnlUsdt": -3.64,
+      "pnlPct": -10.46
+    }
+  ],
+  "totalCost": 176.57,
+  "totalProceeds": 150.07,
+  "totalNetPnl": -26.5
+}
