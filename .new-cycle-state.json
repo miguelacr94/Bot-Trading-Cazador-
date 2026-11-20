@@ -1,13 +1,13 @@
 {
-  "cycleId": "CICLO_REINICIO_1795193879590",
-  "startedAt": 1795193879590,
-  "startDateStr": "Viernes 20 de Noviembre de 2026, 11:57 AM COT",
-  "startingBalanceUsdt": 161.73,
-  "status": "ACTIVE_CLEAN_SLATE",
+  "cycleId": "CICLO_LIMPIO_1795194184444",
+  "startedAt": 1795194184444,
+  "startDateStr": "20/11/2026, 12:03:04 p. m.",
+  "startingBalanceUsdt": 160.35,
+  "status": "ACTIVE_CLEAN_SLATE_100PCT_USDT",
   "totalTrades": 0,
   "wins": 0,
   "losses": 0,
   "realizedPnlUsdt": 0,
   "winRate": 100,
-  "notes": "Ciclo nuevo arrancado desde cero tras liquidación preventiva de fin de semana. Historial anterior preservado en /archive."
+  "notes": "Liquidación directa ejecutada en Binance Spot. 100% USDT en cartera. Historial antiguo en /archive."
 }
