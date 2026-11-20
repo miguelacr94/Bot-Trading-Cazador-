@@ -1,0 +1,13 @@
+{
+  "cycleId": "CICLO_REINICIO_1795193879590",
+  "startedAt": 1795193879590,
+  "startDateStr": "Viernes 20 de Noviembre de 2026, 11:57 AM COT",
+  "startingBalanceUsdt": 161.73,
+  "status": "ACTIVE_CLEAN_SLATE",
+  "totalTrades": 0,
+  "wins": 0,
+  "losses": 0,
+  "realizedPnlUsdt": 0,
+  "winRate": 100,
+  "notes": "Ciclo nuevo arrancado desde cero tras liquidación preventiva de fin de semana. Historial anterior preservado en /archive."
+}

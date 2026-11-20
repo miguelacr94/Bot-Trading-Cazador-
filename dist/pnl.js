@@ -19,8 +19,8 @@ export const PNL_SYMBOLS = [
     "BONKUSDT",
     "SHIBUSDT",
 ];
-// Fecha fija de inicio del ciclo del Bot (15 Oct 2026) para que NUNCA se borren ganancias pasadas al avanzar el calendario
-export const PNL_SINCE = new Date("2026-10-15T00:00:00Z").getTime();
+// Fecha fija de inicio del Ciclo Nuevo (Viernes 20 Nov 2026 11:57 COT) para historial 100% limpio desde cero
+export const PNL_SINCE = new Date("2026-11-20T11:57:00Z").getTime();
 export async function computeRealizedPnl(client, since = PNL_SINCE) {
     let bnbPrice = 0;
     try {

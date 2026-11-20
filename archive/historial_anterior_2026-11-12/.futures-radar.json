@@ -1,0 +1,79 @@
+[
+  {
+    "symbol": "BTCUSDT",
+    "price": 73255,
+    "ema50": 74777.52191655399,
+    "trend": "BAJISTA",
+    "rsi15m": 36.3,
+    "lowerWickPct": 12,
+    "upperWickPct": 33,
+    "fundingRate": "0.0060%",
+    "status": "🟢 ZONA SOBREVENTA (Buscando Suelo)"
+  },
+  {
+    "symbol": "ETHUSDT",
+    "price": 2026.62,
+    "ema50": 2133.5218797846605,
+    "trend": "BAJISTA",
+    "rsi15m": 30.1,
+    "lowerWickPct": 6,
+    "upperWickPct": 59,
+    "fundingRate": "-0.0031%",
+    "status": "🕯️ 🌠 Estrella Fugaz (mecha 59%) (Esperando RSI)"
+  },
+  {
+    "symbol": "SOLUSDT",
+    "price": 82.17,
+    "ema50": 86.42850281652944,
+    "trend": "BAJISTA",
+    "rsi15m": 29.6,
+    "lowerWickPct": 32,
+    "upperWickPct": 60,
+    "fundingRate": "-0.0016%",
+    "status": "🕯️ 🌠 Estrella Fugaz (mecha 60%) (Esperando RSI)"
+  },
+  {
+    "symbol": "BNBUSDT",
+    "price": 675.64,
+    "ema50": 689.3707354068324,
+    "trend": "BAJISTA",
+    "rsi15m": 31.1,
+    "lowerWickPct": 20,
+    "upperWickPct": 42,
+    "fundingRate": "0.0001%",
+    "status": "🕯️ 🌠 Estrella Fugaz (mecha 42%) (Esperando RSI)"
+  },
+  {
+    "symbol": "AVAXUSDT",
+    "price": 8.22,
+    "ema50": 8.305683864652991,
+    "trend": "BAJISTA",
+    "rsi15m": 41.2,
+    "lowerWickPct": 26,
+    "upperWickPct": 60,
+    "fundingRate": "-0.0028%",
+    "status": "🕯️ 🌠 Estrella Fugaz (mecha 60%) (Esperando RSI)"
+  },
+  {
+    "symbol": "XRPUSDT",
+    "price": 1.045,
+    "ema50": 1.1028221651219285,
+    "trend": "BAJISTA",
+    "rsi15m": 30.2,
+    "lowerWickPct": 17,
+    "upperWickPct": 23,
+    "fundingRate": "0.0035%",
+    "status": "🟢 ZONA SOBREVENTA (Buscando Suelo)"
+  },
+  {
+    "symbol": "DOGEUSDT",
+    "price": 0.06767,
+    "ema50": 0.06973912973321296,
+    "trend": "BAJISTA",
+    "rsi15m": 35.2,
+    "lowerWickPct": 21,
+    "upperWickPct": 25,
+    "fundingRate": "0.0014%",
+    "status": "🟢 ZONA SOBREVENTA (Buscando Suelo)"
+  }
+]

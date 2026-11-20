@@ -1,13 +1,13 @@
 {
   "sessionKey": "COSECHA_PRENOCTURNA",
-  "sessionTitle": "🌆 Cosecha Vespertina & Acumulación (17:00 - 20:00 COT)",
-  "totalFreeUsdt": 1.089038480000002,
-  "reservedUsdt": 18.99,
+  "sessionTitle": "🏆 HORA TECHO APERTURA NY (06:00-09:50 AM COT | Cosechando antes del drenaje de las 10 AM)",
+  "totalFreeUsdt": 0,
+  "reservedUsdt": 0,
   "spendableUsdt": 0,
-  "lotFractionPct": 0.25,
-  "trailingBounceTrigger": 0.35,
-  "harvestCallbackPct": 0.2,
-  "reason": "Preparación para el drenaje nocturno. El 45% de la cuenta se protege en USDT líquido.",
-  "recommendation": "🌆 Ceñir trailing a 0.20% en ganancias (>= +0.65%) para cerrar en verde y acumular USDT para la noche.",
-  "updatedAt": 1794608824268
+  "lotFractionPct": 0.45,
+  "trailingBounceTrigger": 0.38,
+  "harvestCallbackPct": 0.15,
+  "reason": "Ventana de Hora Techo histórica. Trailing Take Profit ceñido a 0.15% para asegurar ganancias en la cima antes del retroceso estadístico.",
+  "recommendation": "🏆 Cosechar subidas en USDT y mantener el 60% reservado para la siguiente Hora Piso.",
+  "updatedAt": 1794918411297
 }

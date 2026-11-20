@@ -1,0 +1,14 @@
+{
+  "initialBalance": 100,
+  "balanceUsdt": 100,
+  "inTradeUsdt": 0,
+  "totalNetPnlUsdt": 0,
+  "totalTrades": 0,
+  "wins": 0,
+  "losses": 0,
+  "winRatePct": 0,
+  "positions": [],
+  "history": [],
+  "lastUpdate": 1795095907237,
+  "enabled": false
+}

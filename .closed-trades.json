@@ -1,17 +1,1 @@
-[
-  {
-    "symbol": "PEPEUSDT",
-    "orderId": 5491269899,
-    "time": 1794521551935,
-    "buyPrice": 0.0000045,
-    "sellPrice": 0.00000453,
-    "qty": 5405699,
-    "costUsdt": 24.34999549099099,
-    "proceedsUsdt": 24.463328649999998,
-    "feesUsdt": 0.02448782,
-    "pnlUsdt": 0.11333315900900587,
-    "pnlPct": 0.4654340040881604,
-    "strategy": "smart_dca",
-    "source": "bot_execution"
-  }
-]
+[]

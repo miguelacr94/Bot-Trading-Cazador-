@@ -95,6 +95,7 @@ export class DashboardServer {
     // Caché (último valor bueno conocido)
     prices = {};
     radarMeta = {};
+    huntingTelemetry = {};
     usdtFree = null;
     usdtEarn = null;
     futuresBalance = null;
@@ -274,6 +275,139 @@ export class DashboardServer {
             }
             catch { }
         }
+    }
+    async refreshHuntingTelemetry() {
+        const rawBuys = this.readJson(".trailing-buys.json");
+        if (!Array.isArray(rawBuys) || rawBuys.length === 0) {
+            this.huntingTelemetry = {};
+            return;
+        }
+        let btcDrop5 = 0;
+        try {
+            const bRes = await fetch(`${BINANCE_PUBLIC}/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=3`);
+            if (bRes.ok) {
+                const btcK = await bRes.json();
+                if (btcK.length > 0) {
+                    const lB = btcK[btcK.length - 1];
+                    btcDrop5 = ((parseFloat(lB[4]) - parseFloat(lB[1])) / parseFloat(lB[1])) * 100;
+                }
+            }
+        }
+        catch { }
+        const nextTelem = {};
+        for (const [sym, w] of rawBuys) {
+            try {
+                const [kRes, dRes] = await Promise.all([
+                    fetch(`${BINANCE_PUBLIC}/api/v3/klines?symbol=${sym}&interval=5m&limit=4`),
+                    fetch(`${BINANCE_PUBLIC}/api/v3/depth?symbol=${sym}&limit=50`)
+                ]);
+                const k5 = kRes.ok ? await kRes.json() : [];
+                const depth = dRes.ok ? await dRes.json() : { bids: [], asks: [] };
+                const curPrice = this.prices[sym] || w.lowestPrice;
+                const bounce = ((curPrice - w.lowestPrice) / w.lowestPrice) * 100;
+                const reqBounce = 0.35;
+                let score = 0;
+                // 1. Rebote
+                let bounceStatus = "red";
+                if (bounce >= reqBounce) {
+                    bounceStatus = "green";
+                    score++;
+                }
+                else if (bounce >= reqBounce * 0.45) {
+                    bounceStatus = "orange";
+                }
+                // 2. Vela 5m (incluye absorción por mecha o avance sobre vela previa)
+                let isGreen = false;
+                let candleStatus = "red";
+                let candleDesc = "Roja";
+                let cvdRatio = 50;
+                let cvdStatus = "red";
+                if (k5.length > 0) {
+                    const l5 = k5[k5.length - 1];
+                    const p5 = k5.length >= 2 ? k5[k5.length - 2] : l5;
+                    const o5 = parseFloat(l5[1]), h5 = parseFloat(l5[2]), low5 = parseFloat(l5[3]), c5 = parseFloat(l5[4]);
+                    const pc5 = parseFloat(p5[4]);
+                    const wick5 = (h5 - low5) > 0 ? (Math.min(o5, c5) - low5) / (h5 - low5) : 0;
+                    isGreen = c5 >= o5 || (c5 > pc5 && wick5 >= 0.20) || wick5 >= 0.30;
+                    if (isGreen) {
+                        candleStatus = "green";
+                        candleDesc = "Verde";
+                        score++;
+                    }
+                    else if (Math.abs((c5 - o5) / o5) * 100 <= 0.08) {
+                        candleStatus = "orange";
+                        candleDesc = "Doji";
+                    }
+                    const totQ = parseFloat(l5[7] || "0");
+                    const buyQ = parseFloat(l5[10] || "0");
+                    const curCvd = totQ > 0 ? (buyQ / totQ) * 100 : 50;
+                    const prevTotQ = parseFloat(p5[7] || "0");
+                    const prevBuyQ = parseFloat(p5[10] || "0");
+                    const combTot = totQ + prevTotQ;
+                    const combCvd = combTot > 0 ? ((buyQ + prevBuyQ) / combTot) * 100 : 50;
+                    cvdRatio = Math.max(curCvd, combCvd);
+                    if (cvdRatio >= 50) {
+                        cvdStatus = "green";
+                        score++;
+                    }
+                    else if (cvdRatio >= 42) {
+                        cvdStatus = "orange";
+                    }
+                }
+                // 3. Depth (50 niveles para no apagarse al despegar del piso)
+                const bids = depth.bids || [];
+                const asks = depth.asks || [];
+                const bVal = bids.reduce((acc, [p, q]) => acc + parseFloat(p) * parseFloat(q), 0);
+                const aVal = asks.reduce((acc, [p, q]) => acc + parseFloat(p) * parseFloat(q), 0);
+                const obi = (bVal + aVal) > 0 ? (bVal / (bVal + aVal)) * 100 : 50;
+                let obiStatus = "red";
+                if (obi >= 42) {
+                    obiStatus = "green";
+                    score++;
+                }
+                else if (obi >= 32) {
+                    obiStatus = "orange";
+                }
+                // 4. Bitcoin
+                let btcStatus = "green";
+                let btcDesc = "Estable";
+                if (btcDrop5 <= -0.25) {
+                    btcStatus = "red";
+                    btcDesc = "En caída";
+                }
+                else if (btcDrop5 <= -0.15) {
+                    btcStatus = "orange";
+                    btcDesc = "Corrección";
+                }
+                else {
+                    score++;
+                }
+                const triggerPrice = w.lowestPrice * (1 + reqBounce / 100);
+                nextTelem[sym] = {
+                    symbol: sym,
+                    curPrice,
+                    lowestPrice: w.lowestPrice,
+                    armedPrice: w.armedPrice,
+                    triggerPrice,
+                    bouncePct: bounce,
+                    reqBouncePct: reqBounce,
+                    bounceStatus,
+                    isGreen,
+                    candleStatus,
+                    candleDesc,
+                    cvdRatio,
+                    cvdStatus,
+                    obiRatio: obi,
+                    obiStatus,
+                    btcStatus,
+                    btcDesc,
+                    score,
+                    totalScore: 5
+                };
+            }
+            catch { }
+        }
+        this.huntingTelemetry = nextTelem;
     }
     describeError(e) {
         const d = e?.response?.data;
@@ -781,6 +915,7 @@ export class DashboardServer {
         const radar = radarSymbols.map((sym) => {
             const meta = this.radarMeta[sym];
             const watch = rawBuys.find(([s]) => s === sym)?.[1];
+            const telem = this.huntingTelemetry[sym];
             return {
                 symbol: sym,
                 curPrice: this.prices[sym] ?? null,
@@ -788,6 +923,8 @@ export class DashboardServer {
                 dropPct: meta ? meta.dropPct : null,
                 isHunting: !!watch,
                 lowestPrice: watch?.lowestPrice ?? null,
+                armedPrice: watch?.armedPrice ?? null,
+                huntingData: telem ?? null,
             };
         });
         // TELEMETRÍA DE FUTUROS (MODO DESARROLLADOR / SIMULACIÓN)
@@ -917,14 +1054,14 @@ export class DashboardServer {
             }
             if (matchedKey) {
                 const existing = syncMap.get(matchedKey);
-                if (existing &&
-                    cOrderIdMatched &&
-                    existing.pnlUsdt >= 0 &&
-                    typeof l.pnlUsdt === "number" &&
-                    l.pnlUsdt > existing.pnlUsdt) {
+                if (existing && typeof l.pnlUsdt === "number") {
                     existing.avgBuy = l.buyPrice || existing.avgBuy;
+                    existing.avgSell = l.sellPrice || existing.avgSell;
+                    existing.costUsdt = l.costUsdt || (existing.qty * (l.buyPrice || existing.avgBuy));
+                    existing.proceedsUsdt = l.proceedsUsdt || existing.proceedsUsdt;
+                    existing.feesUsdt = l.feesUsdt !== undefined ? l.feesUsdt : existing.feesUsdt;
                     existing.pnlUsdt = l.pnlUsdt;
-                    existing.pnlPct = l.pnlPct || existing.pnlPct;
+                    existing.pnlPct = l.pnlPct !== undefined ? l.pnlPct : existing.pnlPct;
                 }
             }
             else {
@@ -977,6 +1114,7 @@ export class DashboardServer {
             },
             positions,
             radar,
+            huntingWatches: Object.values(this.huntingTelemetry),
             performance: {
                 totalPnlUsdt: totalMergedPnl,
                 totalPnlCop: totalMergedPnl * copRate,
@@ -1078,7 +1216,7 @@ export class DashboardServer {
             if (controls && controls.recoveryTracker) {
                 this.cachedRecoveryTracker = controls.recoveryTracker;
             }
-            const closed = await supabaseDb.loadClosedTrades(30);
+            const closed = await supabaseDb.loadClosedTrades(100);
             if (closed && closed.length > 0) {
                 this.cachedDbTrades = closed;
             }
@@ -1095,6 +1233,7 @@ export class DashboardServer {
         };
         every("cloudData", 5000, () => this.refreshCloudData());
         every("prices", 2000, () => this.refreshPrices());
+        every("hunting", 3000, () => this.refreshHuntingTelemetry());
         every("account", 15000, () => this.refreshAccount());
         every("radar", 60000, () => this.refreshRadar());
         every("fng", 300000, () => this.refreshFng());
@@ -1156,6 +1295,106 @@ export class DashboardServer {
                         "Cache-Control": "no-store",
                     });
                     res.end(JSON.stringify(this.getStatusData()));
+                }
+                catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+                return;
+            }
+            // --- APIS DE MICRO-SCALPING SIMULADOR ($100 VIRTUAL) ---
+            if (parsedUrl.pathname === "/api/micro-scalper/state" && req.method === "GET") {
+                try {
+                    const f = path.resolve(process.cwd(), ".micro-scalper-sim.json");
+                    let state = {
+                        enabled: false,
+                        initialBalance: 100.0,
+                        balanceUsdt: 100.0,
+                        inTradeUsdt: 0.0,
+                        totalNetPnlUsdt: 0.0,
+                        totalTrades: 0,
+                        wins: 0,
+                        losses: 0,
+                        winRatePct: 0.0,
+                        positions: [],
+                        history: []
+                    };
+                    if (fs.existsSync(f)) {
+                        state = { ...state, ...JSON.parse(fs.readFileSync(f, "utf-8")) };
+                    }
+                    res.writeHead(200, {
+                        "Content-Type": "application/json; charset=utf-8",
+                        "Cache-Control": "no-store"
+                    });
+                    res.end(JSON.stringify(state));
+                }
+                catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+                return;
+            }
+            if (parsedUrl.pathname === "/api/micro-scalper/toggle" && req.method === "POST") {
+                let body = "";
+                req.on("data", chunk => (body += chunk));
+                req.on("end", () => {
+                    try {
+                        const data = JSON.parse(body || "{}");
+                        const f = path.resolve(process.cwd(), ".micro-scalper-sim.json");
+                        let state = {
+                            enabled: false,
+                            initialBalance: 100.0,
+                            balanceUsdt: 100.0,
+                            inTradeUsdt: 0.0,
+                            totalNetPnlUsdt: 0.0,
+                            totalTrades: 0,
+                            wins: 0,
+                            losses: 0,
+                            winRatePct: 0.0,
+                            positions: [],
+                            history: []
+                        };
+                        if (fs.existsSync(f)) {
+                            state = { ...state, ...JSON.parse(fs.readFileSync(f, "utf-8")) };
+                        }
+                        if (typeof data.enabled === "boolean") {
+                            state.enabled = data.enabled;
+                        }
+                        else {
+                            state.enabled = !state.enabled;
+                        }
+                        state.lastUpdate = Date.now();
+                        fs.writeFileSync(f, JSON.stringify(state, null, 2), "utf-8");
+                        res.writeHead(200, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ ok: true, enabled: state.enabled, state }));
+                    }
+                    catch (e) {
+                        res.writeHead(500, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
+            if (parsedUrl.pathname === "/api/micro-scalper/reset" && req.method === "POST") {
+                try {
+                    const f = path.resolve(process.cwd(), ".micro-scalper-sim.json");
+                    const state = {
+                        enabled: false,
+                        initialBalance: 100.0,
+                        balanceUsdt: 100.0,
+                        inTradeUsdt: 0.0,
+                        totalNetPnlUsdt: 0.0,
+                        totalTrades: 0,
+                        wins: 0,
+                        losses: 0,
+                        winRatePct: 0.0,
+                        positions: [],
+                        history: [],
+                        lastUpdate: Date.now()
+                    };
+                    fs.writeFileSync(f, JSON.stringify(state, null, 2), "utf-8");
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ ok: true, state }));
                 }
                 catch (e) {
                     res.writeHead(500, { "Content-Type": "application/json" });
