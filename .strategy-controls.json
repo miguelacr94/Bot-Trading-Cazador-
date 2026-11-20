@@ -47,10 +47,10 @@
       "stopLossEnabled": false
     },
     "walletSplit": {
-      "manualUsdt": 0.18253976,
-      "lastUpdated": 1795021212915,
+      "manualUsdt": 0,
+      "lastKnownTotalFreeUsdt": 160.35,
       "autoQuarantineDeposits": true,
-      "lastKnownTotalFreeUsdt": 0.18253976
+      "lastUpdated": 1795196336449
     },
     "maxPositions": 8,
     "coreWatchlist": [
