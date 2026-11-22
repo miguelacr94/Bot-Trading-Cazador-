@@ -1546,6 +1546,12 @@ export class DashboardServer {
                 try {
                     const oppFile = path.resolve(process.cwd(), ".pending-opportunity.json");
                     const controls = await this.loadControls();
+                    if (controls) {
+                        controls.autoPilot = controls.autoPilot !== false && controls.strategySettings?.autoPilot !== false;
+                        if (!controls.strategySettings)
+                            controls.strategySettings = {};
+                        controls.strategySettings.autoPilot = controls.autoPilot;
+                    }
                     const pending = fs.existsSync(oppFile)
                         ? JSON.parse(fs.readFileSync(oppFile, "utf-8"))
                         : null;
@@ -2205,6 +2211,9 @@ export class DashboardServer {
                         }
                         else if (data.autoPilot !== undefined) {
                             controls.autoPilot = !!data.autoPilot;
+                            if (!controls.strategySettings)
+                                controls.strategySettings = {};
+                            controls.strategySettings.autoPilot = controls.autoPilot;
                         }
                         if (data.wideGapLotSize !== undefined) {
                             controls.wideGapLotSize = Math.max(10, Math.min(100, Number(data.wideGapLotSize) || 50));

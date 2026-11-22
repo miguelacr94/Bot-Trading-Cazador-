@@ -1465,10 +1465,14 @@
       if (gBar) gBar.style.width = aG + "%";
       if (wBar) wBar.style.width = aW + "%";
 
-      if (tAmt) tAmt.textContent = "~$" + (latestFreeUsdt * (aT / 100)).toFixed(2) + " USDT libres";
-      if (dAmt) dAmt.textContent = "~$" + (latestFreeUsdt * (aD / 100)).toFixed(2) + " USDT libres";
-      if (gAmt) gAmt.textContent = "~$" + (latestFreeUsdt * (aG / 100)).toFixed(2) + " USDT libres";
-      if (wAmt) wAmt.textContent = "~$" + (latestFreeUsdt * (aW / 100)).toFixed(2) + " USDT libres";
+      const botFree = (latestWalletSplit && typeof latestWalletSplit.botUsdt === "number")
+        ? latestWalletSplit.botUsdt
+        : latestFreeUsdt;
+
+      if (tAmt) tAmt.textContent = "~$" + (botFree * (aT / 100)).toFixed(2) + " USDT libres";
+      if (dAmt) dAmt.textContent = "~$" + (botFree * (aD / 100)).toFixed(2) + " USDT libres";
+      if (gAmt) gAmt.textContent = "~$" + (botFree * (aG / 100)).toFixed(2) + " USDT libres";
+      if (wAmt) wAmt.textContent = "~$" + (botFree * (aW / 100)).toFixed(2) + " USDT libres";
 
       if (!userHasUnsavedBudgetChanges) {
         const sT = document.getElementById("slider-trailing");
@@ -1486,8 +1490,9 @@
         updateBudgetSum();
       }
       if (tAuto && !tAuto.matches(":focus")) {
-        tAuto.checked = !!c.autoPilot;
-        if (modeLabel) modeLabel.textContent = c.autoPilot ? "🟢 Piloto Automático" : "🟡 Modo Manual";
+        const isAuto = c.autoPilot !== false && c.strategySettings?.autoPilot !== false;
+        tAuto.checked = isAuto;
+        if (modeLabel) modeLabel.textContent = isAuto ? "🟢 Piloto Automático" : "🟡 Modo Manual";
       }
 
       // Oportunidad pendiente
@@ -2568,6 +2573,34 @@
         btn.disabled = false;
         btn.textContent = "Confirmar";
       }
+    }
+  };
+
+  window.transferAllToBot = async function() {
+    if (!latestWalletSplit || !latestWalletSplit.manualUsdt || latestWalletSplit.manualUsdt <= 0) {
+      alert("Todo el saldo ya está asignado al Bot (Saldo Manual: $0.00 USDT).");
+      return;
+    }
+    const amt = latestWalletSplit.manualUsdt;
+    if (!confirm("¿Deseas transferir los $" + amt.toFixed(2) + " USDT del Saldo Manual al Bot para que opere al 100% en modo automático?")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/wallet-split/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: "manual_to_bot", amount: amt })
+      });
+      const data = await res.json();
+      if (data.success && data.walletSplit) {
+        updateWalletSplitUi(data.walletSplit);
+        alert("✅ ¡Éxito! $" + amt.toFixed(2) + " USDT transferidos al saldo 100% automático del Bot.");
+        fetchStrategies();
+      } else {
+        alert("Error al transferir: " + (data.error || "desconocido"));
+      }
+    } catch (e) {
+      alert("Error de conexión: " + e.message);
     }
   };
 
