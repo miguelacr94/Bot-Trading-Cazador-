@@ -124,4 +124,60 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
             return `⚠️ <i>Error consultando a Gemini AI: ${err.message}</i>`;
         }
     }
+    /**
+     * 🧠 AGENTE IA AUTÓNOMO DE BENCHMARK Y EJECUCIÓN (CICLO PERIÓDICO EN SERVIDOR 24/7):
+     * Analiza periódicamente qué tanto han caído las monedas respecto al cierre del viernes
+     * y al techo de 24h, evalúa el Calendario de 5.5 Años y emite el dictamen ejecutivo para Telegram.
+     */
+    async evaluateAutonomousBenchmarkCycle(params) {
+        const bestDrop = [...params.coins].sort((a, b) => a.benchDropPct - b.benchDropPct)[0];
+        const fallbackVerdict = params.executedSymbol
+            ? `✅ <b>Dictamen IA:</b> Descuento objetivo alcanzado en <b>${params.executedSymbol}</b> con absorción institucional confirmada en 15m/5m. Compra disparada automáticamente ($${(params.executedAmountUsdt || 0).toFixed(2)} USDT).`
+            : (bestDrop && bestDrop.benchDropPct <= -4.8
+                ? `🎯 <b>Dictamen IA:</b> <b>${bestDrop.symbol.replace("USDT", "")}</b> ya está en zona de descuento profundo (<b>${bestDrop.benchDropPct.toFixed(2)}%</b> vs cierre viernes). Esperando mecha de freno 15m y giro CVD >= 52% para disparar compra sin atrapar cuchillo cayendo.`
+                : `⏳ <b>Dictamen IA:</b> La mayor caída vs el cierre del viernes es <b>${bestDrop ? bestDrop.symbol.replace("USDT", "") : "N/A"} (${bestDrop ? (bestDrop.benchDropPct >= 0 ? "+" : "") + bestDrop.benchDropPct.toFixed(2) : "0.00"}%)</b>. Aún no alcanza el descuento objetivo (-4.8% a -10%). Manteniendo $${params.spendableUsdt.toFixed(2)} USDT protegidos y vigilando cada 15 min.`);
+        if (!this.isAvailable()) {
+            return fallbackVerdict;
+        }
+        try {
+            const apiKey = this.getApiKey();
+            const coinsSummary = params.coins
+                .map((c) => `- ${c.symbol}: Cierre Viernes $${c.exitPrice} -> Actual $${c.curPrice} (${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}% vs viernes | -${c.drop24hPct.toFixed(2)}% desde máximo 24h | RSI 15m: ${c.rsi15m.toFixed(1)} | Mecha 15m: ${c.lowerWick15mPct.toFixed(0)}% | CVD 5m: ${c.cvd5mPct.toFixed(0)}% | Gatillo Compra: ${c.qualifiesToBuy ? "LISTO" : "ESPERANDO"})`)
+                .join("\n");
+            const prompt = `Eres el Agente IA Autónomo del bot de trading Binance Spot de Miguel. Estás haciendo tu auditoría automática periódica en el servidor.\n` +
+                `Régimen Calendario 5.5 Años: ${params.calendarLabel}\n` +
+                `Sesión Horaria Actual: ${params.sessionTitle}\n` +
+                `Capital disponible en el bot: $${params.spendableUsdt.toFixed(2)} USDT\n` +
+                `Fecha de referencia Cierre Viernes: ${params.benchmarkDateStr}\n` +
+                `${params.executedSymbol ? `ACCIÓN EJECUTADA AHORA MISMO: Se acaba de COMPRAR automáticamente ${params.executedSymbol} con $${(params.executedAmountUsdt || 0).toFixed(2)} USDT.` : "ACCIÓN ACTUAL: Ninguna compra disparada en este ciclo."}\n\n` +
+                `Comparativa en vivo de las monedas vs Cierre del Viernes:\n${coinsSummary}\n\n` +
+                `Redacta un dictamen táctico breve (máximo 3 líneas en HTML simple con <b> y <i>, sin bloques markdown \`\`\`) explicando:\n` +
+                `1. Qué tanto han bajado o subido respecto al cierre del viernes.\n` +
+                `2. Por qué compraste ahora mismo o cuánto falta (% y condiciones de RSI/mecha) para disparar la compra automática.`;
+            const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
+            for (const model of candidateModels) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                    const res = await fetch(url, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ role: "user", parts: [{ text: prompt }] }],
+                            generationConfig: { temperature: 0.25, maxOutputTokens: 320 }
+                        })
+                    });
+                    const data = await res.json();
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (text && text.trim().length > 15) {
+                        return `🤖 <b>Dictamen Agente IA:</b> ${text.trim().replace(/```html|```/g, "")}`;
+                    }
+                }
+                catch { }
+            }
+            return fallbackVerdict;
+        }
+        catch {
+            return fallbackVerdict;
+        }
+    }
 }

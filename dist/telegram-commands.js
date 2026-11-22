@@ -53,6 +53,7 @@ export class TelegramCommands {
                 { command: "asignar", description: "🎯 Configurar % (ej: /asignar 40 25 0 35)" },
                 { command: "regimen", description: "🧭 Diagnóstico volatilidad y Día Quieto" },
                 { command: "weekend", description: "🏖️ Diagnóstico Cazador Weekend" },
+                { command: "benchmark", description: "🤖 Auditoría IA: Caída vs Cierre del Viernes" },
                 { command: "estado", description: "📊 Órdenes vivas y precios en Binance" },
                 { command: "motores", description: "⚙️ Parámetros técnicos de los motores" },
                 // Switches y Parámetros

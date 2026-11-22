@@ -891,6 +891,272 @@ export class TrailingMasterBot {
     ignoredDca = new Map();
     dashboardServer;
     aiCopilot = new AiCopilot();
+    lastAiBenchmarkCheckTime = 0;
+    lastAiBenchmarkTelegramTime = 0;
+    lastFridaySnapshotDayKey = "";
+    notifiedBenchmarkMilestones = new Map();
+    getFridayBenchmarks() {
+        const cloudBench = this.controls?.strategySettings?.fridayBenchmarks;
+        try {
+            const bf = path.resolve(process.cwd(), ".liquidation-benchmarks.json");
+            if (fs.existsSync(bf)) {
+                const localBench = JSON.parse(fs.readFileSync(bf, "utf-8"));
+                if (localBench?.benchmarks && Object.keys(localBench.benchmarks).length > 0) {
+                    if (!cloudBench || (localBench.liquidatedAt || 0) >= (cloudBench.liquidatedAt || 0)) {
+                        return localBench;
+                    }
+                }
+            }
+        }
+        catch { }
+        if (cloudBench?.benchmarks && Object.keys(cloudBench.benchmarks).length > 0) {
+            return cloudBench;
+        }
+        return null;
+    }
+    async runAutonomousAiBenchmarkAudit(forceTelegram = false, botSpendableUsdt = 0) {
+        try {
+            const now = Date.now();
+            const { dayStr, timeDec, year, month, dayOfMonth } = this.getCotTimeInfo();
+            const dayKey = `${year}-${month}-${dayOfMonth}`;
+            // 1. AUTO-SNAPSHOT DE CIERRE DEL VIERNES (Viernes 12:00 PM a 02:15 PM COT):
+            // El bot captura por sí solo los precios de referencia del viernes antes del drenaje de fin de semana.
+            if (dayStr === "Fri" && timeDec >= 12.0 && timeDec <= 14.25 && this.lastFridaySnapshotDayKey !== dayKey) {
+                const currentBench = this.getFridayBenchmarks();
+                const ageHours = currentBench?.liquidatedAt ? (now - currentBench.liquidatedAt) / 3600000 : 999;
+                if (ageHours >= 12) {
+                    const snapMap = {};
+                    for (const sym of this.watchlist) {
+                        try {
+                            const tRes = await this.client.tickerPrice(sym);
+                            const p = parseFloat(tRes.data.price);
+                            if (p > 0)
+                                snapMap[sym] = p;
+                        }
+                        catch { }
+                    }
+                    if (Object.keys(snapMap).length > 0) {
+                        this.lastFridaySnapshotDayKey = dayKey;
+                        const dateStr = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
+                        const newBenchObj = {
+                            liquidatedAt: now,
+                            dateStr: `Viernes ${dateStr} COT (Auto-Snapshot)`,
+                            benchmarks: snapMap,
+                            minDropRequiredPct: 5,
+                            primeDropRequiredPct: 8
+                        };
+                        try {
+                            fs.writeFileSync(path.resolve(process.cwd(), ".liquidation-benchmarks.json"), JSON.stringify(newBenchObj, null, 2), "utf-8");
+                        }
+                        catch { }
+                        if (!this.controls.strategySettings)
+                            this.controls.strategySettings = {};
+                        this.controls.strategySettings.fridayBenchmarks = newBenchObj;
+                        this.saveStrategyControls();
+                        this.notifiedBenchmarkMilestones.clear();
+                        console.log(`📸 [AGENTE IA AUTÓNOMO] Snapshot oficial de precios de cierre del viernes guardado (${Object.keys(snapMap).length} monedas).`);
+                    }
+                }
+            }
+            // Ejecutar chequeo interno cada 15 minutos (o inmediato si forceTelegram === true)
+            if (!forceTelegram && (now - this.lastAiBenchmarkCheckTime) < 15 * 60 * 1000) {
+                return "";
+            }
+            this.lastAiBenchmarkCheckTime = now;
+            const benchData = this.getFridayBenchmarks();
+            if (!benchData || !benchData.benchmarks) {
+                return "⚠️ No hay precios de referencia del viernes registrados aún.";
+            }
+            const calRegime = this.get5YearCalendarRegime();
+            const floorWin = this.isHistoricalFloorWindow();
+            const pauseWin = this.isHistoricalPauseWindow();
+            const isWeekend = this.isWeekendWindow();
+            const sessionPlan = this.lastSessionPlan || this.getSessionLiquidityPlan(botSpendableUsdt);
+            const coinEvaluations = [];
+            let crossedNewMilestone = false;
+            const symbolsToCheck = Array.from(new Set([...Object.keys(benchData.benchmarks), ...this.watchlist]));
+            for (const sym of symbolsToCheck) {
+                try {
+                    const [k15Res, k5Res] = await Promise.all([
+                        this.client.klines(sym, "15m", { limit: 96 }),
+                        this.client.klines(sym, "5m", { limit: 6 })
+                    ]);
+                    const k15 = k15Res.data;
+                    const k5 = k5Res.data;
+                    if (!k15 || k15.length < 15)
+                        continue;
+                    const closes15 = k15.map((r) => parseFloat(r[4]));
+                    const highs15 = k15.map((r) => parseFloat(r[2]));
+                    const lows15 = k15.map((r) => parseFloat(r[3]));
+                    const curPrice = closes15[closes15.length - 1];
+                    const high24h = Math.max(...highs15);
+                    const low24h = Math.min(...lows15);
+                    const exitPrice = benchData.benchmarks[sym] || high24h;
+                    const benchDropPct = exitPrice > 0 ? ((curPrice - exitPrice) / exitPrice) * 100 : 0;
+                    const drop24hPct = high24h > 0 ? ((high24h - curPrice) / high24h) * 100 : 0;
+                    const coinRange24hPct = low24h > 0 ? ((high24h - low24h) / low24h) * 100 : 2.5;
+                    const rsi15m = this.calculateRSI(closes15, 14);
+                    const last15 = k15[k15.length - 1];
+                    const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
+                    const range15 = Math.max(1e-9, h15 - l15);
+                    const lowerWick15mPct = ((Math.min(o15, c15) - l15) / range15) * 100;
+                    const isGreenOrWick15m = c15 >= o15 || lowerWick15mPct >= 28;
+                    let cvd5mPct = 50;
+                    let isGreen5m = false;
+                    if (k5 && k5.length >= 2) {
+                        const last5 = k5[k5.length - 1];
+                        const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]);
+                        const range5 = Math.max(1e-9, h5 - l5);
+                        const wick5 = (Math.min(o5, c5) - l5) / range5;
+                        isGreen5m = c5 >= o5 || wick5 >= 0.30;
+                        const totQ = parseFloat(last5[7] || "0");
+                        const buyQ = parseFloat(last5[10] || "0");
+                        cvd5mPct = totQ > 0 ? (buyQ / totQ) * 100 : 50;
+                    }
+                    const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE");
+                    const targetBenchDrop = isMeme ? -6.0 : -4.8;
+                    const isDeepDiscount = benchDropPct <= targetBenchDrop || (isWeekend && drop24hPct >= (isMeme ? 5.8 : 4.6));
+                    const qualifiesToArmWatch = isDeepDiscount && rsi15m <= 41;
+                    const qualifiesToBuy = isDeepDiscount &&
+                        rsi15m <= (isMeme ? 36 : 39) &&
+                        isGreenOrWick15m &&
+                        isGreen5m &&
+                        cvd5mPct >= 52 &&
+                        (!pauseWin.paused || benchDropPct <= -6.2);
+                    // Detectar cruce de hitos de caída (-3%, -5%, -8%, -10%) para alerta inmediata en Telegram
+                    const milestoneLevel = benchDropPct <= -10 ? 10 : (benchDropPct <= -8 ? 8 : (benchDropPct <= -5 ? 5 : (benchDropPct <= -3 ? 3 : 0)));
+                    const prevMilestone = this.notifiedBenchmarkMilestones.get(sym) || 0;
+                    if (milestoneLevel > prevMilestone) {
+                        this.notifiedBenchmarkMilestones.set(sym, milestoneLevel);
+                        crossedNewMilestone = true;
+                    }
+                    coinEvaluations.push({
+                        symbol: sym,
+                        exitPrice,
+                        curPrice,
+                        benchDropPct,
+                        drop24hPct,
+                        high24h: Math.max(high24h, exitPrice),
+                        coinRange24hPct,
+                        rsi15m,
+                        lowerWick15mPct,
+                        cvd5mPct,
+                        isGreenOrWick15m,
+                        isGreen5m,
+                        qualifiesToBuy,
+                        qualifiesToArmWatch
+                    });
+                }
+                catch { }
+            }
+            if (coinEvaluations.length === 0)
+                return "";
+            // Ordenar por mayor descuento respecto al cierre del viernes
+            coinEvaluations.sort((a, b) => a.benchDropPct - b.benchDropPct);
+            // 2. DECISIÓN Y ACCIÓN AUTÓNOMA DEL AGENTE IA (ARMADO O COMPRA DIRECTA EN PISO):
+            let executedSymbol;
+            let executedAmountUsdt;
+            const uniqueActiveCount = this.getUniqueActiveSymbols().size;
+            const maxUniqueCoins = this.controls?.maxPositions || 4;
+            const btcAnchor = await this.verifyBtc15mLeaderAnchor("ALT");
+            for (const candidate of coinEvaluations) {
+                if (this.hasActivePositionForSymbol(candidate.symbol))
+                    continue;
+                // A) Si está en descuento profundo (-4.8% a -10%) pero aún sigue cayendo, armar Trailing Buy para atrapar el fondo exacto
+                if (candidate.qualifiesToArmWatch && !this.buyWatches.has(candidate.symbol) && uniqueActiveCount < maxUniqueCoins) {
+                    const upsideGap = candidate.curPrice > 0 ? ((candidate.high24h - candidate.curPrice) / candidate.curPrice) * 100 : Math.abs(candidate.benchDropPct);
+                    this.buyWatches.set(candidate.symbol, {
+                        symbol: candidate.symbol,
+                        armedPrice: candidate.curPrice,
+                        lowestPrice: candidate.curPrice,
+                        armedTime: Date.now(),
+                        rsi: candidate.rsi15m,
+                        dropPct: Math.max(Math.abs(candidate.benchDropPct), candidate.drop24hPct),
+                        upsideGapPct: upsideGap,
+                        high24h: candidate.high24h,
+                        coinRange24hPct: candidate.coinRange24hPct,
+                        convictionTier: "MAXIMA_BRECHA",
+                        strategy: isWeekend ? "cazador_weekend" : "trailing_rebound"
+                    });
+                    this.saveBuyWatches();
+                    console.log(`🤖🎯 [AGENTE IA AUTÓNOMO] Vigilancia Trailing Buy armada en ${candidate.symbol} por descuento de ${candidate.benchDropPct.toFixed(2)}% vs cierre viernes.`);
+                }
+                // B) Si ya confirmó freno y giro en el piso con descuento >= -4.8% a -10%, disparar compra automática
+                if (!executedSymbol &&
+                    candidate.qualifiesToBuy &&
+                    (candidate.symbol === "BTCUSDT" || btcAnchor.ok) &&
+                    uniqueActiveCount < maxUniqueCoins &&
+                    botSpendableUsdt >= 35 &&
+                    !this.pendingOpportunity) {
+                    const effectiveSpendable = (floorWin.active || isWeekend)
+                        ? Math.max(sessionPlan.spendableUsdt, botSpendableUsdt * 0.95)
+                        : sessionPlan.spendableUsdt;
+                    const strat = isWeekend ? "cazador_weekend" : "trailing_rebound";
+                    const upsideGap = candidate.curPrice > 0 ? ((candidate.high24h - candidate.curPrice) / candidate.curPrice) * 100 : Math.abs(candidate.benchDropPct);
+                    const amountToUse = this.calculateSessionLotSize(candidate.symbol, effectiveSpendable, sessionPlan.lotFractionPct, strat, 1, candidate.rsi15m, candidate.coinRange24hPct, Math.max(Math.abs(candidate.benchDropPct), upsideGap));
+                    if (amountToUse >= this.minUsdtToTrade) {
+                        const sourceDesc = `Agente IA Benchmark (${candidate.benchDropPct.toFixed(2)}% vs cierre viernes, RSI ${candidate.rsi15m.toFixed(1)})`;
+                        const ok = await this.executeSmartBuy(candidate.symbol, amountToUse, sourceDesc, strat, {
+                            coinRange24hPct: candidate.coinRange24hPct,
+                            upsideGapPct: upsideGap,
+                            convictionTier: "MAXIMA_BRECHA"
+                        });
+                        if (ok) {
+                            executedSymbol = candidate.symbol;
+                            executedAmountUsdt = amountToUse;
+                            this.buyWatches.delete(candidate.symbol);
+                            this.saveBuyWatches();
+                            break;
+                        }
+                    }
+                }
+            }
+            // 3. REPORTE PERIÓDICO DEL AGENTE IA A TELEGRAM (Cada 2 horas, o al cruzar hito de caída, o al comprar, o por comando):
+            const shouldSendTelegram = forceTelegram ||
+                Boolean(executedSymbol) ||
+                crossedNewMilestone ||
+                (now - this.lastAiBenchmarkTelegramTime) >= 2 * 3600 * 1000;
+            if (!shouldSendTelegram)
+                return "";
+            this.lastAiBenchmarkTelegramTime = now;
+            const aiVerdict = await this.aiCopilot.evaluateAutonomousBenchmarkCycle({
+                benchmarkDateStr: benchData.dateStr,
+                calendarLabel: calRegime.label,
+                sessionTitle: sessionPlan.sessionTitle,
+                spendableUsdt: botSpendableUsdt,
+                executedSymbol,
+                executedAmountUsdt,
+                coins: coinEvaluations
+            });
+            const primaryBenchSyms = new Set(Object.keys(benchData.benchmarks));
+            const displayCoins = coinEvaluations.filter((c) => primaryBenchSyms.has(c.symbol) || c.benchDropPct <= -3.5);
+            let report = `🤖📊 <b>[AGENTE IA AUTÓNOMO — AUDITORÍA DE DESCUENTO VS CIERRE VIERNES]</b>\n\n`;
+            report += `🗓️ <b>Referencia Cierre Viernes:</b> <i>${benchData.dateStr}</i>\n`;
+            report += `📅 <b>Calendario 5.5 Años:</b> ${calRegime.label}\n`;
+            report += `⏰ <b>Ventana Actual:</b> ${sessionPlan.sessionTitle}\n\n`;
+            for (const c of displayCoins) {
+                const emoji = c.benchDropPct <= -8.0 ? "🔥" : (c.benchDropPct <= -4.8 ? "🎯" : (c.benchDropPct <= -2.0 ? "📉" : "⚖️"));
+                const symClean = c.symbol.replace("USDT", "");
+                const dec = c.symbol.includes("PEPE") ? 8 : (c.curPrice < 10 ? 4 : 2);
+                report += `${emoji} <b>${symClean}:</b> Viernes $${c.exitPrice.toFixed(dec)} ➡️ Actual $${c.curPrice.toFixed(dec)} (<b>${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}%</b> | RSI 15m: ${c.rsi15m.toFixed(0)})\n`;
+            }
+            report += `\n${aiVerdict}\n\n`;
+            report += `💼 <b>Saldo Bot Disponible:</b> <b>$${botSpendableUsdt.toFixed(2)} USDT</b> (100% sincronizado en servidor 24/7).`;
+            if (!forceTelegram) {
+                try {
+                    await this.notifier.send(report);
+                }
+                catch (e) {
+                    console.error("Error enviando reporte Agente IA Benchmark:", e.message);
+                }
+            }
+            return report;
+        }
+        catch (e) {
+            console.error("Error en runAutonomousAiBenchmarkAudit:", e.message);
+            return "";
+        }
+    }
     constructor() {
         this.client = new Spot(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, { recvWindow: 60000 });
         this.notifier = new TelegramNotifier();
@@ -3503,6 +3769,15 @@ export class TrailingMasterBot {
             const cmd = parts[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const arg1 = parts[1]?.toUpperCase();
             const arg2 = parts[2];
+            // Auditoría del Agente IA vs Cierre del Viernes a solicitud (/benchmark o /ia_auditar)
+            if (cmd === "/benchmark" || cmd === "benchmark" || cmd === "/ia_auditar" || cmd === "ia_auditar" || cmd === "/comparar_viernes" || cmd === "comparar_viernes") {
+                const acc = await this.client.account({ recvWindow: 60000 });
+                const freeUsdt = parseFloat(acc.data.balances.find((b) => b.asset === "USDT")?.free || "0");
+                this.loadWalletSplit();
+                const botSpendable = Math.max(0, freeUsdt - this.walletSplit.manualUsdt);
+                const rep = await this.runAutonomousAiBenchmarkAudit(true, botSpendable);
+                return rep || "⚠️ No se pudo generar el reporte de benchmark.";
+            }
             // Comando interactivo para asegurar piso: /piso_SYMBOL_PCT o /piso SYMBOL PCT
             if (cmd.startsWith("/piso_") || cmd.startsWith("/asegurar_") || cmd === "/piso" || cmd === "/asegurar" || cmd === "piso" || cmd === "asegurar") {
                 let targetSym = "";
@@ -5959,6 +6234,9 @@ export class TrailingMasterBot {
             console.log(`[${time}] [${sessionPlan.sessionTitle}] USDT total: ${usdt.toFixed(2)} (Gastable: ${sessionPlan.spendableUsdt.toFixed(2)} | Reserva Cerrada: ${sessionPlan.reservedUsdt.toFixed(2)}) | Monedas: ${uniqueActiveCount}/${maxUniqueCoins} (${this.activeTrailingPositions.size} lotes) | Cazando piso: ${this.buyWatches.size}`);
             // Monitoreo de liquidez libre (Meta: >= 50 USDT) para evaluar Futuros
             await this.checkLiquidityAndFuturesViability(usdt);
+            // 🧠 AGENTE IA AUTÓNOMO (CICLO PERIÓDICO EN SERVIDOR 24/7):
+            // Compara precios en vivo vs cierre del viernes, envía reporte a Telegram cada 2h (o en hitos de caída) y ejecuta compras en el piso.
+            await this.runAutonomousAiBenchmarkAudit(false, botSpendableUsdt);
             // 2. Evaluar oportunidades de compra respetando Horas Piso, Horas Pausa y Excepción por Evento Atípico
             const pauseWin = this.isHistoricalPauseWindow();
             if (pauseWin.paused) {
