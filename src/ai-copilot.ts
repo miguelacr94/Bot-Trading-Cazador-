@@ -265,10 +265,13 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
         `Capital disponible en el bot: $${params.spendableUsdt.toFixed(2)} USDT\n` +
         `Posiciones abiertas:\n${openPosSummary}\n\n` +
         `Telemetría en vivo de la Watchlist (Precios vs Cierre Viernes ${params.benchmarkDateStr} y Canal 24h):\n${coinsSummary}\n\n` +
-        `Reglas de decisión como Trader Experto:\n` +
-        `1. JAMÁS comprar en techo (Ubicación Canal 24h > 48% o RSI > 45). Solo comprar ("BUY_NOW") o armar cacería ("ARM_TRAILING_BUY") cuando hay un descuento claro (en fin de semana >= -4.5% vs viernes o caída 24h >= 4%; entre semana Lunes post-barrido CME, Miércoles de sacudón macro o pullback de Martes/Jueves con caída 24h >= 2.2%, Ubicación Canal <= 38%, RSI <= 42 y mecha de absorción >= 25% con CVD >= 52%).\n` +
-        `2. Si hay una posición abierta en ganancia (>= +0.85%) y ves agotamiento o estamos en Hora Techo, puedes elegir "LOCK_PROFIT_FLOOR" indicando lockedFloorPct (ej. 0.70 a 2.50). Si estamos en Martes o Jueves de Expansión y CVD >= 56%, puedes elegir "WIDEN_EXPANSION_TP" (customCallbackPct: 0.42) para dejar correr la ganancia al pico máximo.\n` +
-        `3. Si el mercado está arriba o sin setup limpio, elige "HOLD_AND_WAIT".\n\n` +
+        `Reglas de decisión como Trader Institucional (PROHIBIDO COMPRAR POR COMPRAR):\n` +
+        `1. CICLO SEMANAL DE 5.5 AÑOS:\n` +
+        `   • DÍAS DE COMPRA EN MÁXIMA CAÍDA: Sábado Madrugada (caída >= -4.8% a -10% vs cierre viernes), Lunes de Barrido CME (caída >= -3.6% en el fondo del canal <= 22%, para vender el Martes), y Miércoles de Sacudón Macro (caída >= -3.6% a -5.5% en el fondo del canal <= 22%, para vender el Jueves).\n` +
+        `   • DÍAS DE VENTA Y COSECHA EN ALZA: Martes (+5.87% hist.), Jueves (+5.51% hist.) y Viernes Mañana son días para VENDER EN EL PUNTO MÁS ALTO lo acumulado en la caída previa. En Martes, Jueves y Viernes NO se compra salvo un crash extremo atípico (caída >= -5.2%, Ubicación Canal <= 15% y RSI <= 30).\n` +
+        `2. Para autorizar "BUY_NOW" o "ARM_TRAILING_BUY", la moneda DEBE estar en su MÁXIMA CAÍDA (Ubicación Canal 24h <= 22%, RSI 15m <= 35, caída >= 3.6% entre semana o >= -4.8% vs viernes en fin de semana, con mecha de absorción >= 28% y CVD >= 53%).\n` +
+        `3. Si hay una posición abierta en ganancia (>= +0.85%) en Martes, Jueves o Domingo, usa "WIDEN_EXPANSION_TP" (customCallbackPct: 0.42) mientras CVD >= 56% para exprimir toda la subida, o "LOCK_PROFIT_FLOOR" (lockedFloorPct) cuando detectes agotamiento en la cima.\n` +
+        `4. En cualquier otro caso, elige "HOLD_AND_WAIT" para proteger la liquidez hasta la próxima máxima caída.\n\n` +
         `Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta:\n` +
         `{"action":"BUY_NOW"|"ARM_TRAILING_BUY"|"LOCK_PROFIT_FLOOR"|"WIDEN_EXPANSION_TP"|"HOLD_AND_WAIT","targetSymbol":"SOLUSDT","confidence":85,"lockedFloorPct":1.2,"customCallbackPct":0.40,"verdict":"Explicación táctica de 2-3 líneas en HTML simple con <b> y <i> de cómo ves el mercado hoy (${params.dayStr}), cuánto han bajado vs cierre viernes / techo 24h y tu decisión."}`;
 

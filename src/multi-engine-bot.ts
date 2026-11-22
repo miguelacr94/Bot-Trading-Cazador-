@@ -458,52 +458,51 @@ export class TrailingMasterBot {
       };
     }
 
-    // 2. Martes y Jueves de Expansión Alcista (#1 y #2 días más rentables en 5.5 años: +5.87% Martes, +5.51% Jueves)
-    // Tiene prioridad sobre Semana 1 y Semana 4 para jamás estrangular el Trailing TP en los dos días de mayor expansión semanal.
+    // 2. Martes y Jueves de Expansión Alcista (#1 y #2 días de VENTA EN LA CIMA en 5.5 años: +5.87% Martes, +5.51% Jueves)
+    // En Martes y Jueves la prioridad absoluta es VENDER EN EL PUNTO MÁS ALTO lo comprado en la caída del Sábado/Lunes o Miércoles.
+    // Se bloquean compras pequeñas ("comprar por comprar"): exige +2.2% extra de caída y RSI -6 puntos más estricto (solo capitulación >= -5.0%, RSI <= 30).
     if (dayStr === "Tue" || dayStr === "Thu") {
-      const isThuMorningPostSweep = dayStr === "Thu" && timeDec >= 10.25 && timeDec <= 13.5;
-      const isTueFloor = dayStr === "Tue" && ((timeDec >= 0.5 && timeDec <= 4.0) || (timeDec >= 11.5 && timeDec <= 13.5));
       return {
         regimeKey: "MARTES_JUEVES_EXPANSION",
         label: dayStr === "Tue"
-          ? `🐂 ${weekTag} Martes Verde Histórico (#1 Día Más Rentable en 5 Años: +5.87% Expansión Promedio)`
-          : `🐂 ${weekTag} Jueves de Expansión Institucional (#2 Día Más Rentable Post-Miércoles: +5.51% Rebote)`,
+          ? `🐂 ${weekTag} Martes de Alza y Cosecha (#1 Día de Venta en Cima +5.87% | Compras Bloqueadas salvo Capitulación >= -5%)`
+          : `🐂 ${weekTag} Jueves de Alza y Cosecha (#2 Día de Venta Post-Miércoles +5.51% | Compras Bloqueadas salvo Capitulación >= -5%)`,
         weekOfMonth,
-        extraDropRequiredPct: isEndOfMonthDrain && !isThuMorningPostSweep && !isTueFloor ? 0.25 : 0,
-        rsiAdjustment: isEndOfMonthDrain && !isThuMorningPostSweep && !isTueFloor ? -1 : 0,
-        closedPocketReservePct: (isThuMorningPostSweep || isTueFloor) ? 0.0 : 0.55,
-        tpCallbackMultiplier: dayStr === "Tue" ? 1.25 : 1.20, // Deja correr al máximo los 2 días de expansión semanal
-        isPrimeSniperFloorDay: isThuMorningPostSweep || isTueFloor
+        extraDropRequiredPct: 2.20, // Bloquea micro-compras en días de alza; solo permite entrar en desplomes extremos >= -5.0%
+        rsiAdjustment: -6,          // Exige sobreventa extrema (RSI <= 30) para no comprar jamás arriba en Martes o Jueves
+        closedPocketReservePct: 0.70,
+        tpCallbackMultiplier: dayStr === "Tue" ? 1.25 : 1.20, // Deja correr al máximo las posiciones abiertas para vender en el pico más alto
+        isPrimeSniperFloorDay: false
       };
     }
 
-    // 3. Miércoles de Sacudón Macro / FOMC (-3.61% mecha BTC / -4.61% mecha altcoins en 5 años -> Prepara el rally del Jueves)
+    // 3. Miércoles de Sacudón Macro / FOMC (DÍA ESTRATÉGICO DE COMPRA EN MÁXIMA CAÍDA -3.6% a -4.6% → Para vender el Jueves)
     if (dayStr === "Wed") {
       const isWedFloor = (timeDec >= 0.5 && timeDec <= 4.0) || (timeDec >= 11.5 && timeDec <= 13.5) || (timeDec >= 19.5 && timeDec <= 21.75);
       return {
         regimeKey: "MIERCOLES_SACUDON_MACRO",
-        label: `⚡ ${weekTag} Miércoles de Sacudón Macro (Mecha -4.6% en 5 Años → Acumulando Suelo para el Jueves Verde)`,
+        label: `⚡ ${weekTag} Miércoles de Máxima Caída Semanal (Cazando Suelo Profundo -3.6% a -5.5% → Para Vender en el Alza del Jueves)`,
         weekOfMonth,
-        extraDropRequiredPct: isWedFloor ? 0.05 : 0.45,
-        rsiAdjustment: isWedFloor ? 0 : -2,
+        extraDropRequiredPct: isWedFloor ? 0.40 : 0.90, // Exige caída real profunda, nunca micro-retrocesos
+        rsiAdjustment: isWedFloor ? -2 : -4,
         closedPocketReservePct: isWedFloor ? 0.0 : 0.65,
         tpCallbackMultiplier: 1.05,
         isPrimeSniperFloorDay: isWedFloor
       };
     }
 
-    // 4. Lunes de Barrido del Gap CME (85% de los lunes barren abajo en la mañana antes del Martes Verde)
+    // 4. Lunes de Barrido del Gap CME (DÍA ESTRATÉGICO DE COMPRA EN CAÍDA PROFUNDA → Para vender en el Alza del Martes)
     if (dayStr === "Mon") {
-      const isMonPostSweepFloor = (timeDec >= 0.5 && timeDec <= 4.0) || timeDec >= 11.5;
+      const isMonPostSweepFloor = (timeDec >= 0.5 && timeDec <= 4.0) || (timeDec >= 11.5 && timeDec <= 13.5) || (timeDec >= 20.0 && timeDec <= 21.75);
       return {
         regimeKey: "LUNES_BARRIDO_CME",
         label: isMonPostSweepFloor
-          ? `🟢 ${weekTag} Lunes Post-Barrido CME (Acumulando Suelo Institucional para el Martes Verde)`
-          : `🛡️ ${weekTag} Lunes Mañana Barrido Gap CME (Esperando Limpieza Matutina de Wall Street)`,
+          ? `🟢 ${weekTag} Lunes Post-Barrido CME (Cazando Máxima Caída del Lunes → Para Vender en el Alza del Martes)`
+          : `🛡️ ${weekTag} Lunes Mañana Barrido Gap CME (Esperando Máxima Caída Matutina de Wall Street)`,
         weekOfMonth,
-        extraDropRequiredPct: isMonPostSweepFloor ? 0 : 0.40,
-        rsiAdjustment: isMonPostSweepFloor ? 0 : -2,
-        closedPocketReservePct: isMonPostSweepFloor ? 0.0 : 0.60,
+        extraDropRequiredPct: isMonPostSweepFloor ? 0.35 : 0.85,
+        rsiAdjustment: isMonPostSweepFloor ? -2 : -4,
+        closedPocketReservePct: isMonPostSweepFloor ? 0.0 : 0.65,
         tpCallbackMultiplier: 1.12,
         isPrimeSniperFloorDay: isMonPostSweepFloor
       };
@@ -1267,16 +1266,24 @@ export class TrailingMasterBot {
           }
 
           const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE");
+          const isSellingExpansionDay = dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri";
           const targetBenchDrop = isMeme ? -6.0 : -4.8;
-          const isWeekdayDip = !isWeekend && drop24hPct >= (isMeme ? 4.2 : 2.5) && fibPosition24h <= 0.32 && rsi15m <= (isMeme ? 35 : 39);
-          const isDeepDiscount = benchDropPct <= targetBenchDrop || (isWeekend && drop24hPct >= (isMeme ? 5.8 : 4.6)) || isWeekdayDip;
-          const qualifiesToArmWatch = isDeepDiscount && rsi15m <= 42;
+          // Prohibido "comprar por comprar":
+          // • Sábado/Domingo: Exige descuento profundo >= -4.8% vs cierre del viernes (o caída >= 4.6% en 24h) en el fondo del canal (fib <= 0.25).
+          // • Lunes y Miércoles (Días de Acumulación en Máxima Caída para vender Martes y Jueves): Exige caída profunda >= 3.6% (core) / >= 5.0% (meme), fondo del canal <= 0.22 y RSI <= 35.
+          // • Martes, Jueves y Viernes (Días de Venta en Alza / Cosecha): Compras bloqueadas salvo capitulación extrema >= 5.2% con RSI <= 30 y fondo <= 0.15.
+          const reqWeekdayDrop = isSellingExpansionDay ? (isMeme ? 6.5 : 5.2) : (isMeme ? 5.0 : 3.6);
+          const reqWeekdayRsi = isSellingExpansionDay ? 30 : (isMeme ? 33 : 35);
+          const reqWeekdayFib = isSellingExpansionDay ? 0.15 : 0.22;
+          const isStrategicWeekdayFloor = !isWeekend && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
+          const isStrategicWeekendFloor = isWeekend && (benchDropPct <= targetBenchDrop || (drop24hPct >= (isMeme ? 5.8 : 4.6) && fibPosition24h <= 0.22)) && rsi15m <= (isMeme ? 35 : 38);
+          const isDeepDiscount = isStrategicWeekendFloor || isStrategicWeekdayFloor;
+          const qualifiesToArmWatch = isDeepDiscount;
           const qualifiesToBuy =
             isDeepDiscount &&
-            rsi15m <= (isMeme ? 36 : 40) &&
             isGreenOrWick15m &&
             isGreen5m &&
-            cvd5mPct >= 52 &&
+            cvd5mPct >= 53 &&
             (!pauseWin.paused || benchDropPct <= -6.2 || drop24hPct >= 5.8);
 
           // Detectar cruce de hitos de caída (-3%, -5%, -8%, -10%) para alerta inmediata en Telegram
@@ -1378,13 +1385,17 @@ export class TrailingMasterBot {
         }
       }
 
-      // Evaluar candidato sugerido por el Trader IA (con guardarraíl Anti-FOMO: prohibido comprar en la mitad superior del canal 24h)
-      if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 78) {
+      // Evaluar candidato sugerido por el Trader IA (con guardarraíl estricto de MÁXIMA CAÍDA: prohibido comprar por comprar o en días de venta Martes/Jueves salvo desplome >= 5%)
+      const isSellingDayNow = dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri";
+      const minAiDropReq = isSellingDayNow ? 5.0 : 3.5;
+      const maxAiRsiReq = isSellingDayNow ? 31 : 36;
+      const maxAiFibReq = isSellingDayNow ? 0.16 : 0.25;
+      if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 82) {
         const aiCand = coinEvaluations.find((c) => c.symbol === aiDec.targetSymbol || c.symbol.replace("USDT", "") === aiDec.targetSymbol);
-        if (aiCand && aiCand.fibPosition24h <= 0.45 && aiCand.rsi15m <= 44 && (aiCand.drop24hPct >= 1.8 || aiCand.benchDropPct <= -2.5)) {
+        if (aiCand && aiCand.fibPosition24h <= maxAiFibReq && aiCand.rsi15m <= maxAiRsiReq && (aiCand.drop24hPct >= minAiDropReq || aiCand.benchDropPct <= -4.8)) {
           if (aiDec.action === "ARM_TRAILING_BUY") {
             aiCand.qualifiesToArmWatch = true;
-          } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 50 && (!pauseWin.paused || aiCand.drop24hPct >= 5.2)) {
+          } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 53 && (!pauseWin.paused || aiCand.drop24hPct >= 5.5)) {
             aiCand.qualifiesToBuy = true;
           }
         }
@@ -3906,26 +3917,36 @@ export class TrailingMasterBot {
         const calExtraDrop = floorWinNow.active ? 0 : calRegime5Y.extraDropRequiredPct;
         const calRsiAdj = floorWinNow.active ? 0 : calRegime5Y.rsiAdjustment;
 
-        const dynamicFibCeiling = isBullishTrendRegime
-          ? 0.48 // En tendencia alcista los retrocesos rebotan en el 40-48% de Fibonacci o sobre EMA20/VWAP
-          : (isCompressedRangeRegime
-            ? 0.30 // En canal lateral comprimido caza el tercio inferior del canal
-            : Math.max(0.14, 0.26 - macro.btcStressIndex * 0.12)); // En mercado bajista exige el fondo extremo (14%-26%)
+        // En Martes, Jueves y Viernes (Días de Venta en Alza / Cosecha), exigir siempre el piso profundo del canal (<= 16%-22%) y caída fuerte (>= 3.6%-5.0%) para jamás comprar por comprar
+        const isSellingExpansionDayScan = calRegime5Y.regimeKey === "MARTES_JUEVES_EXPANSION" || this.getCotTimeInfo().dayStr === "Fri";
+        const dynamicFibCeiling = isSellingExpansionDayScan
+          ? 0.16
+          : (isBullishTrendRegime
+            ? 0.25 // Solo en el cuarto inferior del canal de 24h (máxima caída)
+            : (isCompressedRangeRegime
+              ? 0.22
+              : Math.max(0.14, 0.24 - macro.btcStressIndex * 0.10)));
 
-        const dynamicStochCeiling = isBullishTrendRegime
-          ? 28
-          : (isCompressedRangeRegime ? 24 : Math.max(12, Math.round(22 - macro.btcStressIndex * 10)));
+        const dynamicStochCeiling = isSellingExpansionDayScan
+          ? 16
+          : (isBullishTrendRegime
+            ? 22
+            : (isCompressedRangeRegime ? 20 : Math.max(12, Math.round(20 - macro.btcStressIndex * 8))));
 
-        const baseRsiCeiling = isBullishTrendRegime
-          ? 42
-          : (isCompressedRangeRegime ? 39 : Math.max(29, Math.min(37, 36 - (macro.btcStressIndex * 8) + (coinRange24hPct * 0.12))));
-        const dynamicRsiCeiling = Math.max(27, baseRsiCeiling + calRsiAdj);
+        const baseRsiCeiling = isSellingExpansionDayScan
+          ? 34
+          : (isBullishTrendRegime
+            ? 36
+            : (isCompressedRangeRegime ? 35 : Math.max(28, Math.min(36, 35 - (macro.btcStressIndex * 8) + (coinRange24hPct * 0.10)))));
+        const dynamicRsiCeiling = Math.max(26, baseRsiCeiling + calRsiAdj);
 
-        const baseDynamicDrop = isBullishTrendRegime
-          ? Math.max(1.25, Math.min(3.2, atrPct * 1.65)) // En mercado alcista basta un pullback limpio de 1.25%-2.0% hacia soporte
-          : (isCompressedRangeRegime
-            ? Math.max(1.35, Math.min(2.8, atrPct * 1.90)) // En rango estrecho se adapta a la volatilidad real del día
-            : Math.max(2.4, Math.min(6.8, Math.max(atrPct * 2.4, 2.0 + coinRange24hPct * 0.28) * (1 + macro.btcStressIndex * 0.40))));
+        const baseDynamicDrop = isSellingExpansionDayScan
+          ? Math.max(3.6, atrPct * 2.5) // En días de alza (Martes/Jueves/Viernes) exige desplome profundo real
+          : (isBullishTrendRegime
+            ? Math.max(3.0, Math.min(4.8, atrPct * 2.2)) // Exige caída estratégica real (>= -3.0% a -4.8%), nunca micro-retrocesos
+            : (isCompressedRangeRegime
+              ? Math.max(2.8, Math.min(4.5, atrPct * 2.2))
+              : Math.max(3.5, Math.min(7.5, Math.max(atrPct * 2.5, 2.8 + coinRange24hPct * 0.30) * (1 + macro.btcStressIndex * 0.40)))));
         const reqDynamicDrop = baseDynamicDrop + calExtraDrop;
 
         // 🌊 RE-ENTRADA EN OLA POST-VENTA (WAVE SURFING):
