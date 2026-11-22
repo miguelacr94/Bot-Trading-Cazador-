@@ -26,32 +26,15 @@ export class DashboardServer {
     }
     getWalletSplit(totalFreeUsdt = 0) {
         let manualUsdt = 0.0;
-        let lastKnown = 0.0;
-        let autoQuarantine = true;
         try {
             const f = path.resolve(process.cwd(), ".wallet-split.json");
             if (fs.existsSync(f)) {
                 const data = JSON.parse(fs.readFileSync(f, "utf-8"));
                 if (typeof data.manualUsdt === "number")
                     manualUsdt = data.manualUsdt;
-                if (typeof data.lastKnownTotalFreeUsdt === "number")
-                    lastKnown = data.lastKnownTotalFreeUsdt;
-                if (typeof data.autoQuarantineDeposits === "boolean")
-                    autoQuarantine = data.autoQuarantineDeposits;
             }
         }
         catch { }
-        // 🛡️ Auto-quarantine: si entra un depósito nuevo a Binance Spot, se asigna 100% al Fondo Manual
-        if (totalFreeUsdt > 0 && lastKnown > 0 && (totalFreeUsdt - lastKnown) > 0.15 && autoQuarantine) {
-            const delta = totalFreeUsdt - lastKnown;
-            manualUsdt += delta;
-            lastKnown = totalFreeUsdt;
-            this.saveWalletSplit(manualUsdt, totalFreeUsdt);
-        }
-        else if (totalFreeUsdt > 0 && lastKnown === 0) {
-            lastKnown = totalFreeUsdt;
-            this.saveWalletSplit(manualUsdt, totalFreeUsdt);
-        }
         if (totalFreeUsdt > 0) {
             manualUsdt = Math.max(0, Math.min(totalFreeUsdt, manualUsdt));
         }
@@ -83,10 +66,17 @@ export class DashboardServer {
                 ...prev,
                 manualUsdt,
                 lastKnownTotalFreeUsdt: lastKnownTotalFreeUsdt !== undefined ? lastKnownTotalFreeUsdt : (prev.lastKnownTotalFreeUsdt || 0),
-                autoQuarantineDeposits: true,
+                autoQuarantineDeposits: false,
                 lastUpdated: Date.now()
             };
             fs.writeFileSync(f, JSON.stringify(data, null, 2), "utf-8");
+            const ctrl = this.readControlsJson();
+            if (ctrl) {
+                if (!ctrl.strategySettings)
+                    ctrl.strategySettings = {};
+                ctrl.strategySettings.walletSplit = data;
+                this.saveControls(ctrl).catch(() => { });
+            }
         }
         catch (e) {
             console.error("Error guardando wallet-split:", e.message);
@@ -1097,7 +1087,7 @@ export class DashboardServer {
             pricesFresh: Date.now() - this.lastPriceOk < 15000,
             accountAvailable: this.usdtFree !== null,
             authError: this.authError,
-            walletSplit: this.getWalletSplit((this.usdtFree ?? 0) + (this.usdtEarn ?? 0)),
+            walletSplit: this.getWalletSplit(this.usdtFree ?? 0),
             portfolio: {
                 totalEstimatedUsdt: total,
                 totalEstimatedCop: total * copRate,
@@ -2252,7 +2242,7 @@ export class DashboardServer {
             }
             if (parsedUrl.pathname === "/api/wallet-split" && req.method === "GET") {
                 try {
-                    const freeUsdt = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
+                    const freeUsdt = this.usdtFree ?? 0;
                     const split = this.getWalletSplit(freeUsdt);
                     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
                     res.end(JSON.stringify(split));
@@ -2269,7 +2259,7 @@ export class DashboardServer {
                 req.on("end", () => {
                     try {
                         const data = JSON.parse(body || "{}");
-                        const freeUsdt = (this.usdtFree ?? 0) + (this.usdtEarn ?? 0);
+                        const freeUsdt = this.usdtFree ?? 0;
                         const currentSplit = this.getWalletSplit(freeUsdt);
                         const amt = Math.max(0, parseFloat(data.amount) || 0);
                         let newManual = currentSplit.manualUsdt;

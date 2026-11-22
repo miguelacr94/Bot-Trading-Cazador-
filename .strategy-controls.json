@@ -3,11 +3,11 @@
     "futures": false,
     "smart_dca": false,
     "micro_grid": false,
-    "cazador_weekend": false,
+    "cazador_weekend": true,
     "wide_gap_sniper": true,
     "trailing_rebound": false
   },
-  "autoPilot": false,
+  "autoPilot": true,
   "approvalTimeoutSec": 180,
   "maxPositions": 8,
   "allocations": {
@@ -48,9 +48,9 @@
     },
     "walletSplit": {
       "manualUsdt": 0,
-      "lastKnownTotalFreeUsdt": 160.35,
+      "lastKnownTotalFreeUsdt": 160.35269568,
       "autoQuarantineDeposits": true,
-      "lastUpdated": 1795196336449
+      "lastUpdated": 1795329152925
     },
     "maxPositions": 8,
     "coreWatchlist": [
@@ -83,68 +83,69 @@
       "porQue": "Como el bot jamás vende en negativo, Smart DCA aplica la Pirámide Invertida Institucional: en lugar de gastar mucho arriba en el Lote 1, guarda la mayor potencia de fuego para los pisos profundos (Lote 2 y Lote 3) una vez que la vela de 15m confirma que la caída ya frenó.",
       "reason": "Pirámide Invertida (Nivel 2: 1.35x | Nivel 3: 1.75x) + Freno en vela 15m.",
       "status": "applied",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "session": "Fin de Semana (Bolsas Cerradas / Libros Delgados)",
       "criterios": [
         "Nivel 2 (Soporte ≥ -2.5%, RSI ≤ 45): Invierte 1.35x fuerza (~$22-$36 USDT)",
         "Nivel 3 (Capitulación ≥ -5.5%, RSI ≤ 38): Invierte 1.75x fuerza (~$28-$48 USDT)",
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1795024786796,
+      "expiresAt": 1795332679603,
       "isCurrent": true,
       "timeframe": "4h",
-      "updatedAt": 1795021186796,
-      "btcRange24h": 4.798764791417252,
+      "updatedAt": 1795329079603,
+      "btcRange24h": 8.698034699757237,
       "stopLossPct": 6
     },
     "micro_grid": {
       "porQue": "Cuando el mercado tiene volatilidad amplia (≥ 2.2%), Micro-Grid se pausa automáticamente y cede su cuota de capital a Cazador Trailing y Smart DCA para capturar recorridos más grandes (+0.8% a +3.5%).",
-      "reason": "Mercado direccional activo (4.8%). Presupuesto en Cazador Trailing.",
+      "reason": "Mercado direccional activo (8.7%). Presupuesto en Cazador Trailing.",
       "status": "applied",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "session": "Fin de Semana (Bolsas Cerradas / Libros Delgados)",
       "criterios": [
-        "Rango Bitcoin: 4.80% (Mercado con ondas direccionales)",
+        "Rango Bitcoin: 8.70% (Mercado con ondas direccionales)",
         "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
       ],
-      "expiresAt": 1795024786796,
+      "expiresAt": 1795332679603,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1795021186796,
-      "btcRange24h": 4.798764791417252,
+      "updatedAt": 1795329079603,
+      "btcRange24h": 8.698034699757237,
       "stopLossPct": 2
     },
     "cazador_weekend": {
-      "porQue": "Para evitar comprar apresuradamente el viernes por la noche antes de la caída de madrugada, Cazador Weekend permanece en pausa hasta el sábado a las 02:00 AM COT.",
-      "reason": "En espera hasta el sábado a las 02:00 AM COT (tras la Veda de Viernes).",
+      "porQue": "Según el estudio de 18 semanas en Binance, el viernes tarde/noche es fase de drenaje y el suelo real se forma entre sábado 02:00 AM y 12:00 PM COT. Cazador Weekend opera exclusivamente en este piso con bloques fuertes ($50–$100 USDT) para vender en el impulso alcista del domingo.",
+      "reason": "Ventana de cacería en piso abierta (Sábado 02:00 AM a Domingo 06:00 PM COT).",
       "status": "applied",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "session": "Fin de Semana (Bolsas Cerradas / Libros Delgados)",
       "criterios": [
-        "Viernes 14:00 a Sábado 02:00 AM COT: Pausa de compras para evitar el drenaje del viernes (82% prob.)",
-        "Días hábiles: Presupuesto cedido al sistema de Doble Bolsillo (60% Horas Piso / 40% Abierto)"
+        "Veda de Viernes superada (82% de los fines de semana marcan suelo en sábado madrugada/mañana)",
+        "Filtro institucional: Caída ≥ -3.5% (Clásicas) / -5.2% (Memes), RSI ≤ 36-38, StochRSI ≤ 25",
+        "Confirmación multitemporal 15m + 5m + Ancla BTC 15m + Salida en Rally CME (Domingo noche)"
       ],
-      "expiresAt": 1795024786796,
+      "expiresAt": 1795332679603,
       "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1795021186796,
-      "btcRange24h": 4.798764791417252,
+      "updatedAt": 1795329079603,
+      "btcRange24h": 8.698034699757237,
       "stopLossPct": 5
     },
     "trailing_rebound": {
       "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m junto con el filtro de giro de vela de 5m permite capturar el suelo exacto y cobrar rebotes rápidos (+1.2% a +2.5%) sin entrar anticipado ni vender jamás en pérdida.",
-      "reason": "Alta velocidad detectada (BTC 4.8%, Memes 6.0%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
+      "reason": "Alta velocidad detectada (BTC 8.7%, Memes 9.3%). Sesión Fin de Semana (Bolsas Cerradas / Libros Delgados).",
       "status": "applied",
-      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "session": "Fin de Semana (Bolsas Cerradas / Libros Delgados)",
       "criterios": [
-        "Rango Bitcoin: 4.80% | Escudo Macro BTC 15m activo",
-        "Rango Memecoins: 6.01% (Líder PEPE con 6.0%)",
+        "Rango Bitcoin: 8.70% | Escudo Macro BTC 15m activo",
+        "Rango Memecoins: 9.35% (Líder PEPE con 9.3%)",
         "Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m",
         "Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)"
       ],
-      "expiresAt": 1795024786796,
+      "expiresAt": 1795332679603,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1795021186796,
-      "btcRange24h": 4.798764791417252,
+      "updatedAt": 1795329079603,
+      "btcRange24h": 8.698034699757237,
       "stopLossPct": 3.5
     }
   },
@@ -171,7 +172,7 @@
   "stopLossEnabled": false,
   "stopLossPct": 4,
   "timeframe": "1h",
-  "cashReservePct": 100,
+  "cashReservePct": 25,
   "maxPerCoinPct": 30,
   "aiEnabled": false,
   "coreWatchlist": [
@@ -187,6 +188,6 @@
   "memeWatchlist": [
     "PEPEUSDT"
   ],
-  "updatedAt": 1795021212916,
-  "sniperOnly": true
+  "updatedAt": 1795329152925,
+  "wideGapLotSize": 100
 }

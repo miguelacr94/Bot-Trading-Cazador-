@@ -753,11 +753,27 @@ export class TrailingMasterBot {
     walletSplit = {
         manualUsdt: 0.0,
         lastKnownTotalFreeUsdt: 0.0,
-        autoQuarantineDeposits: true,
+        autoQuarantineDeposits: false,
         lastUpdated: 0
     };
     lastBotSaleTime = 0;
     loadWalletSplit() {
+        const cloudSplit = this.controls?.strategySettings?.walletSplit;
+        if (cloudSplit && typeof cloudSplit.manualUsdt === "number") {
+            this.walletSplit.manualUsdt = cloudSplit.manualUsdt;
+            if (typeof cloudSplit.lastKnownTotalFreeUsdt === "number") {
+                this.walletSplit.lastKnownTotalFreeUsdt = cloudSplit.lastKnownTotalFreeUsdt;
+            }
+            if (typeof cloudSplit.autoQuarantineDeposits === "boolean") {
+                this.walletSplit.autoQuarantineDeposits = cloudSplit.autoQuarantineDeposits;
+            }
+            try {
+                const f = path.resolve(process.cwd(), ".wallet-split.json");
+                fs.writeFileSync(f, JSON.stringify(this.walletSplit, null, 2), "utf-8");
+            }
+            catch { }
+            return;
+        }
         try {
             const f = path.resolve(process.cwd(), ".wallet-split.json");
             if (fs.existsSync(f)) {
@@ -772,16 +788,15 @@ export class TrailingMasterBot {
             }
         }
         catch { }
-        if (this.controls?.strategySettings?.walletSplit?.manualUsdt !== undefined) {
-            this.walletSplit.manualUsdt = parseFloat(this.controls.strategySettings.walletSplit.manualUsdt || "0");
-        }
     }
-    saveWalletSplit() {
+    saveWalletSplit(syncCloud = true) {
         this.walletSplit.lastUpdated = Date.now();
         if (!this.controls.strategySettings)
             this.controls.strategySettings = {};
         this.controls.strategySettings.walletSplit = this.walletSplit;
-        this.saveStrategyControls();
+        if (syncCloud) {
+            this.saveStrategyControls();
+        }
         try {
             const f = path.resolve(process.cwd(), ".wallet-split.json");
             fs.writeFileSync(f, JSON.stringify(this.walletSplit, null, 2), "utf-8");
@@ -800,12 +815,12 @@ export class TrailingMasterBot {
         // Si es primera ejecución o no hay registro previo, fijar saldo inicial
         if (lastKnown === undefined || lastKnown === null || lastKnown === 0) {
             this.walletSplit.lastKnownTotalFreeUsdt = totalFreeUsdt;
-            this.saveWalletSplit();
+            this.saveWalletSplit(false);
             return;
         }
         const delta = totalFreeUsdt - lastKnown;
         // Si el saldo libre aumentó (Depósito entrante o ventas ejecutadas)
-        if (delta > 0.15) {
+        if (delta > 0.15 && this.walletSplit.autoQuarantineDeposits === true) {
             // Verificar si hubo ventas recientes del bot en los últimos 30 minutos (para jamás confundir una toma de ganancias con un depósito manual)
             let recentSaleTime = this.lastBotSaleTime || 0;
             try {
@@ -821,11 +836,11 @@ export class TrailingMasterBot {
             }
             catch { }
             const justSold = (Date.now() - recentSaleTime) < (30 * 60 * 1000); // Ventana de 30 minutos
-            if (!justSold && this.walletSplit.autoQuarantineDeposits === true && this.walletSplit.manualUsdt > 0) {
+            if (!justSold && this.walletSplit.manualUsdt > 0) {
                 // Asignar el 100% del depósito entrante al SALDO MANUAL solo si la cuarentena está explícitamente activada y hay billetera manual
                 this.walletSplit.manualUsdt = Math.max(0, this.walletSplit.manualUsdt) + delta;
                 this.walletSplit.lastKnownTotalFreeUsdt = totalFreeUsdt;
-                this.saveWalletSplit();
+                this.saveWalletSplit(true);
                 const botSpendable = Math.max(0, totalFreeUsdt - this.walletSplit.manualUsdt);
                 console.log(`🛡️ [DEPÓSITO PROTEGIDO] Ingreso de +$${delta.toFixed(2)} USDT detectado. Asignado al FONDO MANUAL.`);
                 console.log(`   • 👤 Saldo Manual Protegido: $${this.walletSplit.manualUsdt.toFixed(2)} USDT | 🤖 Saldo Bot: $${botSpendable.toFixed(2)} USDT`);
@@ -838,11 +853,12 @@ export class TrailingMasterBot {
             }
         }
         // Si el saldo disminuyó o fue venta del bot
+        const prevManual = this.walletSplit.manualUsdt;
         this.walletSplit.lastKnownTotalFreeUsdt = totalFreeUsdt;
         if (totalFreeUsdt < this.walletSplit.manualUsdt) {
             this.walletSplit.manualUsdt = Math.max(0, totalFreeUsdt);
         }
-        this.saveWalletSplit();
+        this.saveWalletSplit(this.walletSplit.manualUsdt !== prevManual);
     }
     deductFromManualWallet(amount) {
         this.loadWalletSplit();
