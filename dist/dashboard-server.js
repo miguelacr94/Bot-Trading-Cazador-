@@ -617,17 +617,18 @@ export class DashboardServer {
                 timeZone: "America/Bogota",
                 weekday: "short",
             });
-            const hourStr = now.toLocaleTimeString("en-US", {
+            const parts = new Intl.DateTimeFormat("en-US", {
                 timeZone: "America/Bogota",
-                hour12: false,
                 hour: "numeric",
-            });
-            const hour = parseInt(hourStr, 10);
-            if (dayStr === "Fri" && hour >= 17)
+                minute: "numeric",
+                hour12: false,
+            }).formatToParts(now);
+            const h = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+            const m = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+            const timeDec = (h === 24 ? 0 : h) + m / 60;
+            if (dayStr === "Sat" && timeDec >= 0.5)
                 return true;
-            if (dayStr === "Sat")
-                return true;
-            if (dayStr === "Sun" && hour < 18)
+            if (dayStr === "Sun" && timeDec < 18.0)
                 return true;
             return false;
         }

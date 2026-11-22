@@ -238,95 +238,110 @@ export class TrailingMasterBot {
      */
     get5YearCalendarRegime() {
         const { dayStr, timeDec, dayOfMonth, daysInMonth } = this.getCotTimeInfo();
+        const weekOfMonth = Math.min(4, Math.max(1, Math.ceil(dayOfMonth / 7)));
         const daysLeftInMonth = Math.max(0, daysInMonth - dayOfMonth);
         const isLastFridayOptionsExpiry = dayStr === "Fri" && daysLeftInMonth < 7;
         const isEndOfMonthDrain = dayOfMonth >= 26 || isLastFridayOptionsExpiry;
         const isBeginningOfMonthInflow = dayOfMonth >= 1 && dayOfMonth <= 5;
-        // 1. Fin de Semana Estructural (74% de los sábados marcan precio menor al viernes 14:00 COT; 72% de los domingos recuperan)
+        const weekTag = `[Sem ${weekOfMonth}/4]`;
+        // 1. Fin de Semana Estructural (Sábado 00:30 AM - 01:00 PM COT = Gran Piso Semanal; Viernes >= 14:00 = Veda; Domingo = Rebote 72%)
         if ((dayStr === "Fri" && timeDec >= 14.0) || dayStr === "Sat" || dayStr === "Sun") {
-            const isSatFloor = dayStr === "Sat" && timeDec >= 2.0 && timeDec <= 13.0;
+            const isSatFloor = dayStr === "Sat" && timeDec >= 0.5 && timeDec <= 13.0;
+            const isSunPreCmeFloor = dayStr === "Sun" && ((timeDec >= 0.5 && timeDec <= 4.0) || (timeDec >= 14.0 && timeDec <= 16.5));
             return {
                 regimeKey: "FIN_DE_SEMANA_ESTRUCTURAL",
                 label: isSatFloor
-                    ? "🏖️ Sábado Piso Estructural 5 Años (74% Probabilidad de Suelo Semanal)"
-                    : "🏖️ Ciclo Fin de Semana 5 Años (Veda Viernes → Suelo Sábado → Rebote Domingo 72%)",
-                extraDropRequiredPct: isSatFloor ? 0 : 0.45,
-                rsiAdjustment: isSatFloor ? 0 : -2,
-                closedPocketReservePct: isSatFloor ? 0.0 : 0.65,
-                tpCallbackMultiplier: dayStr === "Sun" ? 1.18 : 1.0,
-                isPrimeSniperFloorDay: isSatFloor
+                    ? `🏖️ ${weekTag} Sábado Piso Estructural 5 Años (00:30 AM-01:00 PM COT | 82% Prob. Suelo Semanal)`
+                    : (isSunPreCmeFloor
+                        ? `🏖️ ${weekTag} Domingo Piso Pre-CME / Madrugada (Re-testeo antes del Rally Dominical)`
+                        : `🏖️ ${weekTag} Ciclo Fin de Semana 5 Años (Veda Viernes → Suelo Sábado 00:30 AM → Rebote Domingo)`),
+                weekOfMonth,
+                extraDropRequiredPct: (isSatFloor || isSunPreCmeFloor) ? 0 : 0.40,
+                rsiAdjustment: (isSatFloor || isSunPreCmeFloor) ? 0 : -2,
+                closedPocketReservePct: (isSatFloor || isSunPreCmeFloor) ? 0.0 : 0.60,
+                tpCallbackMultiplier: dayStr === "Sun" ? 1.20 : 1.05,
+                isPrimeSniperFloorDay: isSatFloor || isSunPreCmeFloor
             };
         }
-        // 2. Drenaje de Fin de Mes y Vencimiento Mensual de Opciones (Días 26 al 31)
-        if (isEndOfMonthDrain) {
-            const isDeepMonthEndFloor = dayOfMonth >= 28 && (timeDec <= 4.0 || (timeDec >= 11.5 && timeDec <= 13.5));
+        // 2. Martes y Jueves de Expansión Alcista (#1 y #2 días más rentables en 5.5 años: +5.87% Martes, +5.51% Jueves)
+        // Tiene prioridad sobre Semana 1 y Semana 4 para jamás estrangular el Trailing TP en los dos días de mayor expansión semanal.
+        if (dayStr === "Tue" || dayStr === "Thu") {
+            const isThuMorningPostSweep = dayStr === "Thu" && timeDec >= 10.25 && timeDec <= 13.5;
+            const isTueFloor = dayStr === "Tue" && ((timeDec >= 0.5 && timeDec <= 4.0) || (timeDec >= 11.5 && timeDec <= 13.5));
             return {
-                regimeKey: "FIN_DE_MES_DRENAJE",
-                label: `📅 Escudo Fin de Mes / Opciones (Día ${dayOfMonth}/${daysInMonth} | 60% Días Rojos en 5 Años)`,
-                extraDropRequiredPct: isDeepMonthEndFloor ? 0.15 : 0.55,
-                rsiAdjustment: isDeepMonthEndFloor ? -1 : -3,
-                closedPocketReservePct: 0.68, // Blinda 68% para cazar el suelo profundo del cierre mensual
-                tpCallbackMultiplier: 0.90, // Asegura ganancias más rápido antes del cierre de vela mensual
-                isPrimeSniperFloorDay: isDeepMonthEndFloor
+                regimeKey: "MARTES_JUEVES_EXPANSION",
+                label: dayStr === "Tue"
+                    ? `🐂 ${weekTag} Martes Verde Histórico (#1 Día Más Rentable en 5 Años: +5.87% Expansión Promedio)`
+                    : `🐂 ${weekTag} Jueves de Expansión Institucional (#2 Día Más Rentable Post-Miércoles: +5.51% Rebote)`,
+                weekOfMonth,
+                extraDropRequiredPct: isEndOfMonthDrain && !isThuMorningPostSweep && !isTueFloor ? 0.25 : 0,
+                rsiAdjustment: isEndOfMonthDrain && !isThuMorningPostSweep && !isTueFloor ? -1 : 0,
+                closedPocketReservePct: (isThuMorningPostSweep || isTueFloor) ? 0.0 : 0.55,
+                tpCallbackMultiplier: dayStr === "Tue" ? 1.25 : 1.20, // Deja correr al máximo los 2 días de expansión semanal
+                isPrimeSniperFloorDay: isThuMorningPostSweep || isTueFloor
             };
         }
-        // 3. Miércoles de Sacudón Macro / FOMC (-3.61% mecha BTC / -4.61% mecha NEAR en 5 años)
+        // 3. Miércoles de Sacudón Macro / FOMC (-3.61% mecha BTC / -4.61% mecha altcoins en 5 años -> Prepara el rally del Jueves)
         if (dayStr === "Wed") {
-            const isWedAfternoonNightFloor = timeDec >= 13.0 && timeDec <= 21.75;
+            const isWedFloor = (timeDec >= 0.5 && timeDec <= 4.0) || (timeDec >= 11.5 && timeDec <= 13.5) || (timeDec >= 19.5 && timeDec <= 21.75);
             return {
                 regimeKey: "MIERCOLES_SACUDON_MACRO",
-                label: "⚡ Miércoles de Sacudón Macro (Mecha Promedio -4.6% en 5 Años → Prepara Rebote del Jueves)",
-                extraDropRequiredPct: isWedAfternoonNightFloor ? 0.10 : 0.45,
-                rsiAdjustment: isWedAfternoonNightFloor ? 0 : -2,
-                closedPocketReservePct: 0.65, // Guarda 65% para la mecha profunda del miércoles tarde/noche
-                tpCallbackMultiplier: 1.0,
-                isPrimeSniperFloorDay: isWedAfternoonNightFloor
+                label: `⚡ ${weekTag} Miércoles de Sacudón Macro (Mecha -4.6% en 5 Años → Acumulando Suelo para el Jueves Verde)`,
+                weekOfMonth,
+                extraDropRequiredPct: isWedFloor ? 0.05 : 0.45,
+                rsiAdjustment: isWedFloor ? 0 : -2,
+                closedPocketReservePct: isWedFloor ? 0.0 : 0.65,
+                tpCallbackMultiplier: 1.05,
+                isPrimeSniperFloorDay: isWedFloor
             };
         }
         // 4. Lunes de Barrido del Gap CME (85% de los lunes barren abajo en la mañana antes del Martes Verde)
         if (dayStr === "Mon") {
-            const isMonPostSweepFloor = timeDec >= 11.5;
+            const isMonPostSweepFloor = (timeDec >= 0.5 && timeDec <= 4.0) || timeDec >= 11.5;
             return {
                 regimeKey: "LUNES_BARRIDO_CME",
                 label: isMonPostSweepFloor
-                    ? "🟢 Lunes Post-Barrido CME (Acumulando Suelo para el Martes Verde)"
-                    : "🛡️ Lunes Mañana Barrido Gap CME (Esperando Limpieza Matutina de Wall Street)",
+                    ? `🟢 ${weekTag} Lunes Post-Barrido CME (Acumulando Suelo Institucional para el Martes Verde)`
+                    : `🛡️ ${weekTag} Lunes Mañana Barrido Gap CME (Esperando Limpieza Matutina de Wall Street)`,
+                weekOfMonth,
                 extraDropRequiredPct: isMonPostSweepFloor ? 0 : 0.40,
                 rsiAdjustment: isMonPostSweepFloor ? 0 : -2,
-                closedPocketReservePct: 0.60,
-                tpCallbackMultiplier: 1.08,
+                closedPocketReservePct: isMonPostSweepFloor ? 0.0 : 0.60,
+                tpCallbackMultiplier: 1.12,
                 isPrimeSniperFloorDay: isMonPostSweepFloor
             };
         }
-        // 5. Inicio de Mes (Días 1 al 5: 54.6% días verdes + Inyección de Nóminas y Fondos)
+        // 5. Drenaje de Fin de Mes y Vencimiento Mensual de Opciones (Semana 4: Días 26 al 31 / Último Viernes)
+        if (isEndOfMonthDrain) {
+            const isDeepMonthEndFloor = dayOfMonth >= 28 && (timeDec <= 4.0 || (timeDec >= 11.5 && timeDec <= 13.5));
+            return {
+                regimeKey: "FIN_DE_MES_DRENAJE",
+                label: `📅 ${weekTag} Escudo Fin de Mes / Opciones (Día ${dayOfMonth}/${daysInMonth} | 60% Días Rojos en 5 Años)`,
+                weekOfMonth,
+                extraDropRequiredPct: isDeepMonthEndFloor ? 0.10 : 0.50,
+                rsiAdjustment: isDeepMonthEndFloor ? -1 : -3,
+                closedPocketReservePct: isDeepMonthEndFloor ? 0.0 : 0.65,
+                tpCallbackMultiplier: 0.92,
+                isPrimeSniperFloorDay: isDeepMonthEndFloor
+            };
+        }
+        // 6. Inicio de Mes (Semana 1: Días 1 al 5: 54.6% días verdes + Inyección de Nóminas y Fondos)
         if (isBeginningOfMonthInflow) {
             return {
                 regimeKey: "INICIO_DE_MES_INYECCION",
-                label: `🚀 Inicio de Mes Institucional (Día ${dayOfMonth} | 54.6% Días Verdes e Inyección de Liquidez)`,
+                label: `🚀 ${weekTag} Inicio de Mes Institucional (Día ${dayOfMonth} | 54.6% Días Verdes e Inyección de Liquidez)`,
+                weekOfMonth,
                 extraDropRequiredPct: 0,
                 rsiAdjustment: 0,
-                closedPocketReservePct: 0.55,
+                closedPocketReservePct: 0.50,
                 tpCallbackMultiplier: 1.15,
                 isPrimeSniperFloorDay: dayOfMonth <= 2
             };
         }
-        // 6. Martes y Jueves de Expansión Alcista (Los 2 días de mayor rebote semanal en 5.5 años: +5.87% y +5.51% en NEAR)
-        if (dayStr === "Tue" || dayStr === "Thu") {
-            return {
-                regimeKey: "MARTES_JUEVES_EXPANSION",
-                label: dayStr === "Tue"
-                    ? "🐂 Martes Verde Histórico (#1 Día Más Rentable en 5 Años: +5.87% Rebote Promedio)"
-                    : "🐂 Jueves de Rebote Institucional (#2 Día Más Rentable Post-Miércoles: +5.51% Rebote)",
-                extraDropRequiredPct: 0,
-                rsiAdjustment: 0,
-                closedPocketReservePct: 0.60,
-                tpCallbackMultiplier: 1.18, // Deja correr más el Trailing TP en los dos días de mayor expansión
-                isPrimeSniperFloorDay: dayStr === "Thu" && timeDec >= 10.25 && timeDec <= 13.5
-            };
-        }
         return {
             regimeKey: "ESTANDAR",
-            label: "⚖️ Ciclo Semanal Estándar",
+            label: `⚖️ ${weekTag} Ciclo Semanal Estándar`,
+            weekOfMonth,
             extraDropRequiredPct: 0,
             rsiAdjustment: 0,
             closedPocketReservePct: 0.60,
@@ -335,98 +350,100 @@ export class TrailingMasterBot {
         };
     }
     /**
-     * 🟢 HORAS PISO HISTÓRICAS (DESBLOQUEO 100%: PRESUPUESTO CERRADO 60% + ABIERTO 40%):
-     * Momentos del ciclo diario y semanal donde estadísticamente se forman los suelos más profundos
-     * y los mayores retornos a +4h en Binance (18 semanas de datos):
-     * 1. Piso #1 de Madrugada (00:30 AM - 04:00 AM COT, Lun-Vie y Dom): #1 mejor compra del día (+0.22% retorno 4h a las 02:00 AM, previo al rally de Londres 03:00 AM).
-     * 2. Piso #2 de Mediodía NY (11:30 AM - 01:30 PM COT, Lun-Jue; Jueves desde 10:15 AM post-barrido macro): Fin del drenaje matutino de Wall Street (51 mínimos diarios).
-     * 3. Piso #3 Pre-Asia (08:00 PM - 09:45 PM COT / 20:00 - 21:45 COT, Lun-Jue): Suelo previo al impulso de apertura asiática (42 mínimos diarios).
-     * 4. Gran Piso de Fin de Semana (Sábado 02:00 AM - 12:00 PM COT y Domingo 02:00 PM - 04:30 PM COT): Donde el 82% de los fines de semana marcan su suelo real.
+     * 🟢 HORAS PISO HISTÓRICAS (DESBLOQUEO 100%: PRESUPUESTO CERRADO + ABIERTO UNIDOS, SIN CHOQUES):
+     * 1. Piso #1 de Madrugada (00:30 AM - 04:00 AM COT, Lun-Vie y Dom): #1 mejor compra del día (+0.22% retorno 4h, previo a Londres).
+     * 2. Gran Piso de Fin de Semana (Sábado 00:30 AM - 12:00 PM COT y Domingo 02:00 PM - 04:30 PM COT): Captura la capitulación de 01:00 AM del sábado.
+     * 3. Piso #2 de Mediodía NY (11:30 AM - 01:30 PM COT, Lun-Jue; Jueves desde 10:15 AM post-barrido macro).
+     * 4. Piso #3 Pre-Asia (08:00 PM - 09:45 PM COT / 20:00 - 21:45 COT, Lun-Jue).
      */
     isHistoricalFloorWindow() {
         const { dayStr, timeDec } = this.getCotTimeInfo();
         const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(dayStr);
         const isMonToThu = ["Mon", "Tue", "Wed", "Thu"].includes(dayStr);
-        // 1. Piso de Madrugada (00:30 AM - 04:00 AM COT) en días de semana y domingo
-        // (El sábado madrugada entra en el Gran Piso de Sábado desde las 02:00 AM)
+        // 1. Gran Piso de Sábado Madrugada/Mañana (00:30 AM - 12:00 PM COT: incluye el barrido asiático de la 01:00 AM)
+        if (dayStr === "Sat" && timeDec >= 0.5 && timeDec <= 12.0) {
+            return { active: true, label: "🏖️ GRAN PISO SÁBADO MADRUGADA/MAÑANA (00:30 AM-12:00 PM COT | 100% Presupuesto Desbloqueado)" };
+        }
+        // 2. Piso de Madrugada (00:30 AM - 04:00 AM COT) en días de semana y domingo
         if ((isWeekday || dayStr === "Sun") && timeDec >= 0.5 && timeDec <= 4.0) {
             return { active: true, label: "🟢 PISO #1 MADRUGADA PRE-LONDRES (00:30-04:00 AM COT | Presupuesto 100% Desbloqueado)" };
         }
-        // 2. Piso de Mediodía Wall Street (11:30 AM - 01:30 PM COT) + Efecto Jueves Post-Noticias (10:15 AM - 01:30 PM COT)
+        // 3. Piso de Mediodía Wall Street (11:30 AM - 01:30 PM COT) + Efecto Jueves Post-Noticias (10:15 AM - 01:30 PM COT)
         if (dayStr === "Thu" && timeDec >= 10.25 && timeDec <= 13.5) {
             return { active: true, label: "🟢 PISO ESPECIAL JUEVES POST-BARRIDO NY (10:15 AM-01:30 PM COT | Presupuesto 100% Desbloqueado)" };
         }
         if (isMonToThu && timeDec >= 11.5 && timeDec <= 13.5) {
             return { active: true, label: "🟢 PISO #2 MEDIODÍA NY POST-DRENAJE (11:30 AM-01:30 PM COT | Presupuesto 100% Desbloqueado)" };
         }
-        // 3. Piso Pre-Asia (20:00 - 21:45 COT, Lunes a Jueves)
+        // 4. Piso Pre-Asia (20:00 - 21:45 COT, Lunes a Jueves)
         if (isMonToThu && timeDec >= 20.0 && timeDec <= 21.75) {
             return { active: true, label: "🟢 PISO #3 PRE-ASIA (08:00 PM-09:45 PM COT | Presupuesto 100% Desbloqueado)" };
         }
-        // 4. Gran Piso de Fin de Semana (Sábado 02:00 AM - 12:00 PM COT y Domingo 14:00 - 16:30 COT pre-CME)
-        if (dayStr === "Sat" && timeDec >= 2.0 && timeDec <= 12.0) {
-            return { active: true, label: "🏖️ GRAN PISO SÁBADO MADRUGADA/MAÑANA (02:00 AM-12:00 PM COT | 82% Efectividad Histórica)" };
-        }
+        // 5. Piso Domingo Tarde Pre-CME (14:00 - 16:30 COT)
         if (dayStr === "Sun" && timeDec >= 14.0 && timeDec <= 16.5) {
             return { active: true, label: "🏖️ PISO DOMINGO PRE-APERTURA CME (02:00 PM-04:30 PM COT | Presupuesto 100% Desbloqueado)" };
         }
         return { active: false, label: "" };
     }
     /**
-     * 🏆 HORAS TECHO HISTÓRICAS (MODO COSECHA ACTIVA — CEÑIR TRAILING TP PARA VENDER EN LA CIMA):
-     * Horas donde estadísticamente el mercado alcanza su pico intradía antes de girarse a la baja:
-     * 1. Techo Matutino Pre-NY (06:00 AM - 09:50 AM COT, Lun-Vie): 55 techos diarios (y 27% de los techos del viernes) antes del desplome de las 10:00 AM.
-     * 2. Techo Pre-Cierre NY (03:30 PM - 04:45 PM COT / 15:30 - 16:45 COT, Lun-Vie): Antes de la liquidación de las 05:00 PM COT.
-     * 3. Techo Nocturno Apertura Asia (10:45 PM - 12:30 AM COT / 22:45 - 00:30 COT, Lun-Jue): 133 techos diarios antes del retroceso de las 01:30-02:00 AM.
-     * 4. Techo Dominical CME (Domingo 05:30 PM - 11:30 PM COT / 17:30 - 23:30 COT): Rally alcista del domingo (+1.00% prom) antes del ajuste del lunes madrugada.
+     * 🏆 HORAS TECHO HISTÓRICAS (MODO COSECHA ACTIVA — SIN SOLAPAMIENTO CON HORAS PAUSA):
+     * 1. Techo Matutino Pre-NY (06:00 AM - 09:00 AM COT, Lun-Vie; y Sábado 06:30 - 09:30 AM Rebote Matutino).
+     * 2. Techo Pre-Cierre NY (03:15 PM - 04:15 PM COT / 15:15 - 16:15 COT, Lun-Vie).
+     * 3. Techo Nocturno Apertura Asia (10:30 PM - 12:30 AM COT / 22:30 - 00:30 COT, Lun-Jue).
+     * 4. Techo Dominical CME (Domingo 05:30 PM - 11:30 PM COT / 17:30 - 23:30 COT).
      */
     isHistoricalPeakHarvestWindow() {
         const { dayStr, timeDec } = this.getCotTimeInfo();
         const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(dayStr);
-        if (isWeekday && timeDec >= 6.0 && timeDec <= 9.85) {
+        if (isWeekday && timeDec >= 6.0 && timeDec < 9.0) {
             return {
                 active: true,
                 label: dayStr === "Fri"
-                    ? "🏆 HORA TECHO VIERNES MAÑANA (06:00-09:50 AM COT | Cosechando antes del fin de semana)"
-                    : "🏆 HORA TECHO APERTURA NY (06:00-09:50 AM COT | Cosechando antes del drenaje de las 10 AM)"
+                    ? "🏆 HORA TECHO VIERNES MAÑANA (06:00-09:00 AM COT | Cosechando antes del fin de semana)"
+                    : "🏆 HORA TECHO APERTURA NY (06:00-09:00 AM COT | Cosechando antes del drenaje de las 9-11 AM)"
             };
         }
-        if (isWeekday && timeDec >= 15.5 && timeDec <= 16.75) {
-            return { active: true, label: "🏆 HORA TECHO PRE-CIERRE WALL STREET (03:30-04:45 PM COT | Cosechando antes de las 5 PM)" };
+        if (dayStr === "Sat" && timeDec >= 6.5 && timeDec <= 9.5) {
+            return { active: true, label: "🏆 HORA TECHO REBOTE SÁBADO MAÑANA (06:30-09:30 AM COT | Cosechando rebote de madrugada)" };
         }
-        if (["Mon", "Tue", "Wed", "Thu"].includes(dayStr) && (timeDec >= 22.75 || timeDec < 0.5)) {
-            return { active: true, label: "🏆 HORA TECHO APERTURA ASIA (10:45 PM-12:30 AM COT | Cosechando antes del piso de 2 AM)" };
+        if (dayStr === "Fri" && timeDec >= 11.5 && timeDec < 14.0) {
+            return { active: true, label: "🏆 HORA TECHO PRE-VEDA VIERNES MEDIODÍA (11:30 AM-02:00 PM COT | Cosechando antes del drenaje de viernes)" };
+        }
+        if (["Mon", "Tue", "Wed", "Thu"].includes(dayStr) && timeDec >= 15.25 && timeDec < 16.25) {
+            return { active: true, label: "🏆 HORA TECHO PRE-CIERRE WALL STREET (03:15-04:15 PM COT | Cosechando antes del cierre NY)" };
+        }
+        if (["Mon", "Tue", "Wed", "Thu"].includes(dayStr) && (timeDec >= 22.5 || timeDec < 0.5)) {
+            return { active: true, label: "🏆 HORA TECHO APERTURA ASIA (10:30 PM-12:30 AM COT | Cosechando antes del piso de 00:30 AM)" };
         }
         if (dayStr === "Sun" && timeDec >= 17.5 && timeDec <= 23.5) {
-            return { active: true, label: "🏆 HORA TECHO RALLY DOMINGO CME (05:30-11:30 PM COT | Cosechando pico semanal)" };
+            return { active: true, label: "🏆 HORA TECHO RALLY DOMINGO CME (05:30-11:30 PM COT | Cosechando pico dominical)" };
         }
         return { active: false, label: "" };
     }
     /**
-     * ⏸️ HORAS PAUSA / TRAMPA HISTÓRICAS (COMPRAS NORMALES EN PAUSA — SOLO EXCEPCIÓN ATÍPICA):
-     * Horas con retorno futuro negativo comprobado en las 18 semanas de Binance:
-     * 1. Drenaje Matutino Wall Street (08:30 AM - 11:30 AM COT, Lun-Vie; Jueves hasta 10:15 AM): Peor retorno a 4h del día (-0.21% a las 09:00 AM, -0.09% a las 10:00 AM).
-     * 2. Liquidación Cierre NY (04:15 PM - 06:15 PM COT / 16:15 - 18:15 COT, Lun-Jue): Caída de las 5:00 PM (-0.071%, 54% velas rojas).
-     * 3. Techo Nocturno Asia (10:30 PM - 12:30 AM COT / 22:30 - 00:30 COT, Lun-Jue): Evita comprar en el pico de las 11 PM justo antes de que caiga a las 2 AM.
-     * 4. Veda de Viernes (Viernes 02:00 PM / 14:00 COT a Sábado 02:00 AM COT): Evita comprar el viernes tarde/noche antes del piso del sábado madrugada.
+     * ⏸️ HORAS PAUSA / TRAMPA HISTÓRICAS (SIN SOLAPAMIENTO CON HORAS PISO NI HORAS TECHO):
+     * 1. Veda de Viernes (Viernes 02:00 PM / 14:00 COT a Sábado 00:30 AM COT): Evita el drenaje del viernes y abre a las 00:30 AM del sábado.
+     * 2. Drenaje Matutino Wall Street (09:00 AM - 11:30 AM COT, Lun-Vie; Jueves 09:00 - 10:15 AM COT).
+     * 3. Liquidación Cierre NY (04:15 PM - 06:15 PM COT / 16:15 - 18:15 COT, Lun-Jue).
+     * 4. Techo Nocturno Asia (10:30 PM - 12:30 AM COT / 22:30 - 00:30 COT, Lun-Jue): Pausa nuevas compras normales para entrar en el piso de 00:30 AM.
      */
     isHistoricalPauseWindow() {
         const { dayStr, timeDec } = this.getCotTimeInfo();
         const isWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(dayStr);
         const isMonToThu = ["Mon", "Tue", "Wed", "Thu"].includes(dayStr);
-        // 1. Veda de Viernes Tarde/Noche (Viernes >= 14:00 a Sábado < 02:00 AM COT)
-        if ((dayStr === "Fri" && timeDec >= 14.0) || (dayStr === "Sat" && timeDec < 2.0)) {
+        // 1. Veda de Viernes Tarde/Noche (Viernes >= 14:00 a Sábado < 00:30 AM COT)
+        if ((dayStr === "Fri" && timeDec >= 14.0) || (dayStr === "Sat" && timeDec < 0.5)) {
             return {
                 paused: true,
-                reason: "⏸️ VEDA DE VIERNES (Vie 02:00 PM - Sáb 02:00 AM COT): 82% de los fines de semana caen más profundo en la madrugada del sábado."
+                reason: "⏸️ VEDA DE VIERNES (Vie 02:00 PM - Sáb 00:30 AM COT): Esperando el suelo de la madrugada del sábado (00:30 AM)."
             };
         }
-        // 2. Trampa Matutina Wall Street (08:30 AM - 11:30 AM COT; Jueves 08:30 - 10:15 AM COT)
+        // 2. Trampa Matutina Wall Street (09:00 AM - 11:30 AM COT; Jueves 09:00 - 10:15 AM COT)
         const morningPauseEnd = dayStr === "Thu" ? 10.25 : 11.5;
-        if (isWeekday && timeDec >= 8.5 && timeDec < morningPauseEnd) {
+        if (isWeekday && timeDec >= 9.0 && timeDec < morningPauseEnd) {
             return {
                 paused: true,
-                reason: "⏸️ PAUSA DRENAJE MATUTINO NY (08:30 - 11:30 AM COT): Peor retorno histórico a 4h (-0.21%). Esperando piso de mediodía (11:30 AM)."
+                reason: "⏸️ PAUSA DRENAJE MATUTINO NY (09:00 - 11:30 AM COT): Esperando piso de mediodía (11:30 AM)."
             };
         }
         // 3. Liquidación Cierre Wall Street (16:15 - 18:15 COT, Lunes a Jueves)
@@ -436,11 +453,11 @@ export class TrailingMasterBot {
                 reason: "⏸️ PAUSA CIERRE WALL STREET (04:15 - 06:15 PM COT): Drenaje institucional de las 5:00 PM. Esperando Piso Pre-Asia (08:00 PM)."
             };
         }
-        // 4. Techo Apertura Asia (22:30 - 00:30 COT)
+        // 4. Techo Apertura Asia (22:30 - 00:30 COT, Lunes a Jueves noche)
         if ((isMonToThu && timeDec >= 22.5) || (["Tue", "Wed", "Thu", "Fri"].includes(dayStr) && timeDec < 0.5)) {
             return {
                 paused: true,
-                reason: "⏸️ PAUSA TECHO NOCTURNO ASIA (10:30 PM - 12:30 AM COT): Hora de pico estadístico (133 techos). Guardando liquidez para el Piso de Madrugada (00:30 - 03:30 AM)."
+                reason: "⏸️ PAUSA TECHO NOCTURNO ASIA (10:30 PM - 12:30 AM COT): Guardando liquidez para el Piso de Madrugada (00:30 - 04:00 AM)."
             };
         }
         return { paused: false, reason: "" };
@@ -494,9 +511,9 @@ export class TrailingMasterBot {
     isWeekendWindow() {
         try {
             const { dayStr, timeDec } = this.getCotTimeInfo();
-            // Estadística 18 semanas Binance (82% prob): El viernes tarde/noche es fase de caída;
-            // la cacería de fin de semana abre recién en la madrugada del sábado (02:00 AM COT) hasta el domingo 18:00 COT.
-            if (dayStr === "Sat" && timeDec >= 2.0)
+            // Estadística 5.5 años / 18 semanas Binance: El viernes tarde/noche es fase de caída;
+            // la cacería de fin de semana abre en la madrugada del sábado (00:30 AM COT, inicio del barrido asiático) hasta el domingo 18:00 COT.
+            if (dayStr === "Sat" && timeDec >= 0.5)
                 return true;
             if (dayStr === "Sun" && timeDec < 18.0)
                 return true;
@@ -507,17 +524,17 @@ export class TrailingMasterBot {
         }
     }
     /**
-     * VEDA DE COMPRAS DE VIERNES (Viernes 14:00 COT a Sábado 02:00 AM COT):
+     * VEDA DE COMPRAS DE VIERNES (Viernes 14:00 COT a Sábado 00:30 AM COT):
      * Estadísticamente (82% en SOL/NEAR y 73% en BTC/ETH/SUI en las últimas 18 semanas),
      * el viernes por la tarde y noche el mercado drena tras el cierre de Wall Street y marca
-     * su piso real en la madrugada/mañana del sábado (02:00 AM - 12:00 PM COT).
+     * su piso real en la madrugada/mañana del sábado (00:30 AM - 12:00 PM COT).
      */
     isFridayEveningBleedWindow() {
         try {
             const { dayStr, timeDec } = this.getCotTimeInfo();
             if (dayStr === "Fri" && timeDec >= 14.0)
                 return true;
-            if (dayStr === "Sat" && timeDec < 2.0)
+            if (dayStr === "Sat" && timeDec < 0.5)
                 return true;
             return false;
         }
@@ -705,6 +722,7 @@ export class TrailingMasterBot {
                             // Calcular precio promedio ponderado real recorriendo hacia atrás hasta cubrir el balance significativo (ignorando polvo residual < $2 USDT)
                             let coveredQty = 0;
                             let weightedCost = 0;
+                            let maxCoveredPrice = 0;
                             for (let i = buyTrades.length - 1; i >= 0; i--) {
                                 const t = buyTrades[i];
                                 const tQty = parseFloat(t.qty);
@@ -715,11 +733,13 @@ export class TrailingMasterBot {
                                 const useQty = Math.min(tQty, need);
                                 coveredQty += useQty;
                                 weightedCost += useQty * tPrice;
-                                if (coveredQty >= total * 0.90)
+                                if (tPrice > maxCoveredPrice)
+                                    maxCoveredPrice = tPrice;
+                                if (coveredQty >= total * 0.99)
                                     break;
                             }
                             if (coveredQty > 0) {
-                                buyPrice = weightedCost / coveredQty;
+                                buyPrice = Math.max(weightedCost / coveredQty, maxCoveredPrice);
                                 buyTime = buyTrades[buyTrades.length - 1].time || Date.now();
                             }
                         }
@@ -1032,7 +1052,16 @@ export class TrailingMasterBot {
     }
     async onWeekendTradeCompleted(symbol) {
         try {
-            console.log("🏖️ [CAZADOR WEEKEND] Posición de fin de semana en " + symbol + " vendida con éxito. Reasignando presupuesto inteligente a Cazador Trailing...");
+            const { dayStr, timeDec } = this.getCotTimeInfo();
+            const stillInWeekendFloorWindow = dayStr === "Sat" || (dayStr === "Sun" && timeDec < 16.5);
+            if (stillInWeekendFloorWindow) {
+                console.log(`🏖️ [CAZADOR WEEKEND] Posición de fin de semana en ${symbol} vendida en rebote. Manteniendo Cazador Weekend ACTIVO para re-testeo.`);
+                await this.notifier.send(`🏖️ <b>[CAZADOR WEEKEND: REBOTE COSECHADO EN ${symbol}]</b> 🎉\n\n` +
+                    `• La posición en <b>${symbol}</b> cerró en ganancia durante el rebote.\n` +
+                    `• 🎣 <b>Capital liberado en USDT:</b> Cazador Weekend permanece <b>100% ACTIVO</b> para volver a cazar si el mercado hace un segundo piso o re-testeo.`);
+                return;
+            }
+            console.log("🏖️ [CAZADOR WEEKEND] Posición de fin de semana en " + symbol + " vendida con éxito al cierre dominical. Reasignando presupuesto a Cazador Trailing...");
             this.controls.strategies.cazador_weekend = false;
             const baseW = this.controls.baseAllocations?.cazador_weekend ?? 20;
             const currentW = this.controls.allocations.cazador_weekend ?? 0;
@@ -2051,9 +2080,11 @@ export class TrailingMasterBot {
                 // (Stop-Loss eliminado al 100% de la lógica Spot para evitar whipsaws)
                 // 1. Activar Trailing temprano y aplicar CANDADO ESCALONADO CERO DEVOLUCIÓN (Zero-Giveback Ratchet)
                 const macro = await this.getLiveMacroRegime();
+                const calRegimeNow = this.get5YearCalendarRegime();
                 const hoursOpen = pos.buyTime ? (Date.now() - pos.buyTime) / 3600000 : 0;
-                const isStagnantPosition = hoursOpen >= 2.5;
-                const isBearishMacroRelief = macro.btcStressIndex >= 0.45;
+                const isExpansionDay = calRegimeNow.regimeKey === "MARTES_JUEVES_EXPANSION" || calRegimeNow.tpCallbackMultiplier >= 1.12;
+                const isStagnantPosition = !isExpansionDay && hoursOpen >= 18.0 && gainPct < 0.85;
+                const isBearishMacroRelief = macro.btcStressIndex >= 0.55 && !isExpansionDay;
                 const isReliefHarvestMode = isBearishMacroRelief || isStagnantPosition;
                 const isLot3 = (pos.lotIndex && pos.lotIndex >= 3) || symbol.includes("_lot_3");
                 const btcRangeCur = this.controls.suggestions?.trailing_rebound?.btcRange24h || 2.5;
@@ -5257,10 +5288,22 @@ export class TrailingMasterBot {
                 return true;
         }
         const { dayStr, timeDec } = this.getCotTimeInfo();
-        // En Sábado 02:00 AM a 12:00 PM COT estamos en el Gran Piso de Fin de Semana (82% de probabilidad histórica)
-        // En Sábado tarde (12:00 PM a 11:59 PM) somos más exigentes (+0.6% extra de caída requerida) para evitar compras en rango plano
-        const isPrimeSaturdayMorningFloor = (dayStr === "Sat" && timeDec >= 2.0 && timeDec <= 12.5) || (dayStr === "Sun" && (timeDec <= 4.0 || (timeDec >= 14.0 && timeDec <= 16.5)));
+        // En Sábado 00:30 AM a 12:30 PM COT estamos en el Gran Piso de Fin de Semana (82% de probabilidad histórica)
+        // En Sábado tarde (12:30 PM a 11:59 PM) somos más exigentes (+0.6% extra de caída requerida) para evitar compras en rango plano
+        const isPrimeSaturdayMorningFloor = (dayStr === "Sat" && timeDec >= 0.5 && timeDec <= 12.5) || (dayStr === "Sun" && (timeDec <= 4.0 || (timeDec >= 14.0 && timeDec <= 16.5)));
         const extraDropOutsidePrime = isPrimeSaturdayMorningFloor ? 0 : 0.6;
+        // Cargar precios de referencia del cierre del viernes (.liquidation-benchmarks.json) para medir descuento real (-5% a -10%)
+        let fridayBenchmarks = {};
+        try {
+            const bf = path.resolve(process.cwd(), ".liquidation-benchmarks.json");
+            if (fs.existsSync(bf)) {
+                const bData = JSON.parse(fs.readFileSync(bf, "utf-8"));
+                if (bData?.benchmarks && (!bData.liquidatedAt || (Date.now() - bData.liquidatedAt) < 96 * 3600 * 1000)) {
+                    fridayBenchmarks = bData.benchmarks;
+                }
+            }
+        }
+        catch { }
         const candidates = [];
         for (const sym of this.watchlist) {
             try {
@@ -5279,12 +5322,15 @@ export class TrailingMasterBot {
                 const bb = this.calculateBollingerBands(closes, 20, 2.0);
                 const curPrice = closes[closes.length - 1];
                 const maxRecent = Math.max(...highs.slice(-36));
-                const dropPct = ((maxRecent - curPrice) / maxRecent) * 100;
+                const candleDropPct = ((maxRecent - curPrice) / maxRecent) * 100;
+                const benchPrice = fridayBenchmarks[sym] || 0;
+                const benchDropPct = benchPrice > curPrice ? ((benchPrice - curPrice) / benchPrice) * 100 : 0;
+                const dropPct = Math.max(candleDropPct, benchDropPct);
                 const low24 = Math.min(...lows.slice(-24));
-                const high24 = Math.max(...highs.slice(-24));
+                const high24 = Math.max(...highs.slice(-24), benchPrice);
                 const coinRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
                 const upsideGapPct = curPrice > 0 ? ((high24 - curPrice) / curPrice) * 100 : dropPct;
-                const convictionTier = (coinRange24hPct >= 5.0 && dropPct >= 3.5) || upsideGapPct >= 4.2
+                const convictionTier = (coinRange24hPct >= 5.0 && dropPct >= 3.5) || upsideGapPct >= 4.2 || benchDropPct >= 5.0
                     ? "MAXIMA_BRECHA"
                     : ((coinRange24hPct >= 3.8 && (dropPct >= 2.5 || rsi <= 37)) || coinRange24hPct >= 4.8
                         ? "ALTA_VOLATILIDAD"
@@ -5292,15 +5338,17 @@ export class TrailingMasterBot {
                 const lastIdx = closes.length - 1;
                 const candleRange = Math.max(1e-9, highs[lastIdx] - lows[lastIdx]);
                 const lowerWickRatio = (Math.min(opens[lastIdx], closes[lastIdx]) - lows[lastIdx]) / candleRange;
-                // 🛡️ CALIBRACIÓN ESTRICTA DE FIN DE SEMANA (18 SEMANAS BINANCE):
-                // Exigir caída profunda (>= 3.6% en Hora Piso Sábado Mañana o >= 4.2% fuera de ella), RSI <= 36-37 y StochRSI <= 25.
+                // 🛡️ CALIBRACIÓN ESTRICTA DE FIN DE SEMANA (5.5 AÑOS / 18 SEMANAS BINANCE + BENCHMARK DE CIERRE VIERNES):
+                // Exigir caída profunda (>= 3.6% en Hora Piso Sábado Mañana o >= 4.2% fuera de ella, o Descuento >= 5.0% vs Cierre Viernes).
                 const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("BONK") || sym.includes("DOGE");
                 const minDropReq = (isMeme ? 5.2 : 3.6) + extraDropOutsidePrime;
                 const maxRsiReq = isMeme ? 35 : 37;
-                const qualifiesWeekend = stoch.k <= 25 &&
-                    ((dropPct >= minDropReq && rsi <= maxRsiReq) ||
-                        (rsi <= 29 && dropPct >= (minDropReq - 0.6)) ||
-                        (bb.percentB <= 0.05 && rsi <= 36 && dropPct >= 3.2 && lowerWickRatio >= 0.30));
+                const qualifiesByFridayBenchmark = benchDropPct >= (isMeme ? 6.0 : 4.8) && rsi <= 41 && (stoch.k <= 32 || lowerWickRatio >= 0.28);
+                const qualifiesWeekend = qualifiesByFridayBenchmark ||
+                    (stoch.k <= 25 &&
+                        ((dropPct >= minDropReq && rsi <= maxRsiReq) ||
+                            (rsi <= 29 && dropPct >= (minDropReq - 0.6)) ||
+                            (bb.percentB <= 0.05 && rsi <= 36 && dropPct >= 3.2 && lowerWickRatio >= 0.30)));
                 if (qualifiesWeekend) {
                     const bbBonus = bb.percentB <= 0.08 ? 4.0 : 0;
                     const wickBonus = lowerWickRatio >= 0.30 ? 3.5 : 0;
@@ -5801,8 +5849,15 @@ export class TrailingMasterBot {
         this.isProcessing = true;
         try {
             this.loadStrategyControls();
-            // Control de ciclo automático de Cazador Weekend (Vie 17:00 a Dom 18:00 COT)
+            // Control de ciclo automático de Cazador Weekend (Sábado 00:30 AM a Domingo 18:00 COT) + motores base siempre activos
             const isWeekend = this.isWeekendWindow();
+            if (!this.controls.strategies.trailing_rebound || !this.controls.strategies.smart_dca) {
+                this.controls.strategies.trailing_rebound = true;
+                this.controls.strategies.smart_dca = true;
+            }
+            if (isWeekend && !this.controls.strategies.cazador_weekend) {
+                this.controls.strategies.cazador_weekend = true;
+            }
             if (this.lastWeekendWindowState === null) {
                 this.lastWeekendWindowState = isWeekend;
                 if (!isWeekend && (this.controls.strategies.cazador_weekend || this.controls.allocations.cazador_weekend > 0)) {
