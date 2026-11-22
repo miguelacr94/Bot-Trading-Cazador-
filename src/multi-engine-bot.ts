@@ -1123,6 +1123,7 @@ export class TrailingMasterBot {
   private lastAiBenchmarkTelegramTime = 0;
   private lastFridaySnapshotDayKey = "";
   private notifiedBenchmarkMilestones: Map<string, number> = new Map();
+  private activeAtypicalOverride: "NONE" | "CRASH_HUNTER" | "RALLY_HARVESTER" | "RANGE_SCALPER" = "NONE";
 
   public getFridayBenchmarks(): { dateStr: string; liquidatedAt: number; benchmarks: Record<string, number> } | null {
     const cloudBench = (this.controls?.strategySettings as any)?.fridayBenchmarks;
@@ -1385,17 +1386,34 @@ export class TrailingMasterBot {
         }
       }
 
-      // Evaluar candidato sugerido por el Trader IA (con guardarraíl estricto de MÁXIMA CAÍDA: prohibido comprar por comprar o en días de venta Martes/Jueves salvo desplome >= 5%)
-      const isSellingDayNow = dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri";
-      const minAiDropReq = isSellingDayNow ? 5.0 : 3.5;
+      // Evaluar conmutación de estrategia por comportamiento atípico detectado por el Trader IA
+      if (aiDec?.regimeOverride && aiDec.confidence >= 78 && aiDec.regimeOverride !== this.activeAtypicalOverride) {
+        const prevOverride = this.activeAtypicalOverride;
+        this.activeAtypicalOverride = aiDec.regimeOverride;
+        if (aiDec.regimeOverride === "RANGE_SCALPER" && !this.controls.strategies.micro_grid) {
+          await this.activateMicroGrid(true);
+          aiActionNote += `\n🌐 <b>Cambio Dinámico de Estrategia:</b> Mercado lateral detectado → <b>Micro-Grid ACTIVADO</b>.`;
+        } else if (prevOverride === "RANGE_SCALPER" && aiDec.regimeOverride !== "RANGE_SCALPER" && this.controls.strategies.micro_grid) {
+          await this.deactivateMicroGrid();
+          aiActionNote += `\n🏹 <b>Cambio Dinámico de Estrategia:</b> Volatilidad reactivada → <b>Micro-Grid PAUSADO / Cazador Trailing 100%</b>.`;
+        } else if (aiDec.regimeOverride === "CRASH_HUNTER") {
+          aiActionNote += `\n⚡ <b>Cambio Dinámico de Estrategia:</b> Desplome atípico detectado → <b>Modo Cacería de Capitulación ACTIVADO (100% Presupuesto Desbloqueado)</b>.`;
+        } else if (aiDec.regimeOverride === "RALLY_HARVESTER") {
+          aiActionNote += `\n🚀 <b>Cambio Dinámico de Estrategia:</b> Rally alcista atípico detectado → <b>Modo Cosecha en Cima y Escudo Anti-FOMO ACTIVADOS</b>.`;
+        }
+      }
+
+      // Evaluar candidato sugerido por el Trader IA (adaptándose si hay comportamiento atípico CRASH_HUNTER)
+      const isSellingDayNow = (dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri") && this.activeAtypicalOverride !== "CRASH_HUNTER";
+      const minAiDropReq = isSellingDayNow ? 5.0 : (this.activeAtypicalOverride === "CRASH_HUNTER" ? 3.4 : 3.5);
       const maxAiRsiReq = isSellingDayNow ? 31 : 36;
       const maxAiFibReq = isSellingDayNow ? 0.16 : 0.25;
-      if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 82) {
+      if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 80) {
         const aiCand = coinEvaluations.find((c) => c.symbol === aiDec.targetSymbol || c.symbol.replace("USDT", "") === aiDec.targetSymbol);
-        if (aiCand && aiCand.fibPosition24h <= maxAiFibReq && aiCand.rsi15m <= maxAiRsiReq && (aiCand.drop24hPct >= minAiDropReq || aiCand.benchDropPct <= -4.8)) {
+        if (aiCand && aiCand.fibPosition24h <= maxAiFibReq && aiCand.rsi15m <= maxAiRsiReq && (aiCand.drop24hPct >= minAiDropReq || aiCand.benchDropPct <= -4.5)) {
           if (aiDec.action === "ARM_TRAILING_BUY") {
             aiCand.qualifiesToArmWatch = true;
-          } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 53 && (!pauseWin.paused || aiCand.drop24hPct >= 5.5)) {
+          } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 52 && (!pauseWin.paused || aiCand.drop24hPct >= 5.0 || this.activeAtypicalOverride === "CRASH_HUNTER")) {
             aiCand.qualifiesToBuy = true;
           }
         }
@@ -2755,7 +2773,7 @@ export class TrailingMasterBot {
         const macro = await this.getLiveMacroRegime();
         const calRegimeNow = this.get5YearCalendarRegime();
         const hoursOpen = pos.buyTime ? (Date.now() - pos.buyTime) / 3600000 : 0;
-        const isExpansionDay = calRegimeNow.regimeKey === "MARTES_JUEVES_EXPANSION" || calRegimeNow.tpCallbackMultiplier >= 1.12;
+        const isExpansionDay = calRegimeNow.regimeKey === "MARTES_JUEVES_EXPANSION" || calRegimeNow.tpCallbackMultiplier >= 1.12 || this.activeAtypicalOverride === "RALLY_HARVESTER";
         const isStagnantPosition = !isExpansionDay && hoursOpen >= 18.0 && gainPct < 0.85;
         const isBearishMacroRelief = macro.btcStressIndex >= 0.55 && !isExpansionDay;
         const isReliefHarvestMode = isBearishMacroRelief || isStagnantPosition;
@@ -3918,7 +3936,8 @@ export class TrailingMasterBot {
         const calRsiAdj = floorWinNow.active ? 0 : calRegime5Y.rsiAdjustment;
 
         // En Martes, Jueves y Viernes (Días de Venta en Alza / Cosecha), exigir siempre el piso profundo del canal (<= 16%-22%) y caída fuerte (>= 3.6%-5.0%) para jamás comprar por comprar
-        const isSellingExpansionDayScan = calRegime5Y.regimeKey === "MARTES_JUEVES_EXPANSION" || this.getCotTimeInfo().dayStr === "Fri";
+        // EXCEPCIÓN DINÁMICA: Si checkMarketRegime o el Trader IA detectan un Desplome Atípico (CRASH_HUNTER), se desbloquea la cacería de suelo.
+        const isSellingExpansionDayScan = (calRegime5Y.regimeKey === "MARTES_JUEVES_EXPANSION" || this.getCotTimeInfo().dayStr === "Fri") && this.activeAtypicalOverride !== "CRASH_HUNTER";
         const dynamicFibCeiling = isSellingExpansionDayScan
           ? 0.16
           : (isBullishTrendRegime
@@ -6062,8 +6081,84 @@ export class TrailingMasterBot {
   }
 
   async checkMarketRegime() {
-    // 🎯 FRANCOTIRADOR $100 ACTIVO: Se desactiva la auto-sugerencia de Micro-Grid para evitar pulverizar el capital en micro-lotes
-    return;
+    try {
+      const now = Date.now();
+      if (now - this.lastRegimeCheckTime < 3 * 60 * 1000) return;
+      this.lastRegimeCheckTime = now;
+
+      const [btcK1h, macro] = await Promise.all([
+        this.client.klines("BTCUSDT", "1h", { limit: 24 }),
+        this.getLiveMacroRegime()
+      ]);
+      const data = btcK1h.data;
+      if (!data || data.length < 12) return;
+
+      const highs = data.map((k: any) => parseFloat(k[2]));
+      const lows = data.map((k: any) => parseFloat(k[3]));
+      const closes = data.map((k: any) => parseFloat(k[4]));
+      const curBtc = closes[closes.length - 1];
+      const high24 = Math.max(...highs);
+      const low24 = Math.min(...lows);
+      const btcRange24hPct = low24 > 0 ? ((high24 - low24) / low24) * 100 : 2.5;
+      const btcDropFrom24hHigh = high24 > 0 ? ((high24 - curBtc) / high24) * 100 : 0;
+      const btcGainFrom24hLow = low24 > 0 ? ((curBtc - low24) / low24) * 100 : 0;
+      const { dayStr } = this.getCotTimeInfo();
+      const isNormallySellingDay = dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri";
+      const isNormallyDropDay = dayStr === "Sat" || dayStr === "Mon" || dayStr === "Wed";
+
+      // 1. COMPORTAMIENTO ATÍPICO #1: Desplome / Crash en un día que históricamente es de alza (Martes/Jueves/Viernes)
+      if (isNormallySellingDay && (macro.btcDrop3hPct <= -2.1 || btcDropFrom24hHigh >= 3.8) && macro.btcRsi1h <= 37) {
+        if (this.activeAtypicalOverride !== "CRASH_HUNTER") {
+          this.activeAtypicalOverride = "CRASH_HUNTER";
+          if (this.controls.strategies.micro_grid) await this.deactivateMicroGrid(btcRange24hPct);
+          console.log(`⚡ [COMPORTAMIENTO ATÍPICO DETECTADO: ${dayStr}] Desplome en día de alza (BTC -${btcDropFrom24hHigh.toFixed(2)}% 24h | 3h: ${macro.btcDrop3hPct.toFixed(2)}%). Cambiando a MODO CACERÍA DE CAPITULACIÓN.`);
+          await this.notifier.send(
+            `⚡ <b>[COMPORTAMIENTO ATÍPICO DETECTADO EN ${dayStr.toUpperCase()}]</b> 🔄\n\n` +
+            `• Aunque hoy (${dayStr}) suele ser día de alza/cosecha, el mercado está haciendo una <b>caída atípica fuerte</b> (BTC <b>-${btcDropFrom24hHigh.toFixed(2)}%</b> desde el techo 24h | RSI 1H: <b>${macro.btcRsi1h.toFixed(0)}</b>).\n` +
+            `• 🎯 <b>Cambio Automático de Estrategia:</b> Se desactiva el bloqueo de compras de ${dayStr} y se activa el <b>Modo Francotirador de Capitulación (100% Presupuesto Desbloqueado)</b> para aprovechar el suelo inesperado.`
+          );
+        }
+        return;
+      }
+
+      // 2. COMPORTAMIENTO ATÍPICO #2: Rally Alcista Explosivo en un día que históricamente es de caída (Sábado/Lunes/Miércoles)
+      if (isNormallyDropDay && btcGainFrom24hLow >= 3.2 && macro.btcStressIndex <= 0.15 && macro.btcRsi1h >= 60) {
+        if (this.activeAtypicalOverride !== "RALLY_HARVESTER") {
+          this.activeAtypicalOverride = "RALLY_HARVESTER";
+          if (this.controls.strategies.micro_grid) await this.deactivateMicroGrid(btcRange24hPct);
+          console.log(`🚀 [COMPORTAMIENTO ATÍPICO DETECTADO: ${dayStr}] Rally alcista en día de caída (BTC +${btcGainFrom24hLow.toFixed(2)}% desde mínimo 24h). Cambiando a MODO COSECHA Y EXPANSIÓN.`);
+          await this.notifier.send(
+            `🚀 <b>[RALLY ATÍPICO DETECTADO EN ${dayStr.toUpperCase()}]</b> 🔄\n\n` +
+            `• Aunque hoy (${dayStr}) suele ser día de caída/acumulación, el mercado rompió al alza con fuerza (BTC <b>+${btcGainFrom24hLow.toFixed(2)}%</b> desde el suelo 24h | RSI 1H: <b>${macro.btcRsi1h.toFixed(0)}</b>).\n` +
+            `• 🏆 <b>Cambio Automático de Estrategia:</b> Posiciones abiertas pasan a <b>Modo Cosecha de Expansión</b> para vender en la cima hoy mismo, y se blinda el Escudo Anti-FOMO para no comprar en el techo.`
+          );
+        }
+        return;
+      }
+
+      // 3. COMPORTAMIENTO ATÍPICO #3: Rango Lateral Comprimido / Día Quieto (< 2.15% rango 24h BTC)
+      if (btcRange24hPct <= 2.15 && !macro.isMacroStorm) {
+        this.lastDetectedRegime = "QUIET";
+        if (this.activeAtypicalOverride !== "RANGE_SCALPER" || !this.controls.strategies.micro_grid) {
+          this.activeAtypicalOverride = "RANGE_SCALPER";
+          await this.activateMicroGrid(true, btcRange24hPct);
+        }
+        return;
+      }
+
+      // 4. Retorno a Régimen Normal Direccional (Volatilidad >= 2.55%)
+      if (btcRange24hPct >= 2.55) {
+        this.lastDetectedRegime = "TRENDING";
+        if (this.controls.strategies.micro_grid) {
+          await this.deactivateMicroGrid(btcRange24hPct);
+        }
+        if (this.activeAtypicalOverride !== "NONE") {
+          this.activeAtypicalOverride = "NONE";
+        }
+      }
+    } catch (e: any) {
+      console.error("Error en checkMarketRegime:", e.message);
+    }
   }
 
   async checkRegimeSwitchTimeout() {
@@ -6429,7 +6524,24 @@ export class TrailingMasterBot {
     let reason = `Arquitectura Multianual 5.5 Años (2021-2026) + Doble Bolsillo: ${closedPctDisplay}% guardado en Bolsillo Cerrado para Horas Piso (00:30-04:00 AM, 11:30 AM-01:30 PM, 08:00-09:45 PM) y ${openPctDisplay}% en Bolsillo Abierto. Régimen: ${calRegime.label}.`;
     let recommendation = `💼 Operando con Presupuesto Abierto (${openPctDisplay}%). Los bloques grandes de $50–$100 USDT se desbloquean al 100% en la próxima Hora Piso.`;
 
-    if (floorWin.active) {
+    if (this.activeAtypicalOverride === "CRASH_HUNTER") {
+      sessionKey = "LONDRES_REBOTE";
+      sessionTitle = `⚡ MODO ATÍPICO: CACERÍA DE CAPITULACIÓN EN ${dayStr.toUpperCase()} (100% Presupuesto Desbloqueado)`;
+      reservePct = 0.0;
+      lotFractionPct = 0.85;
+      trailingBounceTrigger = 0.30;
+      reason = "Comportamiento atípico bajista detectado en día de alza. El bot conmutó automáticamente de Modo Venta a Modo Cacería de Suelo con 100% de liquidez.";
+      recommendation = "🎯 Cazando el suelo del desplome atípico con confirmación 15m + 5m + CVD.";
+    } else if (this.activeAtypicalOverride === "RALLY_HARVESTER") {
+      sessionKey = "NY_IMPULSO";
+      sessionTitle = `🚀 MODO ATÍPICO: COSECHA DE RALLY EN ${dayStr.toUpperCase()} (Expirimiendo Subida Inesperada)`;
+      reservePct = 0.65;
+      lotFractionPct = 0.45;
+      trailingBounceTrigger = 0.40;
+      harvestCallbackPct = 0.16;
+      reason = "Comportamiento atípico alcista detectado en día de acumulación. Posiciones abiertas se exprimen con Trailing de expansión y se bloquean compras por FOMO en techo.";
+      recommendation = "🏆 Cosechar el rally atípico en la cima y proteger liquidez.";
+    } else if (floorWin.active) {
       // 🟢 HORA PISO ESTADÍSTICA ACTIVA: Desbloqueo del 100% (Presupuesto Cerrado 60% + Presupuesto Abierto 40% unidos)
       sessionKey = "LONDRES_REBOTE";
       sessionTitle = floorWin.label;
@@ -6481,7 +6593,7 @@ export class TrailingMasterBot {
     // En Hora Piso (floorWin.active): 100% del USDT libre se vuelve gastable (spendableUsdt = totalFreeUsdt).
     // Fuera de Hora Piso: 60% queda en reservedUsdt (Bolsillo Cerrado) y 40% en spendableUsdt (Bolsillo Abierto),
     // pero si el usuario tiene entre $35 y $85 USDT y aparece una oportunidad de Máxima Brecha / Reina $100, permitimos reunir el bloque mínimo de $35 USDT.
-    let reservedUsdt = floorWin.active ? 0 : Math.round(totalFreeUsdt * reservePct * 100) / 100;
+    let reservedUsdt = (floorWin.active || this.activeAtypicalOverride === "CRASH_HUNTER") ? 0 : Math.round(totalFreeUsdt * reservePct * 100) / 100;
     if (!floorWin.active && !pauseWin.paused && totalFreeUsdt >= 35 && (totalFreeUsdt - reservedUsdt) < 35) {
       reservedUsdt = Math.max(0, Math.round((totalFreeUsdt - 35) * 100) / 100);
     }
@@ -7015,9 +7127,9 @@ export class TrailingMasterBot {
           weekendTriggered = await this.evaluateCazadorWeekend(secondaryPoolUsdt, activeSymbols);
         }
 
-        // Prioridad 5: Día Quieto / Lateral (Micro-Grid)
+        // Prioridad 5: Día Quieto / Lateral (Micro-Grid con bloque real >= $35 USDT cuando el mercado se lateraliza)
         let gridTriggered = false;
-        const gridUnlockedUsdt = Math.min(20, secondaryPoolUsdt);
+        const gridUnlockedUsdt = secondaryPoolUsdt;
         if (!bought && !dcaTriggered && !weekendTriggered && !pauseWin.paused && this.controls.strategies.micro_grid && uniqueActiveCount < maxUniqueCoins && gridUnlockedUsdt >= this.minUsdtToTrade) {
           gridTriggered = await this.evaluateMicroGrid(gridUnlockedUsdt, activeSymbols);
         }

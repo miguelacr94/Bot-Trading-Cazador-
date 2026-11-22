@@ -226,6 +226,7 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
     verdictHtml: string;
     aiDecision?: {
       action: "BUY_NOW" | "ARM_TRAILING_BUY" | "LOCK_PROFIT_FLOOR" | "WIDEN_EXPANSION_TP" | "HOLD_AND_WAIT";
+      regimeOverride?: "NONE" | "CRASH_HUNTER" | "RALLY_HARVESTER" | "RANGE_SCALPER";
       targetSymbol?: string;
       confidence: number;
       lockedFloorPct?: number;
@@ -271,9 +272,13 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
         `   • DÍAS DE VENTA Y COSECHA EN ALZA: Martes (+5.87% hist.), Jueves (+5.51% hist.) y Viernes Mañana son días para VENDER EN EL PUNTO MÁS ALTO lo acumulado en la caída previa. En Martes, Jueves y Viernes NO se compra salvo un crash extremo atípico (caída >= -5.2%, Ubicación Canal <= 15% y RSI <= 30).\n` +
         `2. Para autorizar "BUY_NOW" o "ARM_TRAILING_BUY", la moneda DEBE estar en su MÁXIMA CAÍDA (Ubicación Canal 24h <= 22%, RSI 15m <= 35, caída >= 3.6% entre semana o >= -4.8% vs viernes en fin de semana, con mecha de absorción >= 28% y CVD >= 53%).\n` +
         `3. Si hay una posición abierta en ganancia (>= +0.85%) en Martes, Jueves o Domingo, usa "WIDEN_EXPANSION_TP" (customCallbackPct: 0.42) mientras CVD >= 56% para exprimir toda la subida, o "LOCK_PROFIT_FLOOR" (lockedFloorPct) cuando detectes agotamiento en la cima.\n` +
-        `4. En cualquier otro caso, elige "HOLD_AND_WAIT" para proteger la liquidez hasta la próxima máxima caída.\n\n` +
+        `4. DETECCIÓN DE COMPORTAMIENTOS ATÍPICOS Y CAMBIO DE ESTRATEGIA ("regimeOverride"):\n` +
+        `   • Si es Martes o Jueves (día de venta) pero el mercado sufre un desplome atípico fuerte (caídas >= 4.5% con sobreventa), activa "regimeOverride": "CRASH_HUNTER" para cambiar de modo venta a modo cacería de suelo.\n` +
+        `   • Si es Sábado, Lunes o Miércoles (día de caída) pero el mercado hace un rally alcista explosivo atípico, activa "regimeOverride": "RALLY_HARVESTER" para cosechar ganancias arriba y bloquear compras en techo.\n` +
+        `   • Si el mercado lleva horas estancado en rango lateral estrecho (< 2.2% en 24h), activa "regimeOverride": "RANGE_SCALPER" para encender Micro-Grid.\n` +
+        `   • Si el mercado sigue el patrón normal, usa "regimeOverride": "NONE".\n\n` +
         `Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta:\n` +
-        `{"action":"BUY_NOW"|"ARM_TRAILING_BUY"|"LOCK_PROFIT_FLOOR"|"WIDEN_EXPANSION_TP"|"HOLD_AND_WAIT","targetSymbol":"SOLUSDT","confidence":85,"lockedFloorPct":1.2,"customCallbackPct":0.40,"verdict":"Explicación táctica de 2-3 líneas en HTML simple con <b> y <i> de cómo ves el mercado hoy (${params.dayStr}), cuánto han bajado vs cierre viernes / techo 24h y tu decisión."}`;
+        `{"action":"BUY_NOW"|"ARM_TRAILING_BUY"|"LOCK_PROFIT_FLOOR"|"WIDEN_EXPANSION_TP"|"HOLD_AND_WAIT","regimeOverride":"NONE"|"CRASH_HUNTER"|"RALLY_HARVESTER"|"RANGE_SCALPER","targetSymbol":"SOLUSDT","confidence":85,"lockedFloorPct":1.2,"customCallbackPct":0.40,"verdict":"Explicación táctica de 2-3 líneas en HTML simple con <b> y <i> de cómo ves el mercado hoy (${params.dayStr}), si el comportamiento es normal o atípico y tu decisión."}`;
 
       const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
       for (const model of candidateModels) {
@@ -302,6 +307,7 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
                 verdictHtml: `🤖 <b>Dictamen Trader IA (${params.dayStr}):</b> ${(parsed.verdict || "").trim()}`,
                 aiDecision: {
                   action: parsed.action || "HOLD_AND_WAIT",
+                  regimeOverride: parsed.regimeOverride || "NONE",
                   targetSymbol: parsed.targetSymbol,
                   confidence: Number(parsed.confidence || 0),
                   lockedFloorPct: parsed.lockedFloorPct ? Number(parsed.lockedFloorPct) : undefined,
