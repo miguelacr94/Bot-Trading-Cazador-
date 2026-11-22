@@ -251,7 +251,7 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               contents: [{ role: "user", parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.25, maxOutputTokens: 320 }
+              generationConfig: { temperature: 0.25, maxOutputTokens: 1200 }
             })
           });
           const data = await res.json();
