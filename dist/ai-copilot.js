@@ -125,35 +125,43 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
         }
     }
     /**
-     * 🧠 AGENTE IA AUTÓNOMO DE BENCHMARK Y EJECUCIÓN (CICLO PERIÓDICO EN SERVIDOR 24/7):
-     * Analiza periódicamente qué tanto han caído las monedas respecto al cierre del viernes
-     * y al techo de 24h, evalúa el Calendario de 5.5 Años y emite el dictamen ejecutivo para Telegram.
+     * 🧠 AGENTE IA TRADER AUTÓNOMO 24/7 (LUNES A DOMINGO — DECISIONES DE COMPRA, RASTREO Y COSECHA):
+     * Actúa como un trader institucional discrecional todos los días de la semana (no solo fines de semana
+     * ni solo con reglas estáticas): evalúa la acción del precio, mechas, flujo de órdenes CVD, posiciones abiertas,
+     * cierre del viernes / máximo de 24h y el Calendario de 5.5 Años, devolviendo una decisión ejecutable en JSON.
      */
     async evaluateAutonomousBenchmarkCycle(params) {
-        const bestDrop = [...params.coins].sort((a, b) => a.benchDropPct - b.benchDropPct)[0];
+        const isWeekend = params.dayStr === "Sat" || params.dayStr === "Sun" || params.dayStr === "Fri";
+        const bestDrop = [...params.coins].sort((a, b) => (isWeekend ? a.benchDropPct - b.benchDropPct : b.drop24hPct - a.drop24hPct))[0];
         const fallbackVerdict = params.executedSymbol
-            ? `✅ <b>Dictamen IA:</b> Descuento objetivo alcanzado en <b>${params.executedSymbol}</b> con absorción institucional confirmada en 15m/5m. Compra disparada automáticamente ($${(params.executedAmountUsdt || 0).toFixed(2)} USDT).`
-            : (bestDrop && bestDrop.benchDropPct <= -4.8
-                ? `🎯 <b>Dictamen IA:</b> <b>${bestDrop.symbol.replace("USDT", "")}</b> ya está en zona de descuento profundo (<b>${bestDrop.benchDropPct.toFixed(2)}%</b> vs cierre viernes). Esperando mecha de freno 15m y giro CVD >= 52% para disparar compra sin atrapar cuchillo cayendo.`
-                : `⏳ <b>Dictamen IA:</b> La mayor caída vs el cierre del viernes es <b>${bestDrop ? bestDrop.symbol.replace("USDT", "") : "N/A"} (${bestDrop ? (bestDrop.benchDropPct >= 0 ? "+" : "") + bestDrop.benchDropPct.toFixed(2) : "0.00"}%)</b>. Aún no alcanza el descuento objetivo (-4.8% a -10%). Manteniendo $${params.spendableUsdt.toFixed(2)} USDT protegidos y vigilando cada 15 min.`);
+            ? `✅ <b>Dictamen Trader IA:</b> Piso institucional confirmado en <b>${params.executedSymbol}</b> con absorción en 15m/5m y flujo comprador CVD. Compra ejecutada automáticamente ($${(params.executedAmountUsdt || 0).toFixed(2)} USDT).`
+            : (bestDrop && (bestDrop.benchDropPct <= -4.5 || bestDrop.drop24hPct >= 3.2)
+                ? `🎯 <b>Dictamen Trader IA:</b> <b>${bestDrop.symbol.replace("USDT", "")}</b> está en zona de descuento atractivo (<b>${bestDrop.benchDropPct.toFixed(2)}%</b> vs ref. viernes | <b>-${bestDrop.drop24hPct.toFixed(2)}%</b> desde techo 24h, RSI ${bestDrop.rsi15m.toFixed(0)}). Rastreando freno y giro CVD >= 52% para entrar en el suelo exacto.`
+                : `⏳ <b>Dictamen Trader IA (${params.dayStr}):</b> Mercado sin descuento profundo aún (mayor retroceso: <b>${bestDrop ? bestDrop.symbol.replace("USDT", "") : "N/A"} -${bestDrop ? bestDrop.drop24hPct.toFixed(2) : "0.00"}%</b> vs techo 24h | <b>${bestDrop ? (bestDrop.benchDropPct >= 0 ? "+" : "") + bestDrop.benchDropPct.toFixed(2) : "0.00"}%</b> vs cierre viernes). Evitando compras en techo; capital ($${params.spendableUsdt.toFixed(2)} USDT) listo para el próximo pullback a soporte.`);
         if (!this.isAvailable()) {
-            return fallbackVerdict;
+            return { verdictHtml: fallbackVerdict };
         }
         try {
             const apiKey = this.getApiKey();
             const coinsSummary = params.coins
-                .map((c) => `- ${c.symbol}: Cierre Viernes $${c.exitPrice} -> Actual $${c.curPrice} (${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}% vs viernes | -${c.drop24hPct.toFixed(2)}% desde máximo 24h | RSI 15m: ${c.rsi15m.toFixed(1)} | Mecha 15m: ${c.lowerWick15mPct.toFixed(0)}% | CVD 5m: ${c.cvd5mPct.toFixed(0)}% | Gatillo Compra: ${c.qualifiesToBuy ? "LISTO" : "ESPERANDO"})`)
+                .map((c) => `- ${c.symbol}: Ref.Viernes $${c.exitPrice} -> Actual $${c.curPrice} (${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}% vs viernes | -${c.drop24hPct.toFixed(2)}% vs techo 24h | Ubicación Canal 24h: ${((c.fibPosition24h ?? 0.5) * 100).toFixed(0)}% | RSI 15m: ${c.rsi15m.toFixed(1)} | Mecha Inf 15m: ${c.lowerWick15mPct.toFixed(0)}% | CVD Comprador 5m: ${c.cvd5mPct.toFixed(0)}%)`)
                 .join("\n");
-            const prompt = `Eres el Agente IA Autónomo del bot de trading Binance Spot de Miguel. Estás haciendo tu auditoría automática periódica en el servidor.\n` +
-                `Régimen Calendario 5.5 Años: ${params.calendarLabel}\n` +
+            const openPosSummary = (params.openPositions && params.openPositions.length > 0)
+                ? params.openPositions.map(p => `- ${p.symbol}: Compra $${p.buyPrice} -> Actual $${p.curPrice} (${p.gainPct >= 0 ? "+" : ""}${p.gainPct.toFixed(2)}% | Pico $${p.highestPrice} | Piso asegurado: ${p.lockedFloorGainPct ? "+" + p.lockedFloorGainPct.toFixed(2) + "%" : "ninguno"})`).join("\n")
+                : "Ninguna posición abierta actualmente.";
+            const prompt = `Eres el Trader Institucional IA Autónomo 24/7 del bot Binance Spot de Miguel. Operas tanto de Lunes a Viernes como Fines de Semana tomando decisiones dinámicas como un trader experto.\n` +
+                `Día actual: ${params.dayStr} | Régimen 5.5 Años: ${params.calendarLabel} (${params.regimeKey})\n` +
                 `Sesión Horaria Actual: ${params.sessionTitle}\n` +
+                `Ancla Bitcoin 15m estable/girando: ${params.btcAnchorOk ? "SÍ" : "NO (BTC aún débil)"}\n` +
                 `Capital disponible en el bot: $${params.spendableUsdt.toFixed(2)} USDT\n` +
-                `Fecha de referencia Cierre Viernes: ${params.benchmarkDateStr}\n` +
-                `${params.executedSymbol ? `ACCIÓN EJECUTADA AHORA MISMO: Se acaba de COMPRAR automáticamente ${params.executedSymbol} con $${(params.executedAmountUsdt || 0).toFixed(2)} USDT.` : "ACCIÓN ACTUAL: Ninguna compra disparada en este ciclo."}\n\n` +
-                `Comparativa en vivo de las monedas vs Cierre del Viernes:\n${coinsSummary}\n\n` +
-                `Redacta un dictamen táctico breve (máximo 3 líneas en HTML simple con <b> y <i>, sin bloques markdown \`\`\`) explicando:\n` +
-                `1. Qué tanto han bajado o subido respecto al cierre del viernes.\n` +
-                `2. Por qué compraste ahora mismo o cuánto falta (% y condiciones de RSI/mecha) para disparar la compra automática.`;
+                `Posiciones abiertas:\n${openPosSummary}\n\n` +
+                `Telemetría en vivo de la Watchlist (Precios vs Cierre Viernes ${params.benchmarkDateStr} y Canal 24h):\n${coinsSummary}\n\n` +
+                `Reglas de decisión como Trader Experto:\n` +
+                `1. JAMÁS comprar en techo (Ubicación Canal 24h > 48% o RSI > 45). Solo comprar ("BUY_NOW") o armar cacería ("ARM_TRAILING_BUY") cuando hay un descuento claro (en fin de semana >= -4.5% vs viernes o caída 24h >= 4%; entre semana Lunes post-barrido CME, Miércoles de sacudón macro o pullback de Martes/Jueves con caída 24h >= 2.2%, Ubicación Canal <= 38%, RSI <= 42 y mecha de absorción >= 25% con CVD >= 52%).\n` +
+                `2. Si hay una posición abierta en ganancia (>= +0.85%) y ves agotamiento o estamos en Hora Techo, puedes elegir "LOCK_PROFIT_FLOOR" indicando lockedFloorPct (ej. 0.70 a 2.50). Si estamos en Martes o Jueves de Expansión y CVD >= 56%, puedes elegir "WIDEN_EXPANSION_TP" (customCallbackPct: 0.42) para dejar correr la ganancia al pico máximo.\n` +
+                `3. Si el mercado está arriba o sin setup limpio, elige "HOLD_AND_WAIT".\n\n` +
+                `Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta:\n` +
+                `{"action":"BUY_NOW"|"ARM_TRAILING_BUY"|"LOCK_PROFIT_FLOOR"|"WIDEN_EXPANSION_TP"|"HOLD_AND_WAIT","targetSymbol":"SOLUSDT","confidence":85,"lockedFloorPct":1.2,"customCallbackPct":0.40,"verdict":"Explicación táctica de 2-3 líneas en HTML simple con <b> y <i> de cómo ves el mercado hoy (${params.dayStr}), cuánto han bajado vs cierre viernes / techo 24h y tu decisión."}`;
             const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
             for (const model of candidateModels) {
                 try {
@@ -163,21 +171,37 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             contents: [{ role: "user", parts: [{ text: prompt }] }],
-                            generationConfig: { temperature: 0.25, maxOutputTokens: 1200 }
+                            generationConfig: { temperature: 0.2, maxOutputTokens: 1200 }
                         })
                     });
                     const data = await res.json();
-                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (text && text.trim().length > 15) {
-                        return `🤖 <b>Dictamen Agente IA:</b> ${text.trim().replace(/```html|```/g, "")}`;
+                    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (rawText && rawText.trim().length > 15) {
+                        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+                        if (jsonMatch) {
+                            const parsed = JSON.parse(jsonMatch[0]);
+                            return {
+                                verdictHtml: `🤖 <b>Dictamen Trader IA (${params.dayStr}):</b> ${(parsed.verdict || "").trim()}`,
+                                aiDecision: {
+                                    action: parsed.action || "HOLD_AND_WAIT",
+                                    targetSymbol: parsed.targetSymbol,
+                                    confidence: Number(parsed.confidence || 0),
+                                    lockedFloorPct: parsed.lockedFloorPct ? Number(parsed.lockedFloorPct) : undefined,
+                                    customCallbackPct: parsed.customCallbackPct ? Number(parsed.customCallbackPct) : undefined
+                                }
+                            };
+                        }
+                        return {
+                            verdictHtml: `🤖 <b>Dictamen Trader IA (${params.dayStr}):</b> ${rawText.trim().replace(/```html|```json|```/g, "")}`
+                        };
                     }
                 }
                 catch { }
             }
-            return fallbackVerdict;
+            return { verdictHtml: fallbackVerdict };
         }
         catch {
-            return fallbackVerdict;
+            return { verdictHtml: fallbackVerdict };
         }
     }
 }

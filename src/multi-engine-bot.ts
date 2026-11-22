@@ -1209,6 +1209,7 @@ export class TrailingMasterBot {
         curPrice: number;
         benchDropPct: number;
         drop24hPct: number;
+        fibPosition24h: number;
         high24h: number;
         coinRange24hPct: number;
         rsi15m: number;
@@ -1242,6 +1243,7 @@ export class TrailingMasterBot {
           const exitPrice = benchData.benchmarks[sym] || high24h;
           const benchDropPct = exitPrice > 0 ? ((curPrice - exitPrice) / exitPrice) * 100 : 0;
           const drop24hPct = high24h > 0 ? ((high24h - curPrice) / high24h) * 100 : 0;
+          const fibPosition24h = (high24h - low24h) > 0 ? (curPrice - low24h) / (high24h - low24h) : 0.5;
           const coinRange24hPct = low24h > 0 ? ((high24h - low24h) / low24h) * 100 : 2.5;
           const rsi15m = this.calculateRSI(closes15, 14);
 
@@ -1266,18 +1268,20 @@ export class TrailingMasterBot {
 
           const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE");
           const targetBenchDrop = isMeme ? -6.0 : -4.8;
-          const isDeepDiscount = benchDropPct <= targetBenchDrop || (isWeekend && drop24hPct >= (isMeme ? 5.8 : 4.6));
-          const qualifiesToArmWatch = isDeepDiscount && rsi15m <= 41;
+          const isWeekdayDip = !isWeekend && drop24hPct >= (isMeme ? 4.2 : 2.5) && fibPosition24h <= 0.32 && rsi15m <= (isMeme ? 35 : 39);
+          const isDeepDiscount = benchDropPct <= targetBenchDrop || (isWeekend && drop24hPct >= (isMeme ? 5.8 : 4.6)) || isWeekdayDip;
+          const qualifiesToArmWatch = isDeepDiscount && rsi15m <= 42;
           const qualifiesToBuy =
             isDeepDiscount &&
-            rsi15m <= (isMeme ? 36 : 39) &&
+            rsi15m <= (isMeme ? 36 : 40) &&
             isGreenOrWick15m &&
             isGreen5m &&
             cvd5mPct >= 52 &&
-            (!pauseWin.paused || benchDropPct <= -6.2);
+            (!pauseWin.paused || benchDropPct <= -6.2 || drop24hPct >= 5.8);
 
           // Detectar cruce de hitos de caída (-3%, -5%, -8%, -10%) para alerta inmediata en Telegram
-          const milestoneLevel = benchDropPct <= -10 ? 10 : (benchDropPct <= -8 ? 8 : (benchDropPct <= -5 ? 5 : (benchDropPct <= -3 ? 3 : 0)));
+          const effDrop = isWeekend ? benchDropPct : -drop24hPct;
+          const milestoneLevel = effDrop <= -10 ? 10 : (effDrop <= -8 ? 8 : (effDrop <= -5 ? 5 : (effDrop <= -3 ? 3 : 0)));
           const prevMilestone = this.notifiedBenchmarkMilestones.get(sym) || 0;
           if (milestoneLevel > prevMilestone) {
             this.notifiedBenchmarkMilestones.set(sym, milestoneLevel);
@@ -1290,6 +1294,7 @@ export class TrailingMasterBot {
             curPrice,
             benchDropPct,
             drop24hPct,
+            fibPosition24h,
             high24h: Math.max(high24h, exitPrice),
             coinRange24hPct,
             rsi15m,
@@ -1305,20 +1310,90 @@ export class TrailingMasterBot {
 
       if (coinEvaluations.length === 0) return "";
 
-      // Ordenar por mayor descuento respecto al cierre del viernes
-      coinEvaluations.sort((a, b) => a.benchDropPct - b.benchDropPct);
+      // Ordenar por mayor descuento (en fin de semana vs cierre viernes; entre semana por retroceso 24h)
+      coinEvaluations.sort((a, b) => (isWeekend ? a.benchDropPct - b.benchDropPct : b.drop24hPct - a.drop24hPct));
 
-      // 2. DECISIÓN Y ACCIÓN AUTÓNOMA DEL AGENTE IA (ARMADO O COMPRA DIRECTA EN PISO):
+      // Recopilar posiciones abiertas para que el Trader IA también gestione ventas, candados y expansión de Martes/Jueves
+      const openPosSnapshot: Array<{
+        symbol: string;
+        buyPrice: number;
+        curPrice: number;
+        highestPrice: number;
+        gainPct: number;
+        lockedFloorGainPct?: number;
+      }> = [];
+      for (const [posKey, p] of this.activeTrailingPositions.entries()) {
+        const sym = p.symbol || posKey.split("_")[0];
+        const coinEv = coinEvaluations.find((c) => c.symbol === sym);
+        const curP = coinEv ? coinEv.curPrice : p.highestPrice;
+        const gainPct = p.buyPrice > 0 ? ((curP - p.buyPrice) / p.buyPrice) * 100 : 0;
+        openPosSnapshot.push({
+          symbol: posKey,
+          buyPrice: p.buyPrice,
+          curPrice: curP,
+          highestPrice: p.highestPrice,
+          gainPct,
+          lockedFloorGainPct: p.lockedFloorGainPct
+        });
+      }
+
+      // 2. CONSULTA Y DECISIÓN DISCRECIONAL DEL AGENTE TRADER IA (LUNES A DOMINGO 24/7):
+      const btcAnchor = await this.verifyBtc15mLeaderAnchor("ALT");
       let executedSymbol: string | undefined;
       let executedAmountUsdt: number | undefined;
+      let aiActionNote = "";
+
+      const aiEval = await this.aiCopilot.evaluateAutonomousBenchmarkCycle({
+        benchmarkDateStr: benchData.dateStr,
+        dayStr,
+        calendarLabel: calRegime.label,
+        regimeKey: calRegime.regimeKey,
+        sessionTitle: sessionPlan.sessionTitle,
+        spendableUsdt: botSpendableUsdt,
+        btcAnchorOk: btcAnchor.ok,
+        openPositions: openPosSnapshot,
+        coins: coinEvaluations
+      });
+
+      const aiDec = aiEval.aiDecision;
       const uniqueActiveCount = this.getUniqueActiveSymbols().size;
       const maxUniqueCoins = this.controls?.maxPositions || 4;
-      const btcAnchor = await this.verifyBtc15mLeaderAnchor("ALT");
+
+      // Ejecutar decisiones de gestión de posiciones abiertas del Trader IA (Martes/Jueves Expansión o Cosecha en Techo)
+      if (aiDec && aiDec.targetSymbol && aiDec.confidence >= 75) {
+        if (aiDec.action === "LOCK_PROFIT_FLOOR" && aiDec.lockedFloorPct && aiDec.lockedFloorPct >= 0.58) {
+          const lockRes = await this.lockPositionFloor(aiDec.targetSymbol, aiDec.lockedFloorPct);
+          if (lockRes.success) {
+            aiActionNote = `\n🔒 <b>Acción Trader IA:</b> Piso de ganancia amarrado en <b>${aiDec.targetSymbol} (+${aiDec.lockedFloorPct.toFixed(2)}%)</b>.`;
+          }
+        } else if (aiDec.action === "WIDEN_EXPANSION_TP" && aiDec.customCallbackPct && aiDec.customCallbackPct >= 0.25 && aiDec.customCallbackPct <= 0.55) {
+          for (const [k, p] of this.activeTrailingPositions.entries()) {
+            if (k === aiDec.targetSymbol || p.symbol === aiDec.targetSymbol) {
+              p.customCallbackPct = aiDec.customCallbackPct;
+              await this.saveTrailingPositions();
+              aiActionNote = `\n🚀 <b>Acción Trader IA:</b> Callback ampliado en <b>${k} (${aiDec.customCallbackPct.toFixed(2)}%)</b> para exprimir expansión de ${dayStr}.`;
+              break;
+            }
+          }
+        }
+      }
+
+      // Evaluar candidato sugerido por el Trader IA (con guardarraíl Anti-FOMO: prohibido comprar en la mitad superior del canal 24h)
+      if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 78) {
+        const aiCand = coinEvaluations.find((c) => c.symbol === aiDec.targetSymbol || c.symbol.replace("USDT", "") === aiDec.targetSymbol);
+        if (aiCand && aiCand.fibPosition24h <= 0.45 && aiCand.rsi15m <= 44 && (aiCand.drop24hPct >= 1.8 || aiCand.benchDropPct <= -2.5)) {
+          if (aiDec.action === "ARM_TRAILING_BUY") {
+            aiCand.qualifiesToArmWatch = true;
+          } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 50 && (!pauseWin.paused || aiCand.drop24hPct >= 5.2)) {
+            aiCand.qualifiesToBuy = true;
+          }
+        }
+      }
 
       for (const candidate of coinEvaluations) {
         if (this.hasActivePositionForSymbol(candidate.symbol)) continue;
 
-        // A) Si está en descuento profundo (-4.8% a -10%) pero aún sigue cayendo, armar Trailing Buy para atrapar el fondo exacto
+        // A) Si está en descuento atractivo pero aún sigue cayendo, armar Trailing Buy para atrapar el fondo exacto
         if (candidate.qualifiesToArmWatch && !this.buyWatches.has(candidate.symbol) && uniqueActiveCount < maxUniqueCoins) {
           const upsideGap = candidate.curPrice > 0 ? ((candidate.high24h - candidate.curPrice) / candidate.curPrice) * 100 : Math.abs(candidate.benchDropPct);
           this.buyWatches.set(candidate.symbol, {
@@ -1335,10 +1410,10 @@ export class TrailingMasterBot {
             strategy: isWeekend ? "cazador_weekend" : "trailing_rebound"
           });
           this.saveBuyWatches();
-          console.log(`🤖🎯 [AGENTE IA AUTÓNOMO] Vigilancia Trailing Buy armada en ${candidate.symbol} por descuento de ${candidate.benchDropPct.toFixed(2)}% vs cierre viernes.`);
+          console.log(`🤖🎯 [AGENTE TRADER IA] Vigilancia Trailing Buy armada en ${candidate.symbol} (${dayStr} | -${candidate.drop24hPct.toFixed(2)}% 24h | ${candidate.benchDropPct.toFixed(2)}% vs viernes).`);
         }
 
-        // B) Si ya confirmó freno y giro en el piso con descuento >= -4.8% a -10%, disparar compra automática
+        // B) Si ya confirmó freno y giro en el piso, disparar compra automática
         if (
           !executedSymbol &&
           candidate.qualifiesToBuy &&
@@ -1363,7 +1438,7 @@ export class TrailingMasterBot {
             Math.max(Math.abs(candidate.benchDropPct), upsideGap)
           );
           if (amountToUse >= this.minUsdtToTrade) {
-            const sourceDesc = `Agente IA Benchmark (${candidate.benchDropPct.toFixed(2)}% vs cierre viernes, RSI ${candidate.rsi15m.toFixed(1)})`;
+            const sourceDesc = `Agente Trader IA (${dayStr}: -${candidate.drop24hPct.toFixed(2)}% 24h / ${candidate.benchDropPct.toFixed(2)}% vs viernes, RSI ${candidate.rsi15m.toFixed(1)})`;
             const ok = await this.executeSmartBuy(candidate.symbol, amountToUse, sourceDesc, strat, {
               coinRange24hPct: candidate.coinRange24hPct,
               upsideGapPct: upsideGap,
@@ -1384,39 +1459,30 @@ export class TrailingMasterBot {
       const shouldSendTelegram =
         forceTelegram ||
         Boolean(executedSymbol) ||
+        Boolean(aiActionNote) ||
         crossedNewMilestone ||
         (now - this.lastAiBenchmarkTelegramTime) >= 2 * 3600 * 1000;
 
       if (!shouldSendTelegram) return "";
       this.lastAiBenchmarkTelegramTime = now;
 
-      const aiVerdict = await this.aiCopilot.evaluateAutonomousBenchmarkCycle({
-        benchmarkDateStr: benchData.dateStr,
-        calendarLabel: calRegime.label,
-        sessionTitle: sessionPlan.sessionTitle,
-        spendableUsdt: botSpendableUsdt,
-        executedSymbol,
-        executedAmountUsdt,
-        coins: coinEvaluations
-      });
-
       const primaryBenchSyms = new Set(Object.keys(benchData.benchmarks));
-      const displayCoins = coinEvaluations.filter((c) => primaryBenchSyms.has(c.symbol) || c.benchDropPct <= -3.5);
+      const displayCoins = coinEvaluations.filter((c) => primaryBenchSyms.has(c.symbol) || c.benchDropPct <= -3.0 || c.drop24hPct >= 3.0);
 
-      let report = `🤖📊 <b>[AGENTE IA AUTÓNOMO — AUDITORÍA DE DESCUENTO VS CIERRE VIERNES]</b>\n\n`;
-      report += `🗓️ <b>Referencia Cierre Viernes:</b> <i>${benchData.dateStr}</i>\n`;
+      let report = `🤖📊 <b>[TRADER IA AUTÓNOMO 24/7 — AUDITORÍA DE MERCADO Y BENCHMARK]</b>\n\n`;
+      report += `🗓️ <b>Ref. Cierre Viernes:</b> <i>${benchData.dateStr}</i>\n`;
       report += `📅 <b>Calendario 5.5 Años:</b> ${calRegime.label}\n`;
       report += `⏰ <b>Ventana Actual:</b> ${sessionPlan.sessionTitle}\n\n`;
 
       for (const c of displayCoins) {
-        const emoji = c.benchDropPct <= -8.0 ? "🔥" : (c.benchDropPct <= -4.8 ? "🎯" : (c.benchDropPct <= -2.0 ? "📉" : "⚖️"));
+        const emoji = (c.benchDropPct <= -8.0 || c.drop24hPct >= 6.0) ? "🔥" : ((c.benchDropPct <= -4.8 || c.drop24hPct >= 3.5) ? "🎯" : ((c.benchDropPct <= -1.5 || c.drop24hPct >= 2.0) ? "📉" : "⚖️"));
         const symClean = c.symbol.replace("USDT", "");
         const dec = c.symbol.includes("PEPE") ? 8 : (c.curPrice < 10 ? 4 : 2);
-        report += `${emoji} <b>${symClean}:</b> Viernes $${c.exitPrice.toFixed(dec)} ➡️ Actual $${c.curPrice.toFixed(dec)} (<b>${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}%</b> | RSI 15m: ${c.rsi15m.toFixed(0)})\n`;
+        report += `${emoji} <b>${symClean}:</b> $${c.curPrice.toFixed(dec)} (<b>${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}%</b> vs Vie | <b>-${c.drop24hPct.toFixed(2)}%</b> vs 24h | RSI: ${c.rsi15m.toFixed(0)})\n`;
       }
 
-      report += `\n${aiVerdict}\n\n`;
-      report += `💼 <b>Saldo Bot Disponible:</b> <b>$${botSpendableUsdt.toFixed(2)} USDT</b> (100% sincronizado en servidor 24/7).`;
+      report += `\n${aiEval.verdictHtml}${aiActionNote}\n\n`;
+      report += `💼 <b>Saldo Bot Disponible:</b> <b>$${botSpendableUsdt.toFixed(2)} USDT</b> (Operando 24/7 Lunes a Domingo).`;
 
       if (!forceTelegram) {
         try {
