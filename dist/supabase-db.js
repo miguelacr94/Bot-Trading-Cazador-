@@ -1,7 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 import * as dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+if (typeof globalThis.WebSocket === "undefined") {
+    globalThis.WebSocket = WebSocket;
+}
 dotenv.config();
 try {
     const f = path.resolve(process.cwd(), ".env");

@@ -1,7 +1,12 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 import * as dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+
+if (typeof (globalThis as any).WebSocket === "undefined") {
+  (globalThis as any).WebSocket = WebSocket;
+}
 
 dotenv.config();
 try {
