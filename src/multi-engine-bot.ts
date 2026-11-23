@@ -1187,8 +1187,8 @@ export class TrailingMasterBot {
         }
       }
 
-      // Ejecutar chequeo interno cada 15 minutos (o inmediato si forceTelegram === true)
-      if (!forceTelegram && (now - this.lastAiBenchmarkCheckTime) < 15 * 60 * 1000) {
+      // Ejecutar chequeo dinámico del Agente IA cada 3 minutos (o inmediato si forceTelegram === true)
+      if (!forceTelegram && (now - this.lastAiBenchmarkCheckTime) < 3 * 60 * 1000) {
         return "";
       }
       this.lastAiBenchmarkCheckTime = now;
@@ -1463,6 +1463,7 @@ export class TrailingMasterBot {
         }
       }
 
+      let armedNewWatch = false;
       for (const candidate of coinEvaluations) {
         if (this.hasActivePositionForSymbol(candidate.symbol)) continue;
 
@@ -1483,6 +1484,8 @@ export class TrailingMasterBot {
             strategy: isWeekend ? "cazador_weekend" : "trailing_rebound"
           });
           this.saveBuyWatches();
+          armedNewWatch = true;
+          aiActionNote += `\n🎯 <b>Vigilancia Trailing Buy armada en ${candidate.symbol}</b> (Caída: -${candidate.drop24hPct.toFixed(2)}% | RSI: ${candidate.rsi15m.toFixed(0)}).`;
           console.log(`🤖🎯 [AGENTE TRADER IA] Vigilancia Trailing Buy armada en ${candidate.symbol} (${dayStr} | -${candidate.drop24hPct.toFixed(2)}% 24h | ${candidate.benchDropPct.toFixed(2)}% vs viernes).`);
         }
 
@@ -1528,13 +1531,14 @@ export class TrailingMasterBot {
         }
       }
 
-      // 3. REPORTE PERIÓDICO DEL AGENTE IA A TELEGRAM (Cada 2 horas, o al cruzar hito de caída, o al comprar, o por comando):
+      // 3. REPORTE PERIÓDICO DEL AGENTE IA A TELEGRAM (Cada hora, o al armar vigilancia, o al comprar, o por comando):
       const shouldSendTelegram =
         forceTelegram ||
         Boolean(executedSymbol) ||
         Boolean(aiActionNote) ||
+        armedNewWatch ||
         crossedNewMilestone ||
-        (now - this.lastAiBenchmarkTelegramTime) >= 2 * 3600 * 1000;
+        (now - this.lastAiBenchmarkTelegramTime) >= 1 * 3600 * 1000;
 
       if (!shouldSendTelegram) return "";
       this.lastAiBenchmarkTelegramTime = now;
