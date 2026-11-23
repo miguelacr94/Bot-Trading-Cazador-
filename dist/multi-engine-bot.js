@@ -895,6 +895,7 @@ export class TrailingMasterBot {
     lastFridaySnapshotDayKey = "";
     notifiedBenchmarkMilestones = new Map();
     activeAtypicalOverride = "NONE";
+    aiCoinCalibrations = new Map();
     getFridayBenchmarks() {
         const cloudBench = this.controls?.strategySettings?.fridayBenchmarks;
         try {
@@ -1100,6 +1101,22 @@ export class TrailingMasterBot {
             const aiDec = aiEval.aiDecision;
             const uniqueActiveCount = this.getUniqueActiveSymbols().size;
             const maxUniqueCoins = this.controls?.maxPositions || 4;
+            // Ingestar calibración de parámetros específicos por moneda calculada por el Trader IA:
+            if (aiDec?.coinCalibrations && typeof aiDec.coinCalibrations === "object") {
+                for (const [sym, cal] of Object.entries(aiDec.coinCalibrations)) {
+                    if (cal && typeof cal.minGainPct === "number" && typeof cal.callbackPct === "number") {
+                        const cleanSym = sym.trim().toUpperCase();
+                        this.aiCoinCalibrations.set(cleanSym, cal);
+                        for (const [k, p] of this.activeTrailingPositions.entries()) {
+                            if (k === cleanSym || p.symbol === cleanSym) {
+                                p.customMinGainPct = cal.minGainPct;
+                                p.customCallbackPct = cal.callbackPct;
+                            }
+                        }
+                    }
+                }
+                await this.saveTrailingPositions();
+            }
             // Ejecutar decisiones de gestión de posiciones abiertas del Trader IA (Martes/Jueves Expansión o Cosecha en Techo)
             if (aiDec && aiDec.targetSymbol && aiDec.confidence >= 75) {
                 if (aiDec.action === "LOCK_PROFIT_FLOOR" && aiDec.lockedFloorPct && aiDec.lockedFloorPct >= 0.58) {
@@ -2581,7 +2598,12 @@ export class TrailingMasterBot {
                     // • En Martes Verde, Jueves de Rebote o Inicio de Mes (fuera de Hora Techo): amplía el margen de persecución según el Calendario 5 Años.
                     const calRegimeExit = this.get5YearCalendarRegime();
                     const isMemeCoin = MEME_WATCHLIST.includes(actualSymbol);
-                    if (!pos.customMinGainPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
+                    const aiCal = this.aiCoinCalibrations.get(symbol) || this.aiCoinCalibrations.get(actualSymbol);
+                    if (aiCal && !pos.customMinGainPct) {
+                        callback = aiCal.callbackPct;
+                        minGain = aiCal.minGainPct;
+                    }
+                    else if (!pos.customMinGainPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
                         callback = Math.min(callback, isMemeCoin ? 0.25 : 0.15);
                         minGain = 0.68;
                     }
@@ -3696,10 +3718,13 @@ export class TrailingMasterBot {
                 if (pauseState.paused && isAtypicalCrashCandidate) {
                     console.log(`⚡ [LLAVE MAESTRA DE EXCEPCIÓN ATÍPICA ACTIVADA: ${sym}] Flash Crash detectado (-${effectiveDropSoFar.toFixed(2)}% | RSI ${(w.rsi || 25).toFixed(1)}) durante hora pausada. Desbloqueando Presupuesto Abierto.`);
                 }
-                // En fin de semana exigir un rebote más sólido (+0.55% reinas, +0.65% memes) para evitar falsos rebotes de 5m
-                const reqBounce = isWeekendNow
-                    ? (isMemeCoin ? 0.65 : 0.55)
-                    : (isMemeCoin ? 0.48 : 0.38);
+                // Rebote exigido calibrado por IA o según régimen
+                const aiCalBuy = this.aiCoinCalibrations.get(sym);
+                const reqBounce = (aiCalBuy && typeof aiCalBuy.bounceBuyPct === "number")
+                    ? aiCalBuy.bounceBuyPct
+                    : (isWeekendNow
+                        ? (isMemeCoin ? 0.65 : 0.55)
+                        : (isMemeCoin ? 0.48 : 0.38));
                 const floorState = this.isHistoricalFloorWindow();
                 const effectiveSpendable = (floorState.active || (strat === "cazador_weekend" && this.isWeekendWindow()))
                     ? Math.max(sessionPlan.spendableUsdt, botAvailableUsdt * 0.95)

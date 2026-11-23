@@ -166,9 +166,14 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
                 `   • Si es Martes o Jueves (día de venta) pero el mercado sufre un desplome atípico fuerte (caídas >= 4.5% con sobreventa), activa "regimeOverride": "CRASH_HUNTER" para cambiar de modo venta a modo cacería de suelo.\n` +
                 `   • Si es Sábado, Lunes o Miércoles (día de caída) pero el mercado hace un rally alcista explosivo atípico, activa "regimeOverride": "RALLY_HARVESTER" para cosechar ganancias arriba y bloquear compras en techo.\n` +
                 `   • Si el mercado lleva horas estancado en rango lateral estrecho (< 2.2% en 24h), activa "regimeOverride": "RANGE_SCALPER" para encender Micro-Grid.\n` +
-                `   • Si el mercado sigue el patrón normal, usa "regimeOverride": "NONE".\n\n` +
+                `   • Si el mercado sigue el patrón normal, usa "regimeOverride": "NONE".\n` +
+                `5. CALIBRACIÓN DE PARÁMETROS DINÁMICOS POR MONEDA ESPECÍFICA ("coinCalibrations"):\n` +
+                `   • Como Trader IA Institucional, debes calcular para cada moneda analizada sus parámetros exactos adaptados a su volatilidad viva:\n` +
+                `     - Memecoins (PEPEUSDT, DOGEUSDT): Su alta volatilidad exige "minGainPct" >= 1.65 a 2.50% y "callbackPct" >= 0.40 a 0.50% para tolerar el ruido sin venderse prematuramente. "bounceBuyPct": 0.35.\n` +
+                `     - Monedas Volátiles (SOLUSDT, SUIUSDT, AVAXUSDT, NEARUSDT): "minGainPct" 0.90 a 1.25%, "callbackPct" 0.30 a 0.36%, "bounceBuyPct": 0.28.\n` +
+                `     - Monedas Clásicas (BTCUSDT, ETHUSDT, BNBUSDT): "minGainPct" 0.75 a 0.90%, "callbackPct" 0.20 a 0.25%, "bounceBuyPct": 0.22.\n\n` +
                 `Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta:\n` +
-                `{"action":"BUY_NOW"|"ARM_TRAILING_BUY"|"LOCK_PROFIT_FLOOR"|"WIDEN_EXPANSION_TP"|"HOLD_AND_WAIT","regimeOverride":"NONE"|"CRASH_HUNTER"|"RALLY_HARVESTER"|"RANGE_SCALPER","targetSymbol":"SOLUSDT","confidence":85,"lockedFloorPct":1.2,"customCallbackPct":0.40,"verdict":"Explicación táctica de 2-3 líneas en HTML simple con <b> y <i> de cómo ves el mercado hoy (${params.dayStr}), si el comportamiento es normal o atípico y tu decisión."}`;
+                `{"action":"BUY_NOW"|"ARM_TRAILING_BUY"|"LOCK_PROFIT_FLOOR"|"WIDEN_EXPANSION_TP"|"HOLD_AND_WAIT","regimeOverride":"NONE"|"CRASH_HUNTER"|"RALLY_HARVESTER"|"RANGE_SCALPER","targetSymbol":"SOLUSDT","confidence":85,"lockedFloorPct":1.2,"customCallbackPct":0.40,"coinCalibrations":{"PEPEUSDT":{"minGainPct":1.85,"callbackPct":0.45,"bounceBuyPct":0.35,"strategyMode":"RALLY_EXPANSION"},"SOLUSDT":{"minGainPct":0.95,"callbackPct":0.32,"bounceBuyPct":0.28,"strategyMode":"SWING_REBOUND"}},"verdict":"Explicación táctica de 2-3 líneas en HTML simple con <b> y <i> de cómo ves el mercado hoy (${params.dayStr}), si el comportamiento es normal o atípico y tu decisión."}`;
             const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
             for (const model of candidateModels) {
                 try {
@@ -200,7 +205,8 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
                                     targetSymbol: parsed.targetSymbol,
                                     confidence: Number(parsed.confidence || 0),
                                     lockedFloorPct: parsed.lockedFloorPct ? Number(parsed.lockedFloorPct) : undefined,
-                                    customCallbackPct: parsed.customCallbackPct ? Number(parsed.customCallbackPct) : undefined
+                                    customCallbackPct: parsed.customCallbackPct ? Number(parsed.customCallbackPct) : undefined,
+                                    coinCalibrations: (parsed.coinCalibrations && typeof parsed.coinCalibrations === "object") ? parsed.coinCalibrations : undefined
                                 }
                             };
                         }

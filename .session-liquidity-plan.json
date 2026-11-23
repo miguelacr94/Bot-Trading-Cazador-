@@ -1,12 +1,13 @@
 {
-  "sessionKey": "LONDRES_REBOTE",
-  "sessionTitle": "🟢 PISO #1 MADRUGADA PRE-LONDRES (00:30-04:00 AM COT | Presupuesto 100% Desbloqueado)",
-  "totalFreeUsdt": 160.35269568,
-  "reservedUsdt": 0,
-  "spendableUsdt": 160.35,
-  "lotFractionPct": 0.85,
-  "trailingBounceTrigger": 0.3,
-  "reason": "Hora Piso comprobada en 18 semanas de historial Binance (máxima tasa de formación de suelos y retorno positivo a +4h). Presupuesto Cerrado (60%) + Presupuesto Abierto (40%) 100% DESBLOQUEADOS.",
-  "recommendation": "🎯 Modo Francotirador $100 USDT Activo: 100% del capital disponible habilitado para cazar el suelo con confirmación 15m + 5m + Ancla BTC.",
-  "updatedAt": 1795329152927
+  "sessionKey": "COSECHA_PRENOCTURNA",
+  "sessionTitle": "🏆 HORA TECHO RALLY DOMINGO CME (05:30-11:30 PM COT | Cosechando pico dominical)",
+  "totalFreeUsdt": 160.5954258,
+  "reservedUsdt": 96.36,
+  "spendableUsdt": 64.24,
+  "lotFractionPct": 0.45,
+  "trailingBounceTrigger": 0.38,
+  "harvestCallbackPct": 0.15,
+  "reason": "Ventana de Hora Techo histórica. Trailing Take Profit ceñido a 0.15% para asegurar ganancias en la cima antes del retroceso estadístico.",
+  "recommendation": "🏆 Cosechar subidas en USDT y mantener el 60% reservado para la siguiente Hora Piso.",
+  "updatedAt": 1795405496980
 }
