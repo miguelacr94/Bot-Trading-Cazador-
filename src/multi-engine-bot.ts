@@ -6780,9 +6780,13 @@ export class TrailingMasterBot {
        (dropPct >= 4.5 && rsi <= 38) ||
        (coinRange24hPct >= 5.0 && dropPct >= 3.5 && rsi <= 37));
 
+    // 🎯 REGLA DE EQUILIBRIO DE CARTERA:
+    // Si el capital total disponible es modesto (< $250 USDT), NO quemar el 62% ($100) en una sola moneda.
+    // Limitar cada compra al 30%-35% del saldo disponible (típico $40-$50 USDT) para garantizar cupo a 3-4 monedas distintas.
     if (tier === 1 && (strategy === "trailing_rebound" || strategy === "cazador_weekend") && isStrong100Opportunity && spendableUsdt >= 70) {
-      const sniperShot = Math.min(100.00, Math.floor(spendableUsdt * 100) / 100);
-      console.log(`🎯 [PRIORIDAD BALA $100 USDT] Desplegando $${sniperShot.toFixed(2)} USDT en ${symbol} (Caída -${dropPct.toFixed(2)}% | Rango ${coinRange24hPct.toFixed(2)}% | RSI ${rsi.toFixed(1)})`);
+      const maxProportionalCap = spendableUsdt >= 280 ? 100.00 : Math.max(35.0, Math.min(52.0, spendableUsdt * 0.35));
+      const sniperShot = Math.floor(maxProportionalCap * 100) / 100;
+      console.log(`🎯 [PRIORIDAD BALA EQUILIBRADA] Desplegando $${sniperShot.toFixed(2)} USDT en ${symbol} (Caída -${dropPct.toFixed(2)}% | Rango ${coinRange24hPct.toFixed(2)}% | RSI ${rsi.toFixed(1)})`);
       return sniperShot;
     }
 
