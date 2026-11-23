@@ -2971,6 +2971,8 @@ export class TrailingMasterBot {
           //   ceñir callback a 0.14%-0.15% con ganancia >= +0.68% bruto para cosechar en la cima antes del retroceso programado.
           // • En Martes Verde, Jueves de Rebote o Inicio de Mes (fuera de Hora Techo): amplía el margen de persecución según el Calendario 5 Años.
           const calRegimeExit = this.get5YearCalendarRegime();
+          const { dayStr: currentDayStr } = this.getCotTimeInfo();
+          const isMondayHold = currentDayStr === "Mon";
           const isMemeCoin = MEME_WATCHLIST.includes(actualSymbol);
           const aiCal = this.aiCoinCalibrations.get(symbol) || this.aiCoinCalibrations.get(actualSymbol);
           if (aiCal && !pos.customMinGainPct) {
@@ -2979,11 +2981,17 @@ export class TrailingMasterBot {
           } else if (!pos.customMinGainPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
             callback = Math.min(callback, isMemeCoin ? 0.25 : 0.15);
             minGain = 0.68;
+          } else if (!pos.customMinGainPct && isMondayHold) {
+            // 🛡️ PROTECCIÓN DE ACUMULACIÓN DE LUNES PARA EL MARTES:
+            // Prohibido vender por migajas (+0.65%) antes del Martes de Expansión (+5.87% histórico).
+            // Exige al menos +1.15% en Core (BTC/ETH) y +1.85% en Memes, con callback amplio para dejar correr la subida.
+            callback = isMemeCoin ? 0.45 : 0.28;
+            minGain = isMemeCoin ? 1.85 : 1.15;
           } else if (!pos.customMinGainPct && (macro.btcStressIndex <= 0.22 || calRegimeExit.tpCallbackMultiplier > 1.05 || isMemeCoin) && !isStagnantPosition) {
             const mult = Math.max(1.25, calRegimeExit.tpCallbackMultiplier);
             callback = isMemeCoin ? Math.max(callback, 0.42) : Number((callback * mult).toFixed(2));
             minGain = isMemeCoin ? 1.45 : 0.85;
-          } else if (!pos.customMinGainPct && !isMemeCoin && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") && gainPct >= 0.65) {
+          } else if (!pos.customMinGainPct && !isMemeCoin && pos.strategy !== "micro_grid" && !isLot3 && !isMondayHold && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") && gainPct >= 0.65) {
             callback = Math.min(callback, (isPreWeekendHarvest || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") ? 0.16 : 0.18);
             minGain = 0.65;
           }
