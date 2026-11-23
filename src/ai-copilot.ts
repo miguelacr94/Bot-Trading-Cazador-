@@ -274,9 +274,14 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
         `Telemetría en vivo de la Watchlist (Precios vs Cierre Viernes ${params.benchmarkDateStr} y Canal 24h):\n${coinsSummary}\n\n` +
         `Reglas de decisión como Trader Institucional (PROHIBIDO COMPRAR POR COMPRAR):\n` +
         `1. CICLO SEMANAL DE 5.5 AÑOS:\n` +
-        `   • DÍAS DE COMPRA EN MÁXIMA CAÍDA: Sábado Madrugada (caída >= -4.8% a -10% vs cierre viernes), Lunes de Barrido CME (caída >= -3.6% en el fondo del canal <= 22%, para vender el Martes), y Miércoles de Sacudón Macro (caída >= -3.6% a -5.5% en el fondo del canal <= 22%, para vender el Jueves).\n` +
+        `   • LUNES (DÍA CLAVE DE ACUMULACIÓN PARA EL MARTES): Los martes son estadísticamente el día de mayor expansión y alza (+5.87% histórico). Para cosechar y vender en verde el Martes, ES OBLIGATORIO acumular inventario hoy Lunes durante retrocesos técnicos a soporte intradía (caída >= 1.6% en core / >= 2.2% en memes, canal 24h <= 38%, RSI <= 46). Si no compramos el Lunes en soporte, el Martes NO tendremos nada que vender.\n` +
+        `   • MIÉRCOLES (ACUMULACIÓN MACRO PARA EL JUEVES): Caída >= 2.5% a 3.5% en soporte para vender en el rally del Jueves (+5.51% hist.).\n` +
+        `   • FIN DE SEMANA: Cacería de capitulación vs cierre de viernes (caída >= -4.8% a -10%).\n` +
         `   • DÍAS DE VENTA Y COSECHA EN ALZA: Martes (+5.87% hist.), Jueves (+5.51% hist.) y Viernes Mañana son días para VENDER EN EL PUNTO MÁS ALTO lo acumulado en la caída previa. En Martes, Jueves y Viernes NO se compra salvo un crash extremo atípico (caída >= -5.2%, Ubicación Canal <= 15% y RSI <= 30).\n` +
-        `2. Para autorizar "BUY_NOW" o "ARM_TRAILING_BUY", la moneda DEBE estar en su MÁXIMA CAÍDA (Ubicación Canal 24h <= 22%, RSI 15m <= 35, caída >= 3.6% entre semana o >= -4.8% vs viernes en fin de semana, con mecha de absorción >= 28% y CVD >= 53%).\n` +
+        `2. CONDICIONES PARA AUTORIZAR "ARM_TRAILING_BUY" O "BUY_NOW":\n` +
+        `   • Si es LUNES: Retroceso a soporte intradía (caída >= 1.6% core / >= 2.2% meme desde techo 24h, canal <= 38%, RSI <= 46 con absorción / CVD >= 50%). Da luz verde para acumular inventario de cara al Martes.\n` +
+        `   • Si es Miércoles: Caída >= 2.5% core / >= 3.5% meme con RSI <= 38 y canal <= 28%.\n` +
+        `   • Si es Fin de Semana: Caída profunda >= -4.8% vs viernes con RSI <= 38 y canal <= 22%.\n` +
         `3. Si hay una posición abierta en ganancia (>= +0.85%) en Martes, Jueves o Domingo, usa "WIDEN_EXPANSION_TP" (customCallbackPct: 0.42) mientras CVD >= 56% para exprimir toda la subida, o "LOCK_PROFIT_FLOOR" (lockedFloorPct) cuando detectes agotamiento en la cima.\n` +
         `4. DETECCIÓN DE COMPORTAMIENTOS ATÍPICOS Y CAMBIO DE ESTRATEGIA ("regimeOverride"):\n` +
         `   • Si es Martes o Jueves (día de venta) pero el mercado sufre un desplome atípico fuerte (caídas >= 4.5% con sobreventa), activa "regimeOverride": "CRASH_HUNTER" para cambiar de modo venta a modo cacería de suelo.\n` +

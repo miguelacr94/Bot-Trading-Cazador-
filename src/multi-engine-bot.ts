@@ -1269,14 +1269,21 @@ export class TrailingMasterBot {
 
           const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE");
           const isSellingExpansionDay = dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri";
+          const isMonday = dayStr === "Mon";
           const targetBenchDrop = isMeme ? -6.0 : -4.8;
-          // Prohibido "comprar por comprar":
-          // • Sábado/Domingo: Exige descuento profundo >= -4.8% vs cierre del viernes (o caída >= 4.6% en 24h) en el fondo del canal (fib <= 0.25).
-          // • Lunes y Miércoles (Días de Acumulación en Máxima Caída para vender Martes y Jueves): Exige caída profunda >= 3.6% (core) / >= 5.0% (meme), fondo del canal <= 0.22 y RSI <= 35.
+          // Prohibido "comprar por comprar", pero OBLIGATORIO acumular los LUNES y MIÉRCOLES para tener qué vender MARTES y JUEVES:
+          // • Lunes (Acumulación Semanal para Vender Martes +5.87%): basta retroceso a soporte intradía (>= 1.6% core / >= 2.2% meme) en canal <= 0.38 y RSI <= 46.
+          // • Miércoles (Acumulación Sacudón Macro para Vender Jueves +5.51%): caída >= 2.5% core / >= 3.5% meme.
           // • Martes, Jueves y Viernes (Días de Venta en Alza / Cosecha): Compras bloqueadas salvo capitulación extrema >= 5.2% con RSI <= 30 y fondo <= 0.15.
-          const reqWeekdayDrop = isSellingExpansionDay ? (isMeme ? 6.5 : 5.2) : (isMeme ? 5.0 : 3.6);
-          const reqWeekdayRsi = isSellingExpansionDay ? 30 : (isMeme ? 33 : 35);
-          const reqWeekdayFib = isSellingExpansionDay ? 0.15 : 0.22;
+          const reqWeekdayDrop = isSellingExpansionDay 
+            ? (isMeme ? 6.5 : 5.2) 
+            : (isMonday ? (isMeme ? 2.2 : 1.6) : (isMeme ? 3.5 : 2.5));
+          const reqWeekdayRsi = isSellingExpansionDay 
+            ? 30 
+            : (isMonday ? (isMeme ? 45 : 46) : 38);
+          const reqWeekdayFib = isSellingExpansionDay 
+            ? 0.15 
+            : (isMonday ? 0.38 : 0.28);
           const isStrategicWeekdayFloor = !isWeekend && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
           
           // 🚀 ACUMULACIÓN DOMINGO PRE-RALLY (17:30 a 23:59 COT):
@@ -1428,18 +1435,30 @@ export class TrailingMasterBot {
         }
       }
 
-      // Evaluar candidato sugerido por el Trader IA (adaptándose si hay comportamiento atípico CRASH_HUNTER)
+      // Evaluar candidato sugerido por el Trader IA (adaptándose si hay comportamiento atípico CRASH_HUNTER o Acumulación Lunes/Miércoles)
+      const isMonday = dayStr === "Mon";
       const isSellingDayNow = (dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri") && this.activeAtypicalOverride !== "CRASH_HUNTER";
-      const minAiDropReq = isSellingDayNow ? 5.0 : (this.activeAtypicalOverride === "CRASH_HUNTER" ? 3.4 : 3.5);
-      const maxAiRsiReq = isSellingDayNow ? 31 : 36;
-      const maxAiFibReq = isSellingDayNow ? 0.16 : 0.25;
-      if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 80) {
+      const minAiDropReq = isSellingDayNow 
+        ? 5.0 
+        : (this.activeAtypicalOverride === "CRASH_HUNTER" ? 3.4 : (isMonday ? 1.6 : 2.5));
+      const maxAiRsiReq = isSellingDayNow 
+        ? 31 
+        : (isMonday ? 46 : 38);
+      const maxAiFibReq = isSellingDayNow 
+        ? 0.16 
+        : (isMonday ? 0.38 : 0.28);
+      if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 75) {
         const aiCand = coinEvaluations.find((c) => c.symbol === aiDec.targetSymbol || c.symbol.replace("USDT", "") === aiDec.targetSymbol);
-        if (aiCand && aiCand.fibPosition24h <= maxAiFibReq && aiCand.rsi15m <= maxAiRsiReq && (aiCand.drop24hPct >= minAiDropReq || aiCand.benchDropPct <= -4.5)) {
-          if (aiDec.action === "ARM_TRAILING_BUY") {
-            aiCand.qualifiesToArmWatch = true;
-          } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 52 && (!pauseWin.paused || aiCand.drop24hPct >= 5.0 || this.activeAtypicalOverride === "CRASH_HUNTER")) {
-            aiCand.qualifiesToBuy = true;
+        if (aiCand) {
+          const isCandMeme = this.memeWatchlist.includes(aiCand.symbol) || aiCand.symbol.includes("PEPE");
+          const effMinDrop = isMonday ? (isCandMeme ? 2.2 : 1.6) : minAiDropReq;
+          const effMaxRsi = isMonday ? (isCandMeme ? 45 : 46) : maxAiRsiReq;
+          if (aiCand.fibPosition24h <= maxAiFibReq && aiCand.rsi15m <= effMaxRsi && (aiCand.drop24hPct >= effMinDrop || aiCand.benchDropPct <= -4.5)) {
+            if (aiDec.action === "ARM_TRAILING_BUY") {
+              aiCand.qualifiesToArmWatch = true;
+            } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 50 && (!pauseWin.paused || aiCand.drop24hPct >= 5.0 || this.activeAtypicalOverride === "CRASH_HUNTER" || isMonday)) {
+              aiCand.qualifiesToBuy = true;
+            }
           }
         }
       }
