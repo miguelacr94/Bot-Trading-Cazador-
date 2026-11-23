@@ -1,7 +1,7 @@
 {
   "sessionKey": "COSECHA_PRENOCTURNA",
-  "sessionTitle": "🏆 HORA TECHO RALLY DOMINGO CME (05:30-11:30 PM COT | Cosechando pico dominical)",
-  "totalFreeUsdt": 160.5954258,
+  "sessionTitle": "🏆 HORA TECHO APERTURA NY (06:00-09:00 AM COT | Cosechando antes del drenaje de las 9-11 AM)",
+  "totalFreeUsdt": 160.59551628,
   "reservedUsdt": 96.36,
   "spendableUsdt": 64.24,
   "lotFractionPct": 0.45,
@@ -9,5 +9,5 @@
   "harvestCallbackPct": 0.15,
   "reason": "Ventana de Hora Techo histórica. Trailing Take Profit ceñido a 0.15% para asegurar ganancias en la cima antes del retroceso estadístico.",
   "recommendation": "🏆 Cosechar subidas en USDT y mantener el 60% reservado para la siguiente Hora Piso.",
-  "updatedAt": 1795405496980
+  "updatedAt": 1795441388305
 }

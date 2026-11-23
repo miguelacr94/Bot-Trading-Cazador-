@@ -1278,7 +1278,14 @@ export class TrailingMasterBot {
           const reqWeekdayRsi = isSellingExpansionDay ? 30 : (isMeme ? 33 : 35);
           const reqWeekdayFib = isSellingExpansionDay ? 0.15 : 0.22;
           const isStrategicWeekdayFloor = !isWeekend && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
-          const isStrategicWeekendFloor = isWeekend && (benchDropPct <= targetBenchDrop || (drop24hPct >= (isMeme ? 5.8 : 4.6) && fibPosition24h <= 0.22)) && rsi15m <= (isMeme ? 35 : 38);
+          
+          // 🚀 ACUMULACIÓN DOMINGO PRE-RALLY (17:30 a 23:59 COT):
+          // En domingo noche, la apertura de Futuros CME y Asia suele anticipar el alza de Lunes/Martes.
+          // Si el fin de semana fue alcista o lateral y no sangró -4.8%, no nos quedamos afuera: basta un retroceso técnico a soporte (>= 1.6% con RSI <= 48 y CVD >= 51%).
+          const isSundayPreRally = dayStr === "Sun" && timeDec >= 17.5 && timeDec <= 23.95;
+          const isSundayPreRallyFloor = isSundayPreRally && (drop24hPct >= 1.6 || benchDropPct <= -1.8) && fibPosition24h <= 0.42 && rsi15m <= 48 && cvd5mPct >= 51;
+
+          const isStrategicWeekendFloor = isWeekend && (benchDropPct <= targetBenchDrop || (drop24hPct >= (isMeme ? 5.8 : 4.6) && fibPosition24h <= 0.22) || isSundayPreRallyFloor) && (isSundayPreRallyFloor ? rsi15m <= 48 : rsi15m <= (isMeme ? 35 : 38));
           const isDeepDiscount = isStrategicWeekendFloor || isStrategicWeekdayFloor;
           const qualifiesToArmWatch = isDeepDiscount;
           const qualifiesToBuy =

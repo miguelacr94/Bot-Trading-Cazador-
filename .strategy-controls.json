@@ -48,9 +48,9 @@
     },
     "walletSplit": {
       "manualUsdt": 0,
-      "lastUpdated": 1795388396396,
+      "lastUpdated": 1795425119321,
       "autoQuarantineDeposits": false,
-      "lastKnownTotalFreeUsdt": 160.35269568
+      "lastKnownTotalFreeUsdt": 160.59551628
     },
     "maxPositions": 8,
     "coreWatchlist": [
@@ -90,26 +90,26 @@
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
       "porQue": "Como el bot jamás vende en negativo, Smart DCA aplica la Pirámide Invertida Institucional: en lugar de gastar mucho arriba en el Lote 1, guarda la mayor potencia de fuego para los pisos profundos (Lote 2 y Lote 3) una vez que la vela de 15m confirma que la caída ya frenó.",
-      "session": "Apertura Futuros CME (Retorno de Liquidez)",
-      "btcRange24h": 5.430493303301374,
-      "updatedAt": 1795405494634,
-      "expiresAt": 1795409094634,
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "btcRange24h": 2.6064485145563547,
+      "updatedAt": 1795441386024,
+      "expiresAt": 1795444986024,
       "isCurrent": true,
       "status": "applied"
     },
     "micro_grid": {
       "timeframe": "15m",
       "stopLossPct": 2,
-      "reason": "Mercado direccional activo (5.4%). Presupuesto en Cazador Trailing.",
+      "reason": "Mercado direccional activo (2.6%). Presupuesto en Cazador Trailing.",
       "criterios": [
-        "Rango Bitcoin: 5.43% (Mercado con ondas direccionales)",
+        "Rango Bitcoin: 2.61% (Mercado con ondas direccionales)",
         "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
       ],
       "porQue": "Cuando el mercado tiene volatilidad amplia (≥ 2.2%), Micro-Grid se pausa automáticamente y cede su cuota de capital a Cazador Trailing y Smart DCA para capturar recorridos más grandes (+0.8% a +3.5%).",
-      "session": "Apertura Futuros CME (Retorno de Liquidez)",
-      "btcRange24h": 5.430493303301374,
-      "updatedAt": 1795405494634,
-      "expiresAt": 1795409094634,
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "btcRange24h": 2.6064485145563547,
+      "updatedAt": 1795441386024,
+      "expiresAt": 1795444986024,
       "isCurrent": true,
       "status": "applied"
     },
@@ -122,30 +122,30 @@
         "Días hábiles: Presupuesto cedido al sistema de Doble Bolsillo (60% Horas Piso / 40% Abierto)"
       ],
       "porQue": "Para evitar comprar apresuradamente el viernes por la noche antes de la caída de madrugada, Cazador Weekend permanece en pausa hasta el sábado a las 02:00 AM COT.",
-      "session": "Apertura Futuros CME (Retorno de Liquidez)",
-      "btcRange24h": 5.430493303301374,
-      "updatedAt": 1795405494634,
-      "expiresAt": 1795409094634,
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "btcRange24h": 2.6064485145563547,
+      "updatedAt": 1795441386024,
+      "expiresAt": 1795444986024,
       "isCurrent": true,
       "status": "applied"
     },
     "trailing_rebound": {
-      "timeframe": "15m",
-      "stopLossPct": 3.5,
-      "reason": "Alta velocidad detectada (BTC 5.4%, Memes 4.8%). Sesión Apertura Futuros CME (Retorno de Liquidez).",
+      "timeframe": "1h",
+      "stopLossPct": 4,
+      "reason": "Volatilidad equilibrada (BTC 2.6%, Clásicas 3.6%). Sesión Wall Street / New York (Máxima Liquidez y Volumen).",
       "criterios": [
-        "Rango Bitcoin: 5.43% | Escudo Macro BTC 15m activo",
-        "Rango Memecoins: 4.83% (Líder PEPE con 4.8%)",
-        "Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m",
-        "Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)"
+        "Rango Bitcoin: 2.61% | Promedio Clásicas: 3.64%",
+        "Canasta Memes: 5.14% (Líder PEPE)",
+        "Confirmación en Piso: Rebote horario + Vela 5m verde o mecha ≥30%",
+        "Pirámide Invertida Nivel 1: Lote Explorador prudente ($18-$25 USDT)"
       ],
-      "porQue": "Con la canasta memecoin y el mercado acelerados, las ondas completas tardan menos en madurar. Calibrar el radar en 15m junto con el filtro de giro de vela de 5m permite capturar el suelo exacto y cobrar rebotes rápidos (+1.2% a +2.5%) sin entrar anticipado ni vender jamás en pérdida.",
-      "session": "Apertura Futuros CME (Retorno de Liquidez)",
-      "btcRange24h": 5.430493303301374,
-      "updatedAt": 1795405494634,
-      "expiresAt": 1795409094634,
-      "isCurrent": true,
-      "status": "applied"
+      "porQue": "En volatilidad normal, operar en 1H filtra el 90% del ruido intradiario. El bot espera que el precio toque la banda inferior de Bollinger, rebote y confirme absorción en 5m antes de comprar. En Spot rige la regla de Cero Ventas en Pérdida: si la moneda retrocede, Smart DCA inyecta el Nivel 2 en soporte.",
+      "session": "Wall Street / New York (Máxima Liquidez y Volumen)",
+      "btcRange24h": 2.6064485145563547,
+      "updatedAt": 1795441386024,
+      "expiresAt": 1795444986024,
+      "isCurrent": false,
+      "status": "pending"
     }
   },
   "trailingCallbacks": {
@@ -187,7 +187,7 @@
   "memeWatchlist": [
     "PEPEUSDT"
   ],
-  "updatedAt": 1795405494634,
+  "updatedAt": 1795441386025,
   "wideGapLotSize": 100,
   "rejectedSuggestions": {}
 }
