@@ -1124,7 +1124,16 @@ export class TrailingMasterBot {
   private lastFridaySnapshotDayKey = "";
   private notifiedBenchmarkMilestones: Map<string, number> = new Map();
   private activeAtypicalOverride: "NONE" | "CRASH_HUNTER" | "RALLY_HARVESTER" | "RANGE_SCALPER" = "NONE";
-  private aiCoinCalibrations: Map<string, { minGainPct: number; callbackPct: number; bounceBuyPct?: number; strategyMode?: string }> = new Map();
+  private aiCoinCalibrations: Map<string, {
+    minGainPct: number;
+    callbackPct: number;
+    bounceBuyPct?: number;
+    maxEntryRsi?: number;
+    maxEntryFib?: number;
+    targetFloorPrice?: number;
+    trapDetected?: boolean;
+    strategyMode?: string;
+  }> = new Map();
 
   public getFridayBenchmarks(): { dateStr: string; liquidatedAt: number; benchmarks: Record<string, number> } | null {
     const cloudBench = (this.controls?.strategySettings as any)?.fridayBenchmarks;
@@ -1208,12 +1217,18 @@ export class TrailingMasterBot {
         symbol: string;
         exitPrice: number;
         curPrice: number;
+        low24h: number;
+        sma24h: number;
+        distFromSma24hPct: number;
+        downsideToFloorPct: number;
+        isBullTrapFakeout: boolean;
         benchDropPct: number;
         drop24hPct: number;
         fibPosition24h: number;
         high24h: number;
         coinRange24hPct: number;
         rsi15m: number;
+        rsi1h: number;
         lowerWick15mPct: number;
         cvd5mPct: number;
         isGreenOrWick15m: boolean;
@@ -1243,6 +1258,18 @@ export class TrailingMasterBot {
           const low24h = Math.min(...lows15);
           const sma24h = closes15.reduce((acc: number, v: number) => acc + v, 0) / closes15.length;
           const distFromSma24hPct = sma24h > 0 ? ((curPrice - sma24h) / sma24h) * 100 : 0;
+          const downsideToFloorPct = curPrice > 0 ? ((curPrice - low24h) / curPrice) * 100 : 0;
+          // Estudio anti-engaño (Pump & Dump / Mechazo falso):
+          const sortedCloses24 = [...closes15].sort((a, b) => a - b);
+          const p25_24h = sortedCloses24[Math.floor(sortedCloses24.length * 0.25)] || low24h;
+          const p75_24h = sortedCloses24[Math.floor(sortedCloses24.length * 0.75)] || high24h;
+          const closes1h = closes15.filter((_: number, idx: number) => (closes15.length - 1 - idx) % 4 === 0);
+          const rsi1h = closes1h.length >= 15 ? this.calculateRSI(closes1h, 14) : this.calculateRSI(closes15, 14);
+          const isBullTrapFakeout =
+            (high24h > p75_24h * 1.018 && curPrice > p25_24h * 1.006) ||
+            distFromSma24hPct > -1.0 ||
+            downsideToFloorPct > 1.35 ||
+            rsi1h > 43;
           const exitPrice = benchData.benchmarks[sym] || high24h;
           const benchDropPct = exitPrice > 0 ? ((curPrice - exitPrice) / exitPrice) * 100 : 0;
           const drop24hPct = high24h > 0 ? ((high24h - curPrice) / high24h) * 100 : 0;
@@ -1295,7 +1322,7 @@ export class TrailingMasterBot {
           const reqWeekdayFib = isSellingExpansionDay 
             ? 0.14 
             : (isMonday ? (isBtc ? 0.16 : 0.18) : 0.18);
-          const isBelow24hMean = distFromSma24hPct <= (isBtc ? -1.4 : -1.2);
+          const isBelow24hMean = distFromSma24hPct <= (isBtc ? -1.4 : -1.2) && !isBullTrapFakeout && downsideToFloorPct <= 1.25 && rsi1h <= 42;
           const isStrategicWeekdayFloor = !isWeekend && isBelow24hMean && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
           
           // 🚀 ACUMULACIÓN DOMINGO PRE-RALLY (17:30 a 23:59 COT) CON ESCUDO DE PISO REAL:
@@ -1310,6 +1337,8 @@ export class TrailingMasterBot {
             isDeepDiscount &&
             fibPosition24h <= 0.12 &&
             rsi15m <= 28 &&
+            rsi1h <= 34 &&
+            downsideToFloorPct <= 0.85 &&
             distFromSma24hPct <= -2.5 &&
             isStoppingBleed15m &&
             isGreen5m &&
@@ -1329,12 +1358,18 @@ export class TrailingMasterBot {
             symbol: sym,
             exitPrice,
             curPrice,
+            low24h,
+            sma24h,
+            distFromSma24hPct,
+            downsideToFloorPct,
+            isBullTrapFakeout,
             benchDropPct,
             drop24hPct,
             fibPosition24h,
             high24h: Math.max(high24h, exitPrice),
             coinRange24hPct,
             rsi15m,
+            rsi1h,
             lowerWick15mPct,
             cvd5mPct,
             isGreenOrWick15m,
@@ -1482,6 +1517,19 @@ export class TrailingMasterBot {
       let armedNewWatch = false;
       for (const candidate of coinEvaluations) {
         if (this.hasActivePositionForSymbol(candidate.symbol)) continue;
+        const aiCalCand = this.aiCoinCalibrations.get(candidate.symbol);
+        if (aiCalCand?.trapDetected || aiCalCand?.strategyMode === "AVOID_BULL_TRAP" || candidate.isBullTrapFakeout) {
+          continue;
+        }
+        if (aiCalCand?.maxEntryRsi && candidate.rsi15m > aiCalCand.maxEntryRsi) {
+          continue;
+        }
+        if (aiCalCand?.maxEntryFib && candidate.fibPosition24h > aiCalCand.maxEntryFib) {
+          continue;
+        }
+        if (aiCalCand?.targetFloorPrice && aiCalCand.targetFloorPrice > 0 && candidate.curPrice > aiCalCand.targetFloorPrice * 1.008) {
+          continue;
+        }
 
         // A) Si está en descuento atractivo pero aún sigue cayendo, armar Trailing Buy para atrapar el fondo exacto
         if (candidate.qualifiesToArmWatch && !this.buyWatches.has(candidate.symbol) && uniqueActiveCount < maxUniqueCoins) {
@@ -4079,6 +4127,25 @@ export class TrailingMasterBot {
           (dropPct >= 3.8 && bb.percentB <= 0.10 && rsi <= 33 && stochRsi.k <= 20 && maxRecentRvol >= 1.35) ||
           (dropPct >= 4.5 && fibPosition24h <= 0.12 && rsi <= 34 && hasPinbarRejection && rvol >= 1.25) ||
           (rsi <= 27 && dropPct >= 3.2 && hasPinbarRejection && bb.percentB <= 0.10);
+        // 🧠 ESCUDO 4 (ESTUDIO DINÁMICO DEL AGENTE IA ANTI-ENGAÑO POR MONEDA):
+        const aiCalDip = this.aiCoinCalibrations.get(sym);
+        const downsideToFloorScanPct = curPrice > 0 ? ((curPrice - low24) / curPrice) * 100 : 0;
+        if (aiCalDip?.trapDetected || aiCalDip?.strategyMode === "AVOID_BULL_TRAP") {
+          continue;
+        }
+        if (aiCalDip?.maxEntryRsi && rsi > aiCalDip.maxEntryRsi) {
+          continue;
+        }
+        if (aiCalDip?.maxEntryFib && fibPosition24h > aiCalDip.maxEntryFib) {
+          continue;
+        }
+        if (aiCalDip?.targetFloorPrice && aiCalDip.targetFloorPrice > 0 && curPrice > aiCalDip.targetFloorPrice * 1.008) {
+          continue;
+        }
+        // Prohibido armar compra si queda más de 1.25% de vacío hacia el piso de 24h (salvo sobreventa extrema RSI <= 28)
+        if (downsideToFloorScanPct > 1.25 && rsi > 28) {
+          continue;
+        }
         const isDip = isMeme
           ? isMemeExtremeDip
           : (isStandardDip || isWickRebound || isWaveReentryDip || isBullishPullbackDip || isCompressedRangeDip);
@@ -4200,8 +4267,17 @@ export class TrailingMasterBot {
           console.log(`⚡ [LLAVE MAESTRA DE EXCEPCIÓN ATÍPICA ACTIVADA: ${sym}] Flash Crash detectado (-${effectiveDropSoFar.toFixed(2)}% | RSI ${(w.rsi || 25).toFixed(1)}) durante hora pausada. Desbloqueando Presupuesto Abierto.`);
         }
 
-        // Rebote exigido calibrado por IA o según régimen
+        // Rebote exigido y filtro anti-engaño calibrado por el Estudio del Agente IA:
         const aiCalBuy = this.aiCoinCalibrations.get(sym);
+        if (aiCalBuy?.trapDetected || aiCalBuy?.strategyMode === "AVOID_BULL_TRAP") {
+          if (bounce >= 0.25) {
+            console.log(`🧠🛑 [AGENTE IA ANTI-ENGAÑO: ${sym}] Compra vetada por detección de Bull-Trap / Mechazo falso. Siguiendo hacia el suelo real.`);
+          }
+          continue;
+        }
+        if (aiCalBuy?.targetFloorPrice && aiCalBuy.targetFloorPrice > 0 && cur > aiCalBuy.targetFloorPrice * 1.008) {
+          continue;
+        }
         const reqBounce = (aiCalBuy && typeof aiCalBuy.bounceBuyPct === "number")
           ? aiCalBuy.bounceBuyPct
           : (isWeekendNow

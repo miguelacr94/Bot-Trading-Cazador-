@@ -214,10 +214,16 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
       symbol: string;
       exitPrice: number;
       curPrice: number;
+      low24h?: number;
+      sma24h?: number;
+      distFromSma24hPct?: number;
+      downsideToFloorPct?: number;
+      isBullTrapFakeout?: boolean;
       benchDropPct: number;
       drop24hPct: number;
       fibPosition24h?: number;
       rsi15m: number;
+      rsi1h?: number;
       lowerWick15mPct: number;
       cvd5mPct: number;
       qualifiesToBuy: boolean;
@@ -235,7 +241,11 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
         minGainPct: number;
         callbackPct: number;
         bounceBuyPct?: number;
-        strategyMode?: "SWING_REBOUND" | "RALLY_EXPANSION" | "SCALP_RANGE" | "ACCUMULATION";
+        maxEntryRsi?: number;
+        maxEntryFib?: number;
+        targetFloorPrice?: number;
+        trapDetected?: boolean;
+        strategyMode?: "SWING_REBOUND" | "RALLY_EXPANSION" | "SCALP_RANGE" | "ACCUMULATION" | "AVOID_BULL_TRAP";
       }>;
     };
   }> {
@@ -256,7 +266,7 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
       const coinsSummary = params.coins
         .map(
           (c) =>
-            `- ${c.symbol}: Ref.Viernes $${c.exitPrice} -> Actual $${c.curPrice} (${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}% vs viernes | -${c.drop24hPct.toFixed(2)}% vs techo 24h | Ubicación Canal 24h: ${((c.fibPosition24h ?? 0.5) * 100).toFixed(0)}% | RSI 15m: ${c.rsi15m.toFixed(1)} | Mecha Inf 15m: ${c.lowerWick15mPct.toFixed(0)}% | CVD Comprador 5m: ${c.cvd5mPct.toFixed(0)}%)`
+            `- ${c.symbol}: Actual $${c.curPrice} | Piso24h $${c.low24h ?? c.curPrice} (Vacío hasta piso: -${(c.downsideToFloorPct ?? 0).toFixed(2)}%) | Desv. vs Media24h: ${(c.distFromSma24hPct ?? 0) >= 0 ? "+" : ""}${(c.distFromSma24hPct ?? 0).toFixed(2)}% | ${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}% vs Vie | -${c.drop24hPct.toFixed(2)}% vs Techo24h | Canal24h: ${((c.fibPosition24h ?? 0.5) * 100).toFixed(0)}% | RSI 15m: ${c.rsi15m.toFixed(1)} | RSI 1H: ${(c.rsi1h ?? c.rsi15m).toFixed(1)} | Mecha15m: ${c.lowerWick15mPct.toFixed(0)}% | CVD 5m: ${c.cvd5mPct.toFixed(0)}% | Detector Trampa: ${c.isBullTrapFakeout ? "⚠️ BULL-TRAP / MECHAZO FALSO" : "OK"}`
         )
         .join("\n");
 
@@ -288,13 +298,19 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
         `   • Si es Sábado, Lunes o Miércoles (día de caída) pero el mercado hace un rally alcista explosivo atípico, activa "regimeOverride": "RALLY_HARVESTER" para cosechar ganancias arriba y bloquear compras en techo.\n` +
         `   • Si el mercado lleva horas estancado en rango lateral estrecho (< 2.2% en 24h), activa "regimeOverride": "RANGE_SCALPER" para encender Micro-Grid.\n` +
         `   • Si el mercado sigue el patrón normal, usa "regimeOverride": "NONE".\n` +
-        `5. CALIBRACIÓN DE PARÁMETROS DINÁMICOS POR MONEDA ESPECÍFICA ("coinCalibrations"):\n` +
-        `   • Como Trader IA Institucional, debes calcular para cada moneda analizada sus parámetros exactos adaptados a su volatilidad viva:\n` +
-        `     - Memecoins (PEPEUSDT, DOGEUSDT): Su alta volatilidad exige "minGainPct" >= 1.65 a 2.50% y "callbackPct" >= 0.40 a 0.50% para tolerar el ruido sin venderse prematuramente. "bounceBuyPct": 0.35.\n` +
-        `     - Monedas Volátiles (SOLUSDT, SUIUSDT, AVAXUSDT, NEARUSDT): "minGainPct" 0.90 a 1.25%, "callbackPct" 0.30 a 0.36%, "bounceBuyPct": 0.28.\n` +
-        `     - Monedas Clásicas (BTCUSDT, ETHUSDT, BNBUSDT): "minGainPct" 0.75 a 0.90%, "callbackPct" 0.20 a 0.25%, "bounceBuyPct": 0.22.\n\n` +
+        `5. ESTUDIO CUANTITATIVO ANTI-ENGAÑO Y CALIBRACIÓN DINÁMICA POR MONEDA ("coinCalibrations"):\n` +
+        `   • Tu deber principal es NO DEJARTE ENGAÑAR por falsos retrocesos tras un mechazo alcista (Pump & Dump / Bull Trap).\n` +
+        `   • Si una moneda tiene "Desv. vs Media24h" > -1.0% (sigue cara respecto a su promedio de 24h), o "Vacío hasta piso" > 1.25% (todavía puede caer -2% o -3% hasta su Piso24h), o "RSI 1H" > 42, o "Detector Trampa: BULL-TRAP", márcala con "trapDetected": true y "strategyMode": "AVOID_BULL_TRAP" para prohibir compras prematuras.\n` +
+        `   • Ajusta dinámicamente los parámetros de entrada y salida de cada moneda según su estudio en vivo:\n` +
+        `     - "maxEntryRsi": RSI 15m máximo permitido para comprar esa moneda (ej. 30 a 32 en BTC/ETH, 33 a 34 en Altcoins/Memes).\n` +
+        `     - "maxEntryFib": Ubicación máxima en el canal 24h para entrar (ej. 0.14 a 0.18, garantizando que esté pegada al soporte).\n` +
+        `     - "targetFloorPrice": Precio exacto donde estimas su piso estructural seguro (cerca de Piso24h).\n` +
+        `     - "bounceBuyPct": Rebote exigido en Trailing Buy desde el suelo antes de disparar (0.28% a 0.45%; súbelo si cae con fuerza para evitar rebotes falsos de gato muerto).\n` +
+        `     - Memecoins (PEPEUSDT, DOGEUSDT): "minGainPct" 1.80 a 2.50%, "callbackPct" 0.42 a 0.50%, "bounceBuyPct": 0.38.\n` +
+        `     - Monedas Volátiles (SOLUSDT, SUIUSDT, AVAXUSDT, NEARUSDT): "minGainPct" 0.95 a 1.30%, "callbackPct" 0.30 a 0.36%, "bounceBuyPct": 0.30.\n` +
+        `     - Monedas Clásicas (BTCUSDT, ETHUSDT, BNBUSDT): "minGainPct" 0.80 a 1.15%, "callbackPct" 0.22 a 0.28%, "bounceBuyPct": 0.25.\n\n` +
         `Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta:\n` +
-        `{"action":"BUY_NOW"|"ARM_TRAILING_BUY"|"LOCK_PROFIT_FLOOR"|"WIDEN_EXPANSION_TP"|"HOLD_AND_WAIT","regimeOverride":"NONE"|"CRASH_HUNTER"|"RALLY_HARVESTER"|"RANGE_SCALPER","targetSymbol":"SOLUSDT","confidence":85,"lockedFloorPct":1.2,"customCallbackPct":0.40,"coinCalibrations":{"PEPEUSDT":{"minGainPct":1.85,"callbackPct":0.45,"bounceBuyPct":0.35,"strategyMode":"RALLY_EXPANSION"},"SOLUSDT":{"minGainPct":0.95,"callbackPct":0.32,"bounceBuyPct":0.28,"strategyMode":"SWING_REBOUND"}},"verdict":"Explicación táctica de 2-3 líneas en HTML simple con <b> y <i> de cómo ves el mercado hoy (${params.dayStr}), si el comportamiento es normal o atípico y tu decisión."}`;
+        `{"action":"BUY_NOW"|"ARM_TRAILING_BUY"|"LOCK_PROFIT_FLOOR"|"WIDEN_EXPANSION_TP"|"HOLD_AND_WAIT","regimeOverride":"NONE"|"CRASH_HUNTER"|"RALLY_HARVESTER"|"RANGE_SCALPER","targetSymbol":"SOLUSDT","confidence":85,"lockedFloorPct":1.2,"customCallbackPct":0.40,"coinCalibrations":{"BTCUSDT":{"minGainPct":1.15,"callbackPct":0.28,"bounceBuyPct":0.28,"maxEntryRsi":32,"maxEntryFib":0.15,"targetFloorPrice":59500,"trapDetected":false,"strategyMode":"SWING_REBOUND"},"PEPEUSDT":{"minGainPct":1.85,"callbackPct":0.45,"bounceBuyPct":0.38,"maxEntryRsi":33,"maxEntryFib":0.16,"targetFloorPrice":0.00000340,"trapDetected":false,"strategyMode":"RALLY_EXPANSION"}},"verdict":"Explicación táctica de 2-3 líneas en HTML simple con <b> y <i> de tu estudio del mercado hoy (${params.dayStr}), qué trampas descartaste y tu ajuste de parámetros."}`;
 
       const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
       for (const model of candidateModels) {
