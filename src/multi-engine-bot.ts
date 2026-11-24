@@ -6779,26 +6779,42 @@ export class TrailingMasterBot {
 
     const isSniper100Queen =
       ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "SUIUSDT", "AVAXUSDT", "NEARUSDT"].includes(symbol);
-    const isStrong100Opportunity =
+
+    // 🌟 OPORTUNIDAD DE ORO (PISO PROFUNDO DE ALTA CONVICCIÓN PARA BALA DE $100 USDT):
+    // Solo se autoriza la bala máxima de $100 cuando el suelo es inequívoco y garantiza un rebote potente:
+    // • Caída profunda >= 4.8% (o >= 4.2% con RSI extremo <= 30 en sobreventa real).
+    // • En esta condición de oro, se dispara la bala de $100 USDT para cobrar ganancias grandes (+$2.5 a +$6.0 USDT).
+    const isGoldenSniperFloor =
       !isMeme &&
       isSniper100Queen &&
-      ((dropPct >= 3.8 && rsi <= 36) ||
-       (dropPct >= 4.5 && rsi <= 38) ||
-       (coinRange24hPct >= 5.0 && dropPct >= 3.5 && rsi <= 37));
+      ((dropPct >= 4.8 && rsi <= 34) ||
+       (dropPct >= 4.2 && rsi <= 30) ||
+       (coinRange24hPct >= 5.5 && dropPct >= 4.5 && rsi <= 32));
 
-    // 🎯 REGLA DE EQUILIBRIO DE CARTERA:
-    // Si el capital total disponible es modesto (< $250 USDT), NO quemar el 62% ($100) en una sola moneda.
-    // Limitar cada compra al 30%-35% del saldo disponible (típico $40-$50 USDT) para garantizar cupo a 3-4 monedas distintas.
-    if (tier === 1 && (strategy === "trailing_rebound" || strategy === "cazador_weekend") && isStrong100Opportunity && spendableUsdt >= 70) {
-      const maxProportionalCap = spendableUsdt >= 280 ? 100.00 : Math.max(35.0, Math.min(52.0, spendableUsdt * 0.35));
-      const sniperShot = Math.floor(maxProportionalCap * 100) / 100;
-      console.log(`🎯 [PRIORIDAD BALA EQUILIBRADA] Desplegando $${sniperShot.toFixed(2)} USDT en ${symbol} (Caída -${dropPct.toFixed(2)}% | Rango ${coinRange24hPct.toFixed(2)}% | RSI ${rsi.toFixed(1)})`);
-      return sniperShot;
+    const isStrongOpportunity =
+      !isMeme &&
+      isSniper100Queen &&
+      ((dropPct >= 3.0 && rsi <= 38) ||
+       (coinRange24hPct >= 4.0 && dropPct >= 2.5 && rsi <= 40));
+
+    if (tier === 1 && (strategy === "trailing_rebound" || strategy === "cazador_weekend") && spendableUsdt >= 70) {
+      if (isGoldenSniperFloor) {
+        // 🎯 BALA DE ORO DE $100 USDT: Suelo profundo confirmado que garantiza rebote explosivo
+        const goldenShot = Math.min(100.00, Math.floor(spendableUsdt * 100) / 100);
+        console.log(`🏆 [BALA DE ORO $100 USDT DISPARADA] ${symbol} en suelo profundo de alta convicción (Caída -${dropPct.toFixed(2)}% | RSI ${rsi.toFixed(1)}). Asignando $${goldenShot.toFixed(2)} USDT.`);
+        return goldenShot;
+      } else if (isStrongOpportunity) {
+        // ⚖️ ENTRADA ESTÁNDAR EQUILIBRADA: $35 a $50 USDT (máx 35% de cartera) para no atrapar el capital si cae más
+        const balancedCap = Math.max(35.0, Math.min(50.0, spendableUsdt * 0.35));
+        const balancedShot = Math.floor(balancedCap * 100) / 100;
+        console.log(`⚖️ [ENTRADA ESTÁNDAR EQUILIBRADA] ${symbol} en soporte intradía (Caída -${dropPct.toFixed(2)}% | RSI ${rsi.toFixed(1)}). Asignando $${balancedShot.toFixed(2)} USDT.`);
+        return balancedShot;
+      }
     }
 
     // 💎 ESCALONES DE BLOQUE CONTUNDENTE (Mínimo $35 - $65 USDT cuando aún no hay $100 completos pero hay caída fuerte):
     const configuredWideGapAmount = Math.max(60, this.controls.wideGapLotSize || 60);
-    if (tier === 1 && (isMaxGapOpportunity || isStrong100Opportunity) && !isMeme) {
+    if (tier === 1 && (isMaxGapOpportunity || isGoldenSniperFloor || isStrongOpportunity) && !isMeme) {
       // Escalón Fuerte (Máxima Brecha / Reina en Piso): usa bloque de $45 a $70 USDT (o hasta $100 si está configurado)
       const targetGapLot = Math.min(Math.max(configuredWideGapAmount, 65), spendableUsdt);
       if (targetGapLot >= 35) {
