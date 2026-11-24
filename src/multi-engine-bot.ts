@@ -1241,6 +1241,8 @@ export class TrailingMasterBot {
           const curPrice = closes15[closes15.length - 1];
           const high24h = Math.max(...highs15);
           const low24h = Math.min(...lows15);
+          const sma24h = closes15.reduce((acc: number, v: number) => acc + v, 0) / closes15.length;
+          const distFromSma24hPct = sma24h > 0 ? ((curPrice - sma24h) / sma24h) * 100 : 0;
           const exitPrice = benchData.benchmarks[sym] || high24h;
           const benchDropPct = exitPrice > 0 ? ((curPrice - exitPrice) / exitPrice) * 100 : 0;
           const drop24hPct = high24h > 0 ? ((high24h - curPrice) / high24h) * 100 : 0;
@@ -1249,19 +1251,25 @@ export class TrailingMasterBot {
           const rsi15m = this.calculateRSI(closes15, 14);
 
           const last15 = k15[k15.length - 1];
+          const prev15 = k15[k15.length - 2] || last15;
           const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
+          const prevLow15 = parseFloat(prev15[3]);
           const range15 = Math.max(1e-9, h15 - l15);
           const lowerWick15mPct = ((Math.min(o15, c15) - l15) / range15) * 100;
-          const isGreenOrWick15m = c15 >= o15 || lowerWick15mPct >= 28;
+          // Freno real de sangría (Higher Low en 15m o mecha de absorción climática >= 38%)
+          const isStoppingBleed15m = (l15 >= prevLow15 * 0.999 && c15 >= o15) || lowerWick15mPct >= 38;
+          const isGreenOrWick15m = isStoppingBleed15m;
 
           let cvd5mPct = 50;
           let isGreen5m = false;
           if (k5 && k5.length >= 2) {
             const last5 = k5[k5.length - 1];
+            const prev5 = k5[k5.length - 2];
             const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]);
+            const prevLow5 = parseFloat(prev5[3]);
             const range5 = Math.max(1e-9, h5 - l5);
             const wick5 = (Math.min(o5, c5) - l5) / range5;
-            isGreen5m = c5 >= o5 || wick5 >= 0.30;
+            isGreen5m = (c5 > o5 && l5 >= prevLow5 * 0.999) || (c5 >= o5 && wick5 >= 0.35);
             const totQ = parseFloat(last5[7] || "0");
             const buyQ = parseFloat(last5[10] || "0");
             cvd5mPct = totQ > 0 ? (buyQ / totQ) * 100 : 50;
@@ -1272,38 +1280,40 @@ export class TrailingMasterBot {
           const isSellingExpansionDay = dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri";
           const isMonday = dayStr === "Mon";
           const targetBenchDrop = isMeme ? -6.0 : (isBtc ? -3.8 : -4.8);
-          // Prohibido "comprar por comprar", pero OBLIGATORIO acumular los LUNES y MIÉRCOLES para tener qué vender MARTES y JUEVES:
-          // • Altcoins Core (SOL, ETH, SUI): basta retroceso a soporte intradía (>= 1.6%) en canal <= 0.38 y RSI <= 46.
-          // • Bitcoin (BTC): Por su peso y baja volatilidad, PROHIBIDO entrar en micro-respiros. Exige caída estructural >= 3.2%, fondo <= 0.22 y RSI <= 36.
-          // • Memecoins: caída >= 2.2% en canal <= 0.38 y RSI <= 45.
-          // • Martes, Jueves y Viernes (Días de Venta en Alza / Cosecha): Compras bloqueadas salvo capitulación extrema >= 5.2% con RSI <= 30 y fondo <= 0.15.
+          // 🛡️ ESCUDO ANTI-CAÍDA DE -3% POST-COMPRA (PROHIBIDO COMPRAR FALSOS TECHOS / PUMP & DUMP):
+          // 1. El precio DEBE estar por debajo del promedio de 24h (distFromSma24hPct <= -1.2%), jamás arriba de la media tras un mechazo falso matutino.
+          // 2. Ubicación en el fondo real del canal de 24h (fibPosition24h <= 0.18 en Core / <= 0.15 en BTC) para que no quede un -3% de vacío hacia el piso.
+          // 3. Sobreventa real en 15m (RSI <= 34 en Altcoins / <= 32 en BTC), nunca en RSI 42-46 a mitad de caída.
           const reqWeekdayDrop = isSellingExpansionDay 
             ? (isMeme ? 6.5 : (isBtc ? 4.5 : 5.2)) 
             : (isMonday 
-                ? (isMeme ? 2.2 : (isBtc ? 3.2 : 1.6)) 
-                : (isMeme ? 3.5 : (isBtc ? 3.2 : 2.5)));
+                ? (isMeme ? 3.8 : (isBtc ? 3.5 : 2.8)) 
+                : (isMeme ? 4.2 : (isBtc ? 3.5 : 3.2)));
           const reqWeekdayRsi = isSellingExpansionDay 
-            ? 30 
-            : (isMonday ? (isMeme ? 45 : (isBtc ? 36 : 46)) : 38);
+            ? 29 
+            : (isMonday ? (isMeme ? 33 : (isBtc ? 32 : 34)) : 33);
           const reqWeekdayFib = isSellingExpansionDay 
-            ? 0.15 
-            : (isMonday ? (isBtc ? 0.22 : 0.38) : 0.28);
-          const isStrategicWeekdayFloor = !isWeekend && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
+            ? 0.14 
+            : (isMonday ? (isBtc ? 0.16 : 0.18) : 0.18);
+          const isBelow24hMean = distFromSma24hPct <= (isBtc ? -1.4 : -1.2);
+          const isStrategicWeekdayFloor = !isWeekend && isBelow24hMean && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
           
-          // 🚀 ACUMULACIÓN DOMINGO PRE-RALLY (17:30 a 23:59 COT):
-          // En domingo noche, la apertura de Futuros CME y Asia suele anticipar el alza de Lunes/Martes.
-          // Si el fin de semana fue alcista o lateral y no sangró -4.8%, no nos quedamos afuera: basta un retroceso técnico a soporte (>= 1.6% con RSI <= 48 y CVD >= 51%).
+          // 🚀 ACUMULACIÓN DOMINGO PRE-RALLY (17:30 a 23:59 COT) CON ESCUDO DE PISO REAL:
           const isSundayPreRally = dayStr === "Sun" && timeDec >= 17.5 && timeDec <= 23.95;
-          const isSundayPreRallyFloor = isSundayPreRally && (drop24hPct >= 1.6 || benchDropPct <= -1.8) && fibPosition24h <= 0.42 && rsi15m <= 48 && cvd5mPct >= 51;
+          const isSundayPreRallyFloor = isSundayPreRally && isBelow24hMean && (drop24hPct >= 2.8 || benchDropPct <= -2.8) && fibPosition24h <= 0.20 && rsi15m <= 35 && cvd5mPct >= 53;
 
-          const isStrategicWeekendFloor = isWeekend && (benchDropPct <= targetBenchDrop || (drop24hPct >= (isMeme ? 5.8 : 4.6) && fibPosition24h <= 0.22) || isSundayPreRallyFloor) && (isSundayPreRallyFloor ? rsi15m <= 48 : rsi15m <= (isMeme ? 35 : 38));
+          const isStrategicWeekendFloor = isWeekend && isBelow24hMean && (benchDropPct <= targetBenchDrop || (drop24hPct >= (isMeme ? 5.8 : 4.6) && fibPosition24h <= 0.18) || isSundayPreRallyFloor) && (isSundayPreRallyFloor ? rsi15m <= 35 : rsi15m <= (isMeme ? 32 : 34));
           const isDeepDiscount = isStrategicWeekendFloor || isStrategicWeekdayFloor;
           const qualifiesToArmWatch = isDeepDiscount;
+          // PROHIBIDO comprar directo a mercado sin pasar por Trailing Buy (buyWatches), salvo capitulación extrema en el fondo absoluto (fib <= 0.12, RSI <= 28) con freno confirmado:
           const qualifiesToBuy =
             isDeepDiscount &&
-            isGreenOrWick15m &&
+            fibPosition24h <= 0.12 &&
+            rsi15m <= 28 &&
+            distFromSma24hPct <= -2.5 &&
+            isStoppingBleed15m &&
             isGreen5m &&
-            cvd5mPct >= 53 &&
+            cvd5mPct >= 55 &&
             (!pauseWin.paused || benchDropPct <= -6.2 || drop24hPct >= 5.8);
 
           // Detectar cruce de hitos de caída (-3%, -5%, -8%, -10%) para alerta inmediata en Telegram
@@ -1439,30 +1449,30 @@ export class TrailingMasterBot {
         }
       }
 
-      // Evaluar candidato sugerido por el Trader IA (adaptándose si hay comportamiento atípico CRASH_HUNTER o Acumulación Lunes/Miércoles)
+      // Evaluar candidato sugerido por el Trader IA (con Escudo Anti-Caída de -3% Post-Compra)
       const isMonday = dayStr === "Mon";
       const isSellingDayNow = (dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri") && this.activeAtypicalOverride !== "CRASH_HUNTER";
       const minAiDropReq = isSellingDayNow 
         ? 5.0 
-        : (this.activeAtypicalOverride === "CRASH_HUNTER" ? 3.4 : (isMonday ? 1.6 : 2.5));
+        : (this.activeAtypicalOverride === "CRASH_HUNTER" ? 3.4 : (isMonday ? 2.8 : 3.2));
       const maxAiRsiReq = isSellingDayNow 
-        ? 31 
-        : (isMonday ? 46 : 38);
+        ? 29 
+        : (isMonday ? 34 : 33);
       const maxAiFibReq = isSellingDayNow 
-        ? 0.16 
-        : (isMonday ? 0.38 : 0.28);
+        ? 0.14 
+        : 0.18;
       if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 75) {
         const aiCand = coinEvaluations.find((c) => c.symbol === aiDec.targetSymbol || c.symbol.replace("USDT", "") === aiDec.targetSymbol);
         if (aiCand) {
           const isCandMeme = this.memeWatchlist.includes(aiCand.symbol) || aiCand.symbol.includes("PEPE");
           const isCandBtc = aiCand.symbol === "BTCUSDT";
-          const effMinDrop = isMonday ? (isCandMeme ? 2.2 : (isCandBtc ? 3.2 : 1.6)) : minAiDropReq;
-          const effMaxRsi = isMonday ? (isCandMeme ? 45 : (isCandBtc ? 36 : 46)) : maxAiRsiReq;
-          const effMaxFib = isMonday ? (isCandBtc ? 0.22 : maxAiFibReq) : maxAiFibReq;
+          const effMinDrop = isMonday ? (isCandMeme ? 3.8 : (isCandBtc ? 3.5 : 2.8)) : minAiDropReq;
+          const effMaxRsi = isMonday ? (isCandMeme ? 33 : (isCandBtc ? 32 : 34)) : maxAiRsiReq;
+          const effMaxFib = isCandBtc ? 0.16 : maxAiFibReq;
           if (aiCand.fibPosition24h <= effMaxFib && aiCand.rsi15m <= effMaxRsi && (aiCand.drop24hPct >= effMinDrop || aiCand.benchDropPct <= -4.5)) {
-            if (aiDec.action === "ARM_TRAILING_BUY") {
-              aiCand.qualifiesToArmWatch = true;
-            } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 50 && (!pauseWin.paused || aiCand.drop24hPct >= 5.0 || this.activeAtypicalOverride === "CRASH_HUNTER" || isMonday)) {
+            // Siempre armar Trailing Buy para perseguir el piso hasta el último centavo; solo disparar BUY_NOW directo en suelo extremo (fib <= 0.12, RSI <= 28)
+            aiCand.qualifiesToArmWatch = true;
+            if (aiDec.action === "BUY_NOW" && aiCand.fibPosition24h <= 0.12 && aiCand.rsi15m <= 28 && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 55 && !pauseWin.paused) {
               aiCand.qualifiesToBuy = true;
             }
           }

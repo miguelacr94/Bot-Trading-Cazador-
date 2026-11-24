@@ -278,10 +278,10 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
         `   • MIÉRCOLES (ACUMULACIÓN MACRO PARA EL JUEVES): Caída >= 2.5% a 3.5% en soporte para vender en el rally del Jueves (+5.51% hist.).\n` +
         `   • FIN DE SEMANA: Cacería de capitulación vs cierre de viernes (caída >= -4.8% a -10%).\n` +
         `   • DÍAS DE VENTA Y COSECHA EN ALZA: Martes (+5.87% hist.), Jueves (+5.51% hist.) y Viernes Mañana son días para VENDER EN EL PUNTO MÁS ALTO lo acumulado en la caída previa. En Martes, Jueves y Viernes NO se compra salvo un crash extremo atípico (caída >= -5.2%, Ubicación Canal <= 15% y RSI <= 30).\n` +
-        `2. CONDICIONES PARA AUTORIZAR "ARM_TRAILING_BUY" O "BUY_NOW":\n` +
-        `   • Si es LUNES: Retroceso a soporte intradía (caída >= 1.6% core / >= 2.2% meme desde techo 24h, canal <= 38%, RSI <= 46 con absorción / CVD >= 50%). Da luz verde para acumular inventario de cara al Martes.\n` +
-        `   • Si es Miércoles: Caída >= 2.5% core / >= 3.5% meme con RSI <= 38 y canal <= 28%.\n` +
-        `   • Si es Fin de Semana: Caída profunda >= -4.8% vs viernes con RSI <= 38 y canal <= 22%.\n` +
+        `2. CONDICIONES ESTRICTAS ANTI-CAÍDA POST-COMPRA (CERO TOLERANCIA A CAÍDAS DE -3% TRAS COMPRAR):\n` +
+        `   • PROHIBIDO comprar a mitad de canal (Canal > 18%) o con RSI tibio (RSI > 34), porque si la moneda baja al piso del canal (0%) sufriríamos un -3% de caída flotante.\n` +
+        `   • Solo autoriza "ARM_TRAILING_BUY" cuando la moneda esté en el FONDO REAL DEL CANAL (Ubicación Canal 24h <= 18%, RSI 15m <= 34, caída >= 2.8% en altcoins / >= 3.5% en BTC / >= 3.8% en memes).\n` +
+        `   • Prioriza siempre "ARM_TRAILING_BUY" sobre "BUY_NOW" para que el motor Trailing Buy persiga el precio hacia abajo hasta que deje de caer y solo compre en el giro confirmado (+0.25% a +0.35% desde el mínimo).\n` +
         `3. Si hay una posición abierta en ganancia (>= +0.85%) en Martes, Jueves o Domingo, usa "WIDEN_EXPANSION_TP" (customCallbackPct: 0.42) mientras CVD >= 56% para exprimir toda la subida, o "LOCK_PROFIT_FLOOR" (lockedFloorPct) cuando detectes agotamiento en la cima.\n` +
         `4. DETECCIÓN DE COMPORTAMIENTOS ATÍPICOS Y CAMBIO DE ESTRATEGIA ("regimeOverride"):\n` +
         `   • Si es Martes o Jueves (día de venta) pero el mercado sufre un desplome atípico fuerte (caídas >= 4.5% con sobreventa), activa "regimeOverride": "CRASH_HUNTER" para cambiar de modo venta a modo cacería de suelo.\n` +
