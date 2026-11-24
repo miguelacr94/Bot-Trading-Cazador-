@@ -2905,7 +2905,8 @@ export class TrailingMasterBot {
         const calRegimeNow = this.get5YearCalendarRegime();
         const hoursOpen = pos.buyTime ? (Date.now() - pos.buyTime) / 3600000 : 0;
         const isExpansionDay = calRegimeNow.regimeKey === "MARTES_JUEVES_EXPANSION" || calRegimeNow.tpCallbackMultiplier >= 1.12 || this.activeAtypicalOverride === "RALLY_HARVESTER";
-        const isStagnantPosition = !isExpansionDay && hoursOpen >= 18.0 && gainPct < 0.85;
+        // Si una posición lleva >= 18 horas atrapada, activar Modo Rescate de Liquidez en Verde (incluso en días de expansión) para liberar el capital apenas toque +0.58% bruto
+        const isStagnantPosition = hoursOpen >= 18.0 && gainPct < 0.85;
         const isBearishMacroRelief = macro.btcStressIndex >= 0.55 && !isExpansionDay;
         const isReliefHarvestMode = isBearishMacroRelief || isStagnantPosition;
 
@@ -2953,9 +2954,11 @@ export class TrailingMasterBot {
           this.saveTrailingPositions();
         }
 
-        // Activación de Trailing: mínimo +0.65% bruto (nunca +0.42% que estrangula el recorrido y vende por centavos)
+        // Activación de Trailing: mínimo +0.65% bruto (+0.58% en rescate de posición estancada >= 18h para destrabar capital en verde)
         let activationTarget = pos.customMinGainPct || 0.68;
-        if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
+        if (isStagnantPosition) {
+          activationTarget = 0.58;
+        } else if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
           activationTarget = 0.58;
         } else if (isLot3 && (!pos.customMinGainPct || pos.customMinGainPct <= 0.8)) {
           activationTarget = 0.85;
@@ -3058,7 +3061,11 @@ export class TrailingMasterBot {
           const isMondayHold = currentDayStr === "Mon";
           const isMemeCoin = MEME_WATCHLIST.includes(actualSymbol);
           const aiCal = this.aiCoinCalibrations.get(symbol) || this.aiCoinCalibrations.get(actualSymbol);
-          if (aiCal && !pos.customMinGainPct) {
+          if (isStagnantPosition && gainPct >= 0.58) {
+            // 🛟 MODO RESCATE DE LIQUIDEZ EN VERDE (>= 18h atrapada): Salir apenas toque +0.58% bruto (~+0.38% neto real) con callback de 0.14% para recuperar el USDT rápido
+            callback = 0.14;
+            minGain = 0.58;
+          } else if (aiCal && !pos.customMinGainPct) {
             callback = aiCal.callbackPct;
             minGain = aiCal.minGainPct;
           } else if (!pos.customMinGainPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
@@ -6929,19 +6936,32 @@ export class TrailingMasterBot {
       }
     }
 
-    // 💎 ESCALONES DE BLOQUE CONTUNDENTE (Mínimo $35 - $65 USDT cuando aún no hay $100 completos pero hay caída fuerte):
-    const configuredWideGapAmount = Math.max(60, this.controls.wideGapLotSize || 60);
-    if (tier === 1 && (isMaxGapOpportunity || isGoldenSniperFloor || isStrongOpportunity) && !isMeme) {
-      // Escalón Fuerte (Máxima Brecha / Reina en Piso): usa bloque de $45 a $70 USDT (o hasta $100 si está configurado)
-      const targetGapLot = Math.min(Math.max(configuredWideGapAmount, 65), spendableUsdt);
+    // 🛡️ ESCUDO DE RESERVA INVIOLABLE ANTI-ATRAPAMIENTO (SMART DCA AMMO):
+    // Si ya tenemos posiciones abiertas (activeInvested > 0) y es una compra normal de Lote 1 (tier === 1, no Bala de Oro en capitulación extrema),
+    // es OBLIGATORIO conservar al menos el 28% del portafolio (~$45 USDT) en efectivo libre para poder promediar en el fondo (Smart DCA Lote 2) si el mercado cae más.
+    // Prohibido vaciar la billetera a $0.27 USDT en entradas de Lote 1 normales.
+    if (tier === 1 && !isGoldenSniperFloor && activeInvested > 0) {
+      const actualTotalEquity = activeInvested + spendableUsdt;
+      const requiredDcaReserve = Math.max(38.0, actualTotalEquity * 0.28);
+      const maxAllowedForNewLot1 = Math.floor(Math.max(0, spendableUsdt - requiredDcaReserve) * 100) / 100;
+      if (maxAllowedForNewLot1 < this.minUsdtToTrade) {
+        console.log(`🛡️ [RESERVA ANTI-ATRAPAMIENTO PROTEGIDA] Reteniendo $${spendableUsdt.toFixed(2)} USDT en caja como munición Smart DCA / Capitulación Extrema (Invertido activo: $${activeInvested.toFixed(2)} USDT).`);
+        return 0;
+      }
+      spendableUsdt = maxAllowedForNewLot1;
+    }
+
+    // 💎 ESCALONES DE BLOQUE EQUILIBRADO:
+    if (tier === 1 && isGoldenSniperFloor && !isMeme) {
+      const targetGapLot = Math.min(100.0, spendableUsdt);
       if (targetGapLot >= 35) {
         lot = targetGapLot;
       } else {
-        return 0; // Retener y acumular hasta tener al menos $35-$100 USDT
+        return 0;
       }
-    } else if (tier === 1 && isHighVolOpportunity && !isMeme && spendableUsdt >= 35) {
-      // Escalón Alta Volatilidad: $35 - $50 USDT
-      lot = Math.min(spendableUsdt, Math.max(lot, rsi <= 34 || dropPct >= 3.2 ? 45 : 35));
+    } else if (tier === 1 && (isMaxGapOpportunity || isStrongOpportunity || isHighVolOpportunity) && !isMeme && spendableUsdt >= 35) {
+      // Escalón Estándar / Alta Volatilidad: máx 35% del saldo o $35-$50 USDT
+      lot = Math.min(spendableUsdt, Math.max(35, Math.min(50, Math.floor(spendableUsdt * 0.45 * 100) / 100)));
     } else if (tier === 1 && isMediumImpulse && !isMeme && spendableUsdt >= 35) {
       // Escalón Impulso Medio: mínimo $35 USDT
       lot = Math.min(spendableUsdt, Math.max(lot, 35));
