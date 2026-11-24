@@ -1279,19 +1279,29 @@ export class TrailingMasterBot {
           const p75_24h = sortedCloses24[Math.floor(sortedCloses24.length * 0.75)] || high24h;
           const closes1h = k15All.map((r: any) => parseFloat(r[4])).filter((_: number, idx: number, arr: number[]) => (arr.length - 1 - idx) % 4 === 0);
           const rsi1h = closes1h.length >= 15 ? this.calculateRSI(closes1h, 14) : this.calculateRSI(closes15, 14);
-          const isBullTrapFakeout =
+          const isBullTrapFakeoutBase =
             (high24h > p75_24h * 1.018 && curPrice > p25_24h * 1.006) ||
             distFromSma24hPct > -1.0 ||
             downsideToFloorPct > 1.35 ||
             fibPosition4d > 0.30 ||
             downsideTo4dFloorPct > 2.1 ||
             rsi1h > 43;
+          let isBullTrapFakeout = isBullTrapFakeoutBase;
           const exitPrice = benchData.benchmarks[sym] || high24h;
           const benchDropPct = exitPrice > 0 ? ((curPrice - exitPrice) / exitPrice) * 100 : 0;
           const drop24hPct = high24h > 0 ? ((high24h - curPrice) / high24h) * 100 : 0;
           const fibPosition24h = (high24h - low24h) > 0 ? (curPrice - low24h) / (high24h - low24h) : 0.5;
           const coinRange24hPct = low24h > 0 ? ((high24h - low24h) / low24h) * 100 : 2.5;
           const rsi15m = this.calculateRSI(closes15, 14);
+          // 🧲 FACTOR INSTITUCIONAL FALTANTE: IMÁN DEL GAP CME DEL VIERNES E INVERSIÓN DE POLARIDAD SEMANAL:
+          // Si el fin de semana NO cayó sino que SUBIÓ por encima del cierre del viernes (benchDropPct > +1.5%),
+          // se genera un Gap CME Alcista abierto ABAJO (en exitPrice) y el ciclo de Lunes/Martes SE INVIERTE:
+          // Wall Street vende el lunes/martes para bajar a cerrar el Gap del viernes (ej. bajar de $64k/$62k a $59k).
+          // Prohibido comprar arriba del cierre del viernes cuando el Gap CME está abajo sin cerrar.
+          const isCmeGapBelowTrap = benchDropPct > 1.5 && fibPosition4d > 0.22 && rsi1h > 33;
+          if (isCmeGapBelowTrap) {
+            isBullTrapFakeout = true;
+          }
 
           const last15 = k15[k15.length - 1];
           const prev15 = k15[k15.length - 2] || last15;
@@ -2954,16 +2964,14 @@ export class TrailingMasterBot {
           this.saveTrailingPositions();
         }
 
-        // Activación de Trailing: mínimo +0.65% bruto (+0.58% en rescate de posición estancada >= 18h para destrabar capital en verde)
-        let activationTarget = pos.customMinGainPct || 0.68;
-        if (isStagnantPosition) {
-          activationTarget = 0.58;
-        } else if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
+        // Activación de Trailing: mínimo +0.75% bruto para asegurar ganancia real neta y activar Candado Cero Devolución, dejando correr con Trailing TP si sube más
+        let activationTarget = pos.customMinGainPct || 0.75;
+        if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
           activationTarget = 0.58;
         } else if (isLot3 && (!pos.customMinGainPct || pos.customMinGainPct <= 0.8)) {
           activationTarget = 0.85;
         } else if (!pos.customMinGainPct) {
-          activationTarget = 0.68;
+          activationTarget = 0.75;
         }
 
         if (gainPct >= activationTarget && !pos.activated) {
@@ -3061,10 +3069,10 @@ export class TrailingMasterBot {
           const isMondayHold = currentDayStr === "Mon";
           const isMemeCoin = MEME_WATCHLIST.includes(actualSymbol);
           const aiCal = this.aiCoinCalibrations.get(symbol) || this.aiCoinCalibrations.get(actualSymbol);
-          if (isStagnantPosition && gainPct >= 0.58) {
-            // 🛟 MODO RESCATE DE LIQUIDEZ EN VERDE (>= 18h atrapada): Salir apenas toque +0.58% bruto (~+0.38% neto real) con callback de 0.14% para recuperar el USDT rápido
-            callback = 0.14;
-            minGain = 0.58;
+          if (isStagnantPosition && gainPct >= 0.78) {
+            // 🛟 POSICIÓN >18H EN GANANCIA REAL: Al superar +0.78% bruto (~+0.58% neto real), usa callback de 0.20% para asegurar ganancia sólida y seguir subiendo si hay impulso
+            callback = 0.20;
+            minGain = 0.78;
           } else if (aiCal && !pos.customMinGainPct) {
             callback = aiCal.callbackPct;
             minGain = aiCal.minGainPct;

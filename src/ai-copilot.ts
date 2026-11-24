@@ -286,11 +286,11 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
         `Posiciones abiertas:\n${openPosSummary}\n\n` +
         `Telemetría en vivo de la Watchlist (Precios vs Cierre Viernes ${params.benchmarkDateStr} y Canal 24h):\n${coinsSummary}\n\n` +
         `Reglas de decisión como Trader Institucional (PROHIBIDO COMPRAR POR COMPRAR):\n` +
-        `1. CICLO SEMANAL DE 5.5 AÑOS:\n` +
-        `   • LUNES (DÍA CLAVE DE ACUMULACIÓN PARA EL MARTES): Los martes son estadísticamente el día de mayor expansión y alza (+5.87% histórico). Para cosechar y vender en verde el Martes, ES OBLIGATORIO acumular inventario hoy Lunes durante retrocesos técnicos a soporte intradía (caída >= 1.6% en core / >= 2.2% en memes, canal 24h <= 38%, RSI <= 46). Si no compramos el Lunes en soporte, el Martes NO tendremos nada que vender.\n` +
-        `   • MIÉRCOLES (ACUMULACIÓN MACRO PARA EL JUEVES): Caída >= 2.5% a 3.5% en soporte para vender en el rally del Jueves (+5.51% hist.).\n` +
-        `   • FIN DE SEMANA: Cacería de capitulación vs cierre de viernes (caída >= -4.8% a -10%).\n` +
-        `   • DÍAS DE VENTA Y COSECHA EN ALZA: Martes (+5.87% hist.), Jueves (+5.51% hist.) y Viernes Mañana son días para VENDER EN EL PUNTO MÁS ALTO lo acumulado en la caída previa. En Martes, Jueves y Viernes NO se compra salvo un crash extremo atípico (caída >= -5.2%, Ubicación Canal <= 15% y RSI <= 30).\n` +
+        `1. LEY DE POLARIDAD SEMANAL E IMÁN DEL GAP CME (POR QUÉ LOS DÍAS DE LA SEMANA NO SON FIJOS):\n` +
+        `   • ¡NUNCA apliques un día de la semana a ciegas sin mirar qué pasó el fin de semana vs el Cierre del Viernes (Gap CME)!\n` +
+        `   • CASO NORMAL (Fin de Semana Bajista, precio <= -2.5% vs Viernes): El Gap CME quedó ARRIBA. Entonces Lunes es piso de acumulación y Martes sube fuerte (+5.87%) a cerrar el Gap arriba.\n` +
+        `   • CASO INVERTIDO (Fin de Semana Alcista, precio > +1.5% vs Viernes): Si Sábado y Domingo la moneda SUBIÓ en vez de caer, el Gap CME del viernes quedó abierto ABAJO. En ese escenario, Lunes y Martes SE INVIERTEN: Wall Street vende para bajar a cerrar el Gap del viernes y regresar al PisoRecurrente4D. ¡PROHIBIDO comprar arriba del cierre del viernes o arriba del PisoRecurrente4D cuando el fin de semana fue alcista!\n` +
+        `   • DÍAS DE COSECHA: Cuando tenemos posiciones abiertas en BTC/ETH, la prioridad es venderlas en GANANCIA REAL con Trailing Take Profit cuando el rebote post-cierre de Gap CME las lleve por encima del precio de compra.\n` +
         `2. CONDICIONES ESTRICTAS ANTI-CAÍDA POST-COMPRA (CERO TOLERANCIA A CAÍDAS DE -3% TRAS COMPRAR):\n` +
         `   • PROHIBIDO comprar a mitad de canal (Canal > 18%) o con RSI tibio (RSI > 34), porque si la moneda baja al piso del canal (0%) sufriríamos un -3% de caída flotante.\n` +
         `   • Solo autoriza "ARM_TRAILING_BUY" cuando la moneda esté en el FONDO REAL DEL CANAL (Ubicación Canal 24h <= 18%, RSI 15m <= 34, caída >= 2.8% en altcoins / >= 3.5% en BTC / >= 3.8% en memes).\n` +
