@@ -1268,22 +1268,26 @@ export class TrailingMasterBot {
           }
 
           const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE");
+          const isBtc = sym === "BTCUSDT";
           const isSellingExpansionDay = dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri";
           const isMonday = dayStr === "Mon";
-          const targetBenchDrop = isMeme ? -6.0 : -4.8;
+          const targetBenchDrop = isMeme ? -6.0 : (isBtc ? -3.8 : -4.8);
           // Prohibido "comprar por comprar", pero OBLIGATORIO acumular los LUNES y MIÉRCOLES para tener qué vender MARTES y JUEVES:
-          // • Lunes (Acumulación Semanal para Vender Martes +5.87%): basta retroceso a soporte intradía (>= 1.6% core / >= 2.2% meme) en canal <= 0.38 y RSI <= 46.
-          // • Miércoles (Acumulación Sacudón Macro para Vender Jueves +5.51%): caída >= 2.5% core / >= 3.5% meme.
+          // • Altcoins Core (SOL, ETH, SUI): basta retroceso a soporte intradía (>= 1.6%) en canal <= 0.38 y RSI <= 46.
+          // • Bitcoin (BTC): Por su peso y baja volatilidad, PROHIBIDO entrar en micro-respiros. Exige caída estructural >= 3.2%, fondo <= 0.22 y RSI <= 36.
+          // • Memecoins: caída >= 2.2% en canal <= 0.38 y RSI <= 45.
           // • Martes, Jueves y Viernes (Días de Venta en Alza / Cosecha): Compras bloqueadas salvo capitulación extrema >= 5.2% con RSI <= 30 y fondo <= 0.15.
           const reqWeekdayDrop = isSellingExpansionDay 
-            ? (isMeme ? 6.5 : 5.2) 
-            : (isMonday ? (isMeme ? 2.2 : 1.6) : (isMeme ? 3.5 : 2.5));
+            ? (isMeme ? 6.5 : (isBtc ? 4.5 : 5.2)) 
+            : (isMonday 
+                ? (isMeme ? 2.2 : (isBtc ? 3.2 : 1.6)) 
+                : (isMeme ? 3.5 : (isBtc ? 3.2 : 2.5)));
           const reqWeekdayRsi = isSellingExpansionDay 
             ? 30 
-            : (isMonday ? (isMeme ? 45 : 46) : 38);
+            : (isMonday ? (isMeme ? 45 : (isBtc ? 36 : 46)) : 38);
           const reqWeekdayFib = isSellingExpansionDay 
             ? 0.15 
-            : (isMonday ? 0.38 : 0.28);
+            : (isMonday ? (isBtc ? 0.22 : 0.38) : 0.28);
           const isStrategicWeekdayFloor = !isWeekend && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
           
           // 🚀 ACUMULACIÓN DOMINGO PRE-RALLY (17:30 a 23:59 COT):
@@ -1451,9 +1455,11 @@ export class TrailingMasterBot {
         const aiCand = coinEvaluations.find((c) => c.symbol === aiDec.targetSymbol || c.symbol.replace("USDT", "") === aiDec.targetSymbol);
         if (aiCand) {
           const isCandMeme = this.memeWatchlist.includes(aiCand.symbol) || aiCand.symbol.includes("PEPE");
-          const effMinDrop = isMonday ? (isCandMeme ? 2.2 : 1.6) : minAiDropReq;
-          const effMaxRsi = isMonday ? (isCandMeme ? 45 : 46) : maxAiRsiReq;
-          if (aiCand.fibPosition24h <= maxAiFibReq && aiCand.rsi15m <= effMaxRsi && (aiCand.drop24hPct >= effMinDrop || aiCand.benchDropPct <= -4.5)) {
+          const isCandBtc = aiCand.symbol === "BTCUSDT";
+          const effMinDrop = isMonday ? (isCandMeme ? 2.2 : (isCandBtc ? 3.2 : 1.6)) : minAiDropReq;
+          const effMaxRsi = isMonday ? (isCandMeme ? 45 : (isCandBtc ? 36 : 46)) : maxAiRsiReq;
+          const effMaxFib = isMonday ? (isCandBtc ? 0.22 : maxAiFibReq) : maxAiFibReq;
+          if (aiCand.fibPosition24h <= effMaxFib && aiCand.rsi15m <= effMaxRsi && (aiCand.drop24hPct >= effMinDrop || aiCand.benchDropPct <= -4.5)) {
             if (aiDec.action === "ARM_TRAILING_BUY") {
               aiCand.qualifiesToArmWatch = true;
             } else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 50 && (!pauseWin.paused || aiCand.drop24hPct >= 5.0 || this.activeAtypicalOverride === "CRASH_HUNTER" || isMonday)) {
