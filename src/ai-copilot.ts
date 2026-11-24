@@ -215,6 +215,9 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
       exitPrice: number;
       curPrice: number;
       low24h?: number;
+      structuralFloor4d?: number;
+      fibPosition4d?: number;
+      downsideTo4dFloorPct?: number;
       sma24h?: number;
       distFromSma24hPct?: number;
       downsideToFloorPct?: number;
@@ -266,7 +269,7 @@ ${context.radar.map(r => `• 📡 ${r.symbol}: $${r.curPrice} (RSI: ${r.rsi.toF
       const coinsSummary = params.coins
         .map(
           (c) =>
-            `- ${c.symbol}: Actual $${c.curPrice} | Piso24h $${c.low24h ?? c.curPrice} (Vacío hasta piso: -${(c.downsideToFloorPct ?? 0).toFixed(2)}%) | Desv. vs Media24h: ${(c.distFromSma24hPct ?? 0) >= 0 ? "+" : ""}${(c.distFromSma24hPct ?? 0).toFixed(2)}% | ${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}% vs Vie | -${c.drop24hPct.toFixed(2)}% vs Techo24h | Canal24h: ${((c.fibPosition24h ?? 0.5) * 100).toFixed(0)}% | RSI 15m: ${c.rsi15m.toFixed(1)} | RSI 1H: ${(c.rsi1h ?? c.rsi15m).toFixed(1)} | Mecha15m: ${c.lowerWick15mPct.toFixed(0)}% | CVD 5m: ${c.cvd5mPct.toFixed(0)}% | Detector Trampa: ${c.isBullTrapFakeout ? "⚠️ BULL-TRAP / MECHAZO FALSO" : "OK"}`
+            `- ${c.symbol}: Actual $${c.curPrice} | PisoRecurrente4D $${(c.structuralFloor4d ?? c.low24h ?? c.curPrice).toFixed(4)} (Ubicación Canal 4D: ${((c.fibPosition4d ?? 0.5) * 100).toFixed(0)}% | Vacío a Piso4D: -${(c.downsideTo4dFloorPct ?? 0).toFixed(2)}%) | Piso24h $${c.low24h ?? c.curPrice} (Vacío a Piso24h: -${(c.downsideToFloorPct ?? 0).toFixed(2)}%) | Desv. vs Media24h: ${(c.distFromSma24hPct ?? 0) >= 0 ? "+" : ""}${(c.distFromSma24hPct ?? 0).toFixed(2)}% | ${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}% vs Vie | Canal24h: ${((c.fibPosition24h ?? 0.5) * 100).toFixed(0)}% | RSI 15m: ${c.rsi15m.toFixed(1)} | RSI 1H: ${(c.rsi1h ?? c.rsi15m).toFixed(1)} | CVD 5m: ${c.cvd5mPct.toFixed(0)}% | Trampa: ${c.isBullTrapFakeout ? "⚠️ BULL-TRAP / ARRIBA DEL PISO 4D" : "OK"}`
         )
         .join("\n");
 

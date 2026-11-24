@@ -1218,6 +1218,9 @@ export class TrailingMasterBot {
         exitPrice: number;
         curPrice: number;
         low24h: number;
+        structuralFloor4d: number;
+        fibPosition4d: number;
+        downsideTo4dFloorPct: number;
         sma24h: number;
         distFromSma24hPct: number;
         downsideToFloorPct: number;
@@ -1243,12 +1246,21 @@ export class TrailingMasterBot {
       for (const sym of symbolsToCheck) {
         try {
           const [k15Res, k5Res] = await Promise.all([
-            this.client.klines(sym, "15m", { limit: 96 }),
+            this.client.klines(sym, "15m", { limit: 384 }), // 4 días completos (96 horas) para Memoria Estructural Multidía
             this.client.klines(sym, "5m", { limit: 6 })
           ]);
-          const k15 = k15Res.data;
+          const k15All = k15Res.data;
           const k5 = k5Res.data;
-          if (!k15 || k15.length < 15) continue;
+          if (!k15All || k15All.length < 15) continue;
+          const k15 = k15All.slice(-96); // Últimas 24 horas
+
+          // Memoria Estructural de 4 Días (evita amnesia de 24h cuando la moneda lleva días bajando a un piso como $59k):
+          const highs4d = k15All.map((r: any) => parseFloat(r[2]));
+          const lows4d = k15All.map((r: any) => parseFloat(r[3]));
+          const sortedLows4d = [...lows4d].sort((a, b) => a - b);
+          // Piso estructural recurrente de 4 días (Percentil 10 de los mínimos de 4 días, filtrando mechas aisladas extremas)
+          const structuralFloor4d = sortedLows4d[Math.floor(sortedLows4d.length * 0.10)] || Math.min(...lows4d);
+          const high4d = Math.max(...highs4d);
 
           const closes15 = k15.map((r: any) => parseFloat(r[4]));
           const highs15 = k15.map((r: any) => parseFloat(r[2]));
@@ -1256,19 +1268,23 @@ export class TrailingMasterBot {
           const curPrice = closes15[closes15.length - 1];
           const high24h = Math.max(...highs15);
           const low24h = Math.min(...lows15);
+          const fibPosition4d = (high4d - structuralFloor4d) > 0 ? Math.max(0, (curPrice - structuralFloor4d) / (high4d - structuralFloor4d)) : 0.5;
+          const downsideTo4dFloorPct = curPrice > 0 ? Math.max(0, ((curPrice - structuralFloor4d) / curPrice) * 100) : 0;
           const sma24h = closes15.reduce((acc: number, v: number) => acc + v, 0) / closes15.length;
           const distFromSma24hPct = sma24h > 0 ? ((curPrice - sma24h) / sma24h) * 100 : 0;
           const downsideToFloorPct = curPrice > 0 ? ((curPrice - low24h) / curPrice) * 100 : 0;
-          // Estudio anti-engaño (Pump & Dump / Mechazo falso):
+          // Estudio anti-engaño (Pump & Dump / Mechazo falso + Memoria Multidía 4D):
           const sortedCloses24 = [...closes15].sort((a, b) => a - b);
           const p25_24h = sortedCloses24[Math.floor(sortedCloses24.length * 0.25)] || low24h;
           const p75_24h = sortedCloses24[Math.floor(sortedCloses24.length * 0.75)] || high24h;
-          const closes1h = closes15.filter((_: number, idx: number) => (closes15.length - 1 - idx) % 4 === 0);
+          const closes1h = k15All.map((r: any) => parseFloat(r[4])).filter((_: number, idx: number, arr: number[]) => (arr.length - 1 - idx) % 4 === 0);
           const rsi1h = closes1h.length >= 15 ? this.calculateRSI(closes1h, 14) : this.calculateRSI(closes15, 14);
           const isBullTrapFakeout =
             (high24h > p75_24h * 1.018 && curPrice > p25_24h * 1.006) ||
             distFromSma24hPct > -1.0 ||
             downsideToFloorPct > 1.35 ||
+            fibPosition4d > 0.30 ||
+            downsideTo4dFloorPct > 2.1 ||
             rsi1h > 43;
           const exitPrice = benchData.benchmarks[sym] || high24h;
           const benchDropPct = exitPrice > 0 ? ((curPrice - exitPrice) / exitPrice) * 100 : 0;
@@ -1359,6 +1375,9 @@ export class TrailingMasterBot {
             exitPrice,
             curPrice,
             low24h,
+            structuralFloor4d,
+            fibPosition4d,
+            downsideTo4dFloorPct,
             sma24h,
             distFromSma24hPct,
             downsideToFloorPct,
@@ -3935,11 +3954,17 @@ export class TrailingMasterBot {
         }
 
         const symTf = this.getTimeframeForSymbol(sym);
-        // Asegurar verdaderas 24 horas de datos (96 velas en 15m, 24 en 1h) y suficiente historial para EMA50, MACD y StochRSI
+        // Asegurar Memoria Estructural Multidía (4 días = 384 velas en 15m) para no comprar en $62k cuando el piso recurrente de la semana es $59k
         const candlesIn24h = symTf === "15m" ? 96 : (symTf === "4h" ? 6 : 24);
-        const klinesLimit = Math.max(55, candlesIn24h + 4);
+        const klinesLimit = symTf === "15m" ? 384 : Math.max(96, candlesIn24h * 4);
         const klinesRes = await this.client.klines(sym, symTf, { limit: klinesLimit });
-        const data = klinesRes.data;
+        const allData = klinesRes.data;
+        const allHighs4d = allData.map((k: any) => parseFloat(k[2]));
+        const allLows4d = allData.map((k: any) => parseFloat(k[3]));
+        const sortedLows4dScan = [...allLows4d].sort((a, b) => a - b);
+        const structuralFloor4dScan = sortedLows4dScan[Math.floor(sortedLows4dScan.length * 0.10)] || Math.min(...allLows4d);
+        const high4dScan = Math.max(...allHighs4d);
+        const data = allData.slice(-Math.max(55, candlesIn24h + 4));
         const opens = data.map((k: any) => parseFloat(k[1]));
         const highs = data.map((k: any) => parseFloat(k[2]));
         const lows = data.map((k: any) => parseFloat(k[3]));
@@ -4144,6 +4169,12 @@ export class TrailingMasterBot {
         }
         // Prohibido armar compra si queda más de 1.25% de vacío hacia el piso de 24h (salvo sobreventa extrema RSI <= 28)
         if (downsideToFloorScanPct > 1.25 && rsi > 28) {
+          continue;
+        }
+        // 🛡️ ESCUDO DE MEMORIA MULTIDÍA (4 DÍAS): Prohibido comprar arriba del piso recurrente de los últimos 4 días (ej. comprar BTC en $62k cuando toda la semana bajó a $59k)
+        const fibPosition4dScan = (high4dScan - structuralFloor4dScan) > 0 ? Math.max(0, (curPrice - structuralFloor4dScan) / (high4dScan - structuralFloor4dScan)) : 0.5;
+        const downsideTo4dFloorScanPct = curPrice > 0 ? Math.max(0, ((curPrice - structuralFloor4dScan) / curPrice) * 100) : 0;
+        if ((fibPosition4dScan > 0.30 || downsideTo4dFloorScanPct > 2.1) && rsi > 27) {
           continue;
         }
         const isDip = isMeme
