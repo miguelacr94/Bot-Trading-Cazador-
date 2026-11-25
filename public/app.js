@@ -332,19 +332,28 @@
       const tfPillBtn = e.target.closest(".tf-pill-btn");
       const tfApplyBtn = e.target.closest(".btn-apply-tf-sugg");
       if (tfPillBtn || tfApplyBtn) {
+        e.preventDefault();
+        e.stopPropagation();
         const targetTf = tfPillBtn ? tfPillBtn.dataset.v : currentP.suggestedTimeframe;
         if (!targetTf) return;
         try {
           const res = await fetch("/api/strategies/timeframe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ symbol: currentP.symbol, timeframe: targetTf })
+            body: JSON.stringify({
+              id: currentP.id || currentP.lotId || currentP.symbol,
+              symbol: currentP.symbol,
+              timeframe: targetTf
+            })
           });
           const d = await res.json();
-          if (d.success) {
+          if (res.ok && d.success) {
             currentP.timeframe = targetTf;
+            currentP.isTimeframeOptimal = (String(targetTf).toLowerCase() === String(currentP.suggestedTimeframe || "1h").toLowerCase());
             updatePositionCard(card, currentP);
             if (typeof showToast === "function") showToast(`⏱️ Marco de ${currentP.symbol} fijado en ${targetTf.toUpperCase()}`);
+          } else {
+            console.error("Error respuesta timeframe:", d);
           }
         } catch(err) {
           console.error("Error setting timeframe:", err);
@@ -440,22 +449,33 @@
       const pillBtn = e.target.closest(".cb-pill-btn");
       const applyBtn = e.target.closest(".btn-apply-cb-sugg");
       if (!pillBtn && !applyBtn) return;
+      e.preventDefault();
+      e.stopPropagation();
 
       const targetVal = pillBtn ? parseFloat(pillBtn.dataset.v) : currentP.suggestedCallback;
-      if (!targetVal) return;
+      if (!targetVal || isNaN(targetVal)) return;
 
       try {
         const res = await fetch("/api/strategies/callback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbol: currentP.symbol, callbackPct: targetVal })
+          body: JSON.stringify({
+            id: currentP.id || currentP.lotId || currentP.symbol,
+            symbol: currentP.symbol,
+            callbackPct: targetVal
+          })
         });
         const d = await res.json();
-        if (d.success) {
+        if (res.ok && d.success) {
           currentP.callbackPct = targetVal;
           currentP.isCustomCallback = true;
+          if (currentP.highestPrice) {
+            currentP.stopPrice = currentP.highestPrice * (1 - targetVal / 100);
+          }
           updatePositionCard(card, currentP);
           if (typeof showToast === "function") showToast(`🎯 Callback de ${currentP.symbol} fijado en ${targetVal.toFixed(2)}%`);
+        } else {
+          console.error("Error respuesta callback:", d);
         }
       } catch(err) {
         console.error("Error setting callback:", err);
@@ -591,10 +611,12 @@
     const btnApplyTf = f("btnapplytf");
     if (btnApplyTf) {
       if (tfVal === suggTf) {
+        btnApplyTf.disabled = true;
         btnApplyTf.textContent = "✓ Óptimo";
         btnApplyTf.style.opacity = "0.5";
         btnApplyTf.style.pointerEvents = "none";
       } else {
+        btnApplyTf.disabled = false;
         btnApplyTf.textContent = `⚡ Usar ${suggTf.toUpperCase()}`;
         btnApplyTf.style.opacity = "1";
         btnApplyTf.style.pointerEvents = "auto";
@@ -624,10 +646,12 @@
     const btnApply = f("btnapplycb");
     if (btnApply) {
       if (Math.abs(cbVal - sugg) < 0.01) {
+        btnApply.disabled = true;
         btnApply.textContent = "✓ Calibrado";
         btnApply.style.opacity = "0.5";
         btnApply.style.pointerEvents = "none";
       } else {
+        btnApply.disabled = false;
         btnApply.textContent = `⚡ Usar ${sugg.toFixed(2)}%`;
         btnApply.style.opacity = "1";
         btnApply.style.pointerEvents = "auto";

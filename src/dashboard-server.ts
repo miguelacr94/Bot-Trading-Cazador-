@@ -1210,6 +1210,88 @@ export class DashboardServer {
     };
   }
 
+  private queuePositionAction(payload: any) {
+    try {
+      const actionFile = path.resolve(process.cwd(), ".position-action.json");
+      let list: any[] = [];
+      if (fs.existsSync(actionFile)) {
+        try {
+          const prev = JSON.parse(fs.readFileSync(actionFile, "utf-8"));
+          if (Array.isArray(prev)) list = prev;
+          else if (prev && typeof prev === "object") list = [prev];
+        } catch {}
+      }
+      list.push({ ...payload, time: payload.time || Date.now() });
+      fs.writeFileSync(actionFile, JSON.stringify(list, null, 2), "utf-8");
+    } catch (e: any) {
+      console.error("Error escribiendo .position-action.json:", e.message);
+    }
+  }
+
+  private async updatePositionCustomParams(opts: {
+    id?: string;
+    symbol?: string;
+    customCallbackPct?: number;
+    customTimeframe?: string;
+  }) {
+    const cleanSym = (opts.symbol || "").split("_")[0];
+    const matchesPos = (k: string, p: any) =>
+      (opts.id && (k === opts.id || p?.lotId === opts.id)) ||
+      (cleanSym && ((p?.symbol || k).split("_")[0] === cleanSym || k === cleanSym));
+
+    // 1. Actualizar caché en memoria del dashboard para que /api/status responda al instante
+    const updatedPositions: any[] = [];
+    for (const [k, p] of this.cachedPositions) {
+      if (matchesPos(k, p)) {
+        if (opts.customCallbackPct !== undefined) p.customCallbackPct = opts.customCallbackPct;
+        if (opts.customTimeframe !== undefined) p.customTimeframe = opts.customTimeframe;
+        updatedPositions.push({ ...p, lotId: p.lotId || k });
+      }
+    }
+
+    // 2. Actualizar archivo local .trailing-positions.json (soporta múltiples lotes)
+    const posFile = path.resolve(process.cwd(), ".trailing-positions.json");
+    if (fs.existsSync(posFile)) {
+      try {
+        const positions = JSON.parse(fs.readFileSync(posFile, "utf-8"));
+        const map = new Map<string, any>(positions);
+        let changed = false;
+        for (const [k, p] of map.entries()) {
+          if (matchesPos(k, p)) {
+            if (opts.customCallbackPct !== undefined) p.customCallbackPct = opts.customCallbackPct;
+            if (opts.customTimeframe !== undefined) p.customTimeframe = opts.customTimeframe;
+            map.set(k, p);
+            changed = true;
+            if (!updatedPositions.some((u) => (u.lotId || u.symbol) === (p.lotId || k))) {
+              updatedPositions.push({ ...p, lotId: p.lotId || k });
+            }
+          }
+        }
+        if (changed) {
+          fs.writeFileSync(posFile, JSON.stringify(Array.from(map.entries()), null, 2), "utf-8");
+        }
+      } catch {}
+    }
+
+    // 3. Persistir en Supabase para que refreshCloudData() no revierta el cambio
+    if (supabaseDb.isAvailable()) {
+      for (const up of updatedPositions) {
+        try {
+          await supabaseDb.saveActivePosition(up);
+        } catch {}
+      }
+    }
+
+    // 4. Notificar al motor del bot en memoria vía cola .position-action.json
+    this.queuePositionAction({
+      action: "update_pos_params",
+      id: opts.id || cleanSym,
+      symbol: cleanSym,
+      customCallbackPct: opts.customCallbackPct,
+      customTimeframe: opts.customTimeframe
+    });
+  }
+
   public async refreshCloudData(): Promise<void> {
     if (!supabaseDb.isAvailable()) return;
     try {
@@ -1908,15 +1990,16 @@ export class DashboardServer {
         req.on("end", async () => {
           try {
             const data = JSON.parse(body || "{}");
-            const sym = data.symbol
-              ? data.symbol.endsWith("USDT") || data.symbol === "default"
-                ? data.symbol
-                : data.symbol + "USDT"
+            const rawSym = String(data.symbol || data.id || "").trim().toUpperCase().split("_")[0];
+            const sym = rawSym
+              ? rawSym.endsWith("USDT") || rawSym === "default"
+                ? rawSym
+                : rawSym + "USDT"
               : null;
             const tf =
               data.timeframe &&
-              ["15m", "1h", "4h", "1d"].includes(data.timeframe)
-                ? data.timeframe
+              ["15m", "1h", "4h", "1d"].includes(String(data.timeframe).toLowerCase())
+                ? String(data.timeframe).toLowerCase()
                 : null;
 
             if (!sym || !tf) {
@@ -1930,37 +2013,16 @@ export class DashboardServer {
               return;
             }
 
-            const ctrlFile = path.resolve(
-              process.cwd(),
-              ".strategy-controls.json",
-            );
-            const controls = fs.existsSync(ctrlFile)
-              ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-              : {};
+            const controls = await this.loadControls();
             if (!controls.symbolTimeframes) controls.symbolTimeframes = {};
             controls.symbolTimeframes[sym] = tf;
             await this.saveControls(controls);
 
-            const posFile = path.resolve(
-              process.cwd(),
-              ".trailing-positions.json",
-            );
-            if (fs.existsSync(posFile)) {
-              try {
-                const positions = JSON.parse(fs.readFileSync(posFile, "utf-8"));
-                const map = new Map(positions);
-                if (map.has(sym)) {
-                  const p: any = map.get(sym);
-                  p.customTimeframe = tf;
-                  map.set(sym, p);
-                  fs.writeFileSync(
-                    posFile,
-                    JSON.stringify(Array.from(map.entries()), null, 2),
-                    "utf-8",
-                  );
-                }
-              } catch (e) {}
-            }
+            await this.updatePositionCustomParams({
+              id: data.id,
+              symbol: sym,
+              customTimeframe: tf,
+            });
 
             res.writeHead(200, {
               "Content-Type": "application/json; charset=utf-8",
@@ -1985,13 +2047,14 @@ export class DashboardServer {
         req.on("end", async () => {
           try {
             const data = JSON.parse(body || "{}");
-            const sym = data.symbol
-              ? data.symbol.endsWith("USDT") || data.symbol === "default"
-                ? data.symbol
-                : data.symbol + "USDT"
+            const rawSym = String(data.symbol || data.id || "").trim().toUpperCase().split("_")[0];
+            const sym = rawSym
+              ? rawSym.endsWith("USDT") || rawSym === "default"
+                ? rawSym
+                : rawSym + "USDT"
               : null;
             const cbPct =
-              data.callbackPct !== undefined
+              data.callbackPct !== undefined && !isNaN(parseFloat(data.callbackPct))
                 ? Math.max(0.1, Math.min(3.0, parseFloat(data.callbackPct)))
                 : null;
 
@@ -2005,38 +2068,16 @@ export class DashboardServer {
               return;
             }
 
-            const ctrlFile = path.resolve(
-              process.cwd(),
-              ".strategy-controls.json",
-            );
-            const controls = fs.existsSync(ctrlFile)
-              ? JSON.parse(fs.readFileSync(ctrlFile, "utf-8"))
-              : {};
+            const controls = await this.loadControls();
             if (!controls.trailingCallbacks) controls.trailingCallbacks = {};
             controls.trailingCallbacks[sym] = cbPct;
             await this.saveControls(controls);
 
-            // Si la posición está abierta en .trailing-positions.json, actualizarla también
-            const posFile = path.resolve(
-              process.cwd(),
-              ".trailing-positions.json",
-            );
-            if (fs.existsSync(posFile)) {
-              try {
-                const positions = JSON.parse(fs.readFileSync(posFile, "utf-8"));
-                const map = new Map(positions);
-                if (map.has(sym)) {
-                  const p: any = map.get(sym);
-                  p.customCallbackPct = cbPct;
-                  map.set(sym, p);
-                  fs.writeFileSync(
-                    posFile,
-                    JSON.stringify(Array.from(map.entries()), null, 2),
-                    "utf-8",
-                  );
-                }
-              } catch (e) {}
-            }
+            await this.updatePositionCustomParams({
+              id: data.id,
+              symbol: sym,
+              customCallbackPct: cbPct,
+            });
 
             res.writeHead(200, {
               "Content-Type": "application/json; charset=utf-8",
@@ -2416,19 +2457,14 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
               return;
             }
 
-            const actionFile = path.resolve(process.cwd(), ".position-action.json");
-            fs.writeFileSync(
-              actionFile,
-              JSON.stringify({
-                action: "manual_buy",
-                symbol: sym,
-                usdtAmount: amount,
-                triggerGainPct: data.triggerGainPct || 0.8,
-                callbackPct: data.callbackPct || 0.25,
-                time: Date.now()
-              }, null, 2),
-              "utf-8"
-            );
+            this.queuePositionAction({
+              action: "manual_buy",
+              symbol: sym,
+              usdtAmount: amount,
+              triggerGainPct: data.triggerGainPct || 0.8,
+              callbackPct: data.callbackPct || 0.25,
+              time: Date.now()
+            });
 
             res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: true, message: "Orden de compra manual enviada al bot." }));
@@ -2449,17 +2485,12 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
         req.on("end", () => {
           try {
             const data = JSON.parse(body || "{}");
-            const actionFile = path.resolve(process.cwd(), ".position-action.json");
-            fs.writeFileSync(
-              actionFile,
-              JSON.stringify({
-                action: "manual_sell",
-                id: data.id,
-                allowLoss: data.allowLoss === true,
-                time: Date.now()
-              }, null, 2),
-              "utf-8"
-            );
+            this.queuePositionAction({
+              action: "manual_sell",
+              id: data.id,
+              allowLoss: data.allowLoss === true,
+              time: Date.now()
+            });
 
             res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
             res.end(JSON.stringify({ success: true, message: "Orden de venta manual enviada al bot." }));
@@ -2480,12 +2511,7 @@ fs.writeFileSync(ctrlFile, JSON.stringify(controls, null, 2), "utf-8");
         req.on("end", () => {
           try {
             const data = JSON.parse(body || "{}");
-            const actionFile = path.resolve(process.cwd(), ".position-action.json");
-            fs.writeFileSync(
-              actionFile,
-              JSON.stringify({ action: "lock_profit", id: data.id, targetGainPct: data.targetGainPct, time: Date.now() }, null, 2),
-              "utf-8"
-            );
+            this.queuePositionAction({ action: "lock_profit", id: data.id, targetGainPct: data.targetGainPct, time: Date.now() });
 
             // Sincronizar de inmediato el archivo local de posiciones para que el frontend lo vea al instante
             const pFile = path.resolve(process.cwd(), ".trailing-positions.json");

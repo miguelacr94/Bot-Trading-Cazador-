@@ -1121,6 +1121,7 @@ export class TrailingMasterBot {
   private aiCopilot: AiCopilot = new AiCopilot();
   private lastAiBenchmarkCheckTime = 0;
   private lastAiBenchmarkTelegramTime = 0;
+  private aiLowBalancePaused = false;
   private lastFridaySnapshotDayKey = "";
   private notifiedBenchmarkMilestones: Map<string, number> = new Map();
   private activeAtypicalOverride: "NONE" | "CRASH_HUNTER" | "RALLY_HARVESTER" | "RANGE_SCALPER" = "NONE";
@@ -1194,6 +1195,21 @@ export class TrailingMasterBot {
             console.log(`📸 [AGENTE IA AUTÓNOMO] Snapshot oficial de precios de cierre del viernes guardado (${Object.keys(snapMap).length} monedas).`);
           }
         }
+      }
+
+      // Pausar Agente IA autónomo cuando no hay saldo suficiente para operar (ahorro de tokens y llamadas API),
+      // reactivándolo automáticamente cuando entre liquidez o cuando el usuario consulte explícitamente por Telegram (forceTelegram=true).
+      const minUsdtForAutonomousAi = this.activeTrailingPositions.size > 0 ? 25 : Math.max(this.minUsdtToTrade, 35);
+      if (!forceTelegram && botSpendableUsdt < minUsdtForAutonomousAi) {
+        if (!this.aiLowBalancePaused) {
+          this.aiLowBalancePaused = true;
+          console.log(`⏸️ [AGENTE IA EN PAUSA] Saldo libre insuficiente ($${botSpendableUsdt.toFixed(2)} USDT < $${minUsdtForAutonomousAi.toFixed(2)} USDT mín.). Deteniendo consultas automáticas para no consumir tokens hasta recuperar liquidez o comando en Telegram.`);
+        }
+        return "";
+      }
+      if (this.aiLowBalancePaused && botSpendableUsdt >= minUsdtForAutonomousAi) {
+        this.aiLowBalancePaused = false;
+        console.log(`🟢 [AGENTE IA REACTIVADO] Liquidez recuperada ($${botSpendableUsdt.toFixed(2)} USDT). Reanudando análisis autónomo.`);
       }
 
       // Ejecutar chequeo dinámico del Agente IA cada 3 minutos (o inmediato si forceTelegram === true)
@@ -1279,14 +1295,13 @@ export class TrailingMasterBot {
           const p75_24h = sortedCloses24[Math.floor(sortedCloses24.length * 0.75)] || high24h;
           const closes1h = k15All.map((r: any) => parseFloat(r[4])).filter((_: number, idx: number, arr: number[]) => (arr.length - 1 - idx) % 4 === 0);
           const rsi1h = closes1h.length >= 15 ? this.calculateRSI(closes1h, 14) : this.calculateRSI(closes15, 14);
-          const isBullTrapFakeoutBase =
+          let isBullTrapFakeout =
             (high24h > p75_24h * 1.018 && curPrice > p25_24h * 1.006) ||
             distFromSma24hPct > -1.0 ||
             downsideToFloorPct > 1.35 ||
             fibPosition4d > 0.30 ||
             downsideTo4dFloorPct > 2.1 ||
             rsi1h > 43;
-          let isBullTrapFakeout = isBullTrapFakeoutBase;
           const exitPrice = benchData.benchmarks[sym] || high24h;
           const benchDropPct = exitPrice > 0 ? ((curPrice - exitPrice) / exitPrice) * 100 : 0;
           const drop24hPct = high24h > 0 ? ((high24h - curPrice) / high24h) * 100 : 0;
@@ -1468,8 +1483,8 @@ export class TrailingMasterBot {
             this.aiCoinCalibrations.set(cleanSym, cal);
             for (const [k, p] of this.activeTrailingPositions.entries()) {
               if (k === cleanSym || p.symbol === cleanSym) {
-                p.customMinGainPct = cal.minGainPct;
-                p.customCallbackPct = cal.callbackPct;
+                if (!p.customMinGainPct) p.customMinGainPct = cal.minGainPct;
+                if (!p.customCallbackPct) p.customCallbackPct = cal.callbackPct;
               }
             }
           }
@@ -1900,86 +1915,110 @@ export class TrailingMasterBot {
     try {
       const file = path.resolve(process.cwd(), ".position-action.json");
       if (fs.existsSync(file)) {
-        const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+        const raw = JSON.parse(fs.readFileSync(file, "utf-8"));
         fs.unlinkSync(file);
-        if (data.action === "manual_sell" && data.id) {
-          let pos = this.activeTrailingPositions.get(data.id);
-          let posKey = data.id;
-          if (!pos) {
+        const actions = Array.isArray(raw) ? raw : [raw];
+        for (const data of actions) {
+          if (!data || !data.action) continue;
+          if (data.action === "update_pos_params") {
+            const cleanSym = String(data.symbol || data.id || "").trim().toUpperCase().split("_")[0];
+            let updatedAny = false;
             for (const [k, p] of this.activeTrailingPositions.entries()) {
-              if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
-                pos = p;
-                posKey = k;
-                break;
+              const matches = (data.id && (k === data.id || p.lotId === data.id)) ||
+                (cleanSym && (p.symbol === cleanSym || k === cleanSym || k.startsWith(cleanSym + "_lot_")));
+              if (matches) {
+                if (typeof data.customCallbackPct === "number" && data.customCallbackPct > 0) {
+                  p.customCallbackPct = data.customCallbackPct;
+                }
+                if (typeof data.customTimeframe === "string" && data.customTimeframe) {
+                  p.customTimeframe = data.customTimeframe;
+                }
+                updatedAny = true;
               }
             }
-          }
-          if (pos) {
-            console.log(`🌐 [VENTA MANUAL RECIBIDA] Ejecutando venta manual para ${pos.symbol} (allowLoss: ${!!data.allowLoss})...`);
-            const actualSym = pos.symbol.split('_')[0];
-            const ticker = await this.client.tickerPrice(actualSym);
-            const curPrice = parseFloat(ticker.data.price);
-            const sold = await this.executeTrailingSell(pos, curPrice, false, false, "MANUAL_DASHBOARD", true, !!data.allowLoss);
-            if (sold) {
-              this.activeTrailingPositions.delete(posKey);
+            if (updatedAny) {
               await this.saveTrailingPositions();
-              await this.notifier.send(`🌐 <b>[VENTA MANUAL CONFIRMADA]</b> Posición <b>${pos.symbol}</b> cerrada desde el Dashboard a ${fmtPrice(curPrice)}.`);
+              console.log(`⚙️ [DASHBOARD SYNC] Parámetros actualizados en ${cleanSym || data.id}: callback=${data.customCallbackPct ?? "-"}% | tf=${data.customTimeframe ?? "-"}`);
             }
-          }
-        } else if (data.action === "manual_buy" && data.symbol && data.usdtAmount) {
-          const sym = String(data.symbol).trim().toUpperCase();
-          const amount = parseFloat(data.usdtAmount);
-          console.log("🌐 [COMPRA MANUAL DESDE RADAR] Recibida orden para " + sym + " por $" + amount + " USDT...");
-          if (amount >= this.minUsdtToTrade) {
-            const ok = await this.executeSmartBuy(sym, amount, "Manual desde Radar Web", "trailing_rebound");
-            if (ok) {
-              const pos = this.activeTrailingPositions.get(sym);
-              if (pos) {
-                pos.isManual = true;
-                if (data.triggerGainPct) pos.customMinGainPct = parseFloat(data.triggerGainPct);
-                if (data.callbackPct) pos.customCallbackPct = parseFloat(data.callbackPct);
+          } else if (data.action === "manual_sell" && data.id) {
+            let pos = this.activeTrailingPositions.get(data.id);
+            let posKey = data.id;
+            if (!pos) {
+              for (const [k, p] of this.activeTrailingPositions.entries()) {
+                if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
+                  pos = p;
+                  posKey = k;
+                  break;
+                }
+              }
+            }
+            if (pos) {
+              console.log(`🌐 [VENTA MANUAL RECIBIDA] Ejecutando venta manual para ${pos.symbol} (allowLoss: ${!!data.allowLoss})...`);
+              const actualSym = pos.symbol.split('_')[0];
+              const ticker = await this.client.tickerPrice(actualSym);
+              const curPrice = parseFloat(ticker.data.price);
+              const sold = await this.executeTrailingSell(pos, curPrice, false, false, "MANUAL_DASHBOARD", true, !!data.allowLoss);
+              if (sold) {
+                this.activeTrailingPositions.delete(posKey);
                 await this.saveTrailingPositions();
-              }
-              this.deductFromManualWallet(amount);
-              await this.notifier.send(
-                "👤 <b>[COMPRA MANUAL CONFIRMADA DESDE RADAR]</b> 🚀\n\n" +
-                "• <b>Moneda:</b> <b>" + sym + "</b>\n" +
-                "• <b>Inversión:</b> $" + amount.toFixed(2) + " USDT (Saldo Manual)\n" +
-                "• <b>Trailing Take Profit:</b> Activa al +" + (data.triggerGainPct || 0.8).toFixed(2) + "% (retroceso " + (data.callbackPct || 0.25).toFixed(2) + "%)\n\n" +
-                "🛡️ <i>Protegida 100% contra ventas a pérdida y rastreando picos en tiempo real.</i>"
-              );
-            }
-          } else {
-            console.error("Monto de compra manual inválido: " + amount);
-          }
-        } else if (data.action === "lock_profit" && data.id) {
-          let pos = this.activeTrailingPositions.get(data.id);
-          if (!pos) {
-            for (const [k, p] of this.activeTrailingPositions.entries()) {
-              if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
-                pos = p;
-                break;
+                await this.notifier.send(`🌐 <b>[VENTA MANUAL CONFIRMADA]</b> Posición <b>${pos.symbol}</b> cerrada desde el Dashboard a ${fmtPrice(curPrice)}.`);
               }
             }
-          }
-          if (pos) {
-            pos.activated = true;
-            if (data.targetGainPct && data.targetGainPct > 0) {
-              pos.lockedFloorGainPct = data.targetGainPct;
-              pos.customMinGainPct = data.targetGainPct;
-              const floorPrice = pos.buyPrice * (1 + data.targetGainPct / 100);
-              if ((pos.highestPrice || 0) < floorPrice) {
-                pos.highestPrice = floorPrice;
+          } else if (data.action === "manual_buy" && data.symbol && data.usdtAmount) {
+            const sym = String(data.symbol).trim().toUpperCase();
+            const amount = parseFloat(data.usdtAmount);
+            console.log("🌐 [COMPRA MANUAL DESDE RADAR] Recibida orden para " + sym + " por $" + amount + " USDT...");
+            if (amount >= this.minUsdtToTrade) {
+              const ok = await this.executeSmartBuy(sym, amount, "Manual desde Radar Web", "trailing_rebound");
+              if (ok) {
+                const pos = this.activeTrailingPositions.get(sym);
+                if (pos) {
+                  pos.isManual = true;
+                  if (data.triggerGainPct) pos.customMinGainPct = parseFloat(data.triggerGainPct);
+                  if (data.callbackPct) pos.customCallbackPct = parseFloat(data.callbackPct);
+                  await this.saveTrailingPositions();
+                }
+                this.deductFromManualWallet(amount);
+                await this.notifier.send(
+                  "👤 <b>[COMPRA MANUAL CONFIRMADA DESDE RADAR]</b> 🚀\n\n" +
+                  "• <b>Moneda:</b> <b>" + sym + "</b>\n" +
+                  "• <b>Inversión:</b> $" + amount.toFixed(2) + " USDT (Saldo Manual)\n" +
+                  "• <b>Trailing Take Profit:</b> Activa al +" + (data.triggerGainPct || 0.8).toFixed(2) + "% (retroceso " + (data.callbackPct || 0.25).toFixed(2) + "%)\n\n" +
+                  "🛡️ <i>Protegida 100% contra ventas a pérdida y rastreando picos en tiempo real.</i>"
+                );
+              }
+            } else {
+              console.error("Monto de compra manual inválido: " + amount);
+            }
+          } else if (data.action === "lock_profit" && data.id) {
+            let pos = this.activeTrailingPositions.get(data.id);
+            if (!pos) {
+              for (const [k, p] of this.activeTrailingPositions.entries()) {
+                if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
+                  pos = p;
+                  break;
+                }
               }
             }
-            await this.saveTrailingPositions();
-            const lockedVal = (pos.lockedFloorGainPct || data.targetGainPct).toFixed(2);
-            const msg = "🔒 <b>[CANDADO MANUAL ASEGURADO: " + pos.symbol + "]</b>\n\n" +
-              "• Ganancia asegurada fijada en: <b>+" + lockedVal + "%</b>\n" +
-              "• Si el precio retrocede, venderá asegurando este piso.\n" +
-              "• Si sigue subiendo, ¡seguirá persiguiendo la cima con Trailing Take Profit! 🚀";
-            await this.notifier.send(msg);
-            console.log("🔒 Candado asegurado para " + pos.symbol + " en +" + lockedVal + "%");
+            if (pos) {
+              pos.activated = true;
+              if (data.targetGainPct && data.targetGainPct > 0) {
+                pos.lockedFloorGainPct = data.targetGainPct;
+                pos.customMinGainPct = data.targetGainPct;
+                const floorPrice = pos.buyPrice * (1 + data.targetGainPct / 100);
+                if ((pos.highestPrice || 0) < floorPrice) {
+                  pos.highestPrice = floorPrice;
+                }
+              }
+              await this.saveTrailingPositions();
+              const lockedVal = (pos.lockedFloorGainPct || data.targetGainPct).toFixed(2);
+              const msg = "🔒 <b>[CANDADO MANUAL ASEGURADO: " + pos.symbol + "]</b>\n\n" +
+                "• Ganancia asegurada fijada en: <b>+" + lockedVal + "%</b>\n" +
+                "• Si el precio retrocede, venderá asegurando este piso.\n" +
+                "• Si sigue subiendo, ¡seguirá persiguiendo la cima con Trailing Take Profit! 🚀";
+              await this.notifier.send(msg);
+              console.log("🔒 Candado asegurado para " + pos.symbol + " en +" + lockedVal + "%");
+            }
           }
         }
       }
@@ -2964,13 +3003,13 @@ export class TrailingMasterBot {
           this.saveTrailingPositions();
         }
 
-        // Activación de Trailing: mínimo +0.75% bruto para asegurar ganancia real neta y activar Candado Cero Devolución, dejando correr con Trailing TP si sube más
-        let activationTarget = pos.customMinGainPct || 0.75;
+        // Activación de Trailing: mínimo +0.68% bruto (+0.75% en rescate de posición estancada >= 18h para destrabar capital en verde)
+        let activationTarget = pos.customMinGainPct || 0.68;
         if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
           activationTarget = 0.58;
         } else if (isLot3 && (!pos.customMinGainPct || pos.customMinGainPct <= 0.8)) {
           activationTarget = 0.85;
-        } else if (!pos.customMinGainPct) {
+        } else if (isStagnantPosition && !pos.customMinGainPct) {
           activationTarget = 0.75;
         }
 
@@ -3071,25 +3110,25 @@ export class TrailingMasterBot {
           const aiCal = this.aiCoinCalibrations.get(symbol) || this.aiCoinCalibrations.get(actualSymbol);
           if (isStagnantPosition && gainPct >= 0.78) {
             // 🛟 POSICIÓN >18H EN GANANCIA REAL: Al superar +0.78% bruto (~+0.58% neto real), usa callback de 0.20% para asegurar ganancia sólida y seguir subiendo si hay impulso
-            callback = 0.20;
-            minGain = 0.78;
-          } else if (aiCal && !pos.customMinGainPct) {
+            if (!pos.customCallbackPct) callback = 0.20;
+            if (!pos.customMinGainPct) minGain = 0.78;
+          } else if (aiCal && !pos.customMinGainPct && !pos.customCallbackPct) {
             callback = aiCal.callbackPct;
             minGain = aiCal.minGainPct;
-          } else if (!pos.customMinGainPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
+          } else if (!pos.customMinGainPct && !pos.customCallbackPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
             callback = Math.min(callback, isMemeCoin ? 0.25 : 0.15);
             minGain = 0.68;
-          } else if (!pos.customMinGainPct && isMondayHold) {
+          } else if (!pos.customMinGainPct && !pos.customCallbackPct && isMondayHold) {
             // 🛡️ PROTECCIÓN DE ACUMULACIÓN DE LUNES PARA EL MARTES:
             // Prohibido vender por migajas (+0.65%) antes del Martes de Expansión (+5.87% histórico).
             // Exige al menos +1.15% en Core (BTC/ETH) y +1.85% en Memes, con callback amplio para dejar correr la subida.
             callback = isMemeCoin ? 0.45 : 0.28;
             minGain = isMemeCoin ? 1.85 : 1.15;
-          } else if (!pos.customMinGainPct && (macro.btcStressIndex <= 0.22 || calRegimeExit.tpCallbackMultiplier > 1.05 || isMemeCoin) && !isStagnantPosition) {
+          } else if (!pos.customMinGainPct && !pos.customCallbackPct && (macro.btcStressIndex <= 0.22 || calRegimeExit.tpCallbackMultiplier > 1.05 || isMemeCoin) && !isStagnantPosition) {
             const mult = Math.max(1.25, calRegimeExit.tpCallbackMultiplier);
             callback = isMemeCoin ? Math.max(callback, 0.42) : Number((callback * mult).toFixed(2));
             minGain = isMemeCoin ? 1.45 : 0.85;
-          } else if (!pos.customMinGainPct && !isMemeCoin && pos.strategy !== "micro_grid" && !isLot3 && !isMondayHold && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") && gainPct >= 0.65) {
+          } else if (!pos.customMinGainPct && !pos.customCallbackPct && !isMemeCoin && pos.strategy !== "micro_grid" && !isLot3 && !isMondayHold && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") && gainPct >= 0.65) {
             callback = Math.min(callback, (isPreWeekendHarvest || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") ? 0.16 : 0.18);
             minGain = 0.65;
           }
@@ -5990,16 +6029,16 @@ export class TrailingMasterBot {
         return "👍";
       }
 
-      // 2. Si el mensaje empieza con barra / y no fue reconocido, NUNCA enviar a la IA
-      if (rawCmd.trim().startsWith("/")) {
+      // 2. Si el mensaje empieza con barra / y no fue reconocido (y no es /ai|/ia|/chat), NUNCA enviar a la IA
+      const isExplicitAi = cmd === "/ai" || cmd === "/ia" || cmd === "/chat" || cmd === "ai" || cmd === "ia";
+      const isDirectQuestion = rawCmd.trim().startsWith("¿") || rawCmd.trim().startsWith("?");
+      if (rawCmd.trim().startsWith("/") && !isExplicitAi) {
         return "Comando no reconocido. Escribe /menu para ver la lista de comandos disponibles.";
       }
 
-      // 3. Solo llamar a Gemini AI si está explícitamente activada Y se usa /ai o una pregunta directa
-      const isExplicitAi = cmd === "/ai" || cmd === "/ia" || cmd === "/chat" || cmd === "ai" || cmd === "ia";
-      const isDirectQuestion = rawCmd.trim().startsWith("¿") || rawCmd.trim().startsWith("?");
-
-      if (this.controls.aiEnabled && (isExplicitAi || isDirectQuestion) && this.aiCopilot.isAvailable()) {
+      // 3. Permitir consulta explícita por comando (/ai|/ia|/chat) aunque la IA automática esté pausada por saldo,
+      // y responder preguntas directas cuando aiEnabled esté activo
+      if ((isExplicitAi || (this.controls.aiEnabled && isDirectQuestion)) && this.aiCopilot.isAvailable()) {
         const queryText = isExplicitAi ? rawCmd.replace(/^\/(ai|ia|chat)\s*/i, "").trim() : rawCmd;
         if (!queryText) return "❓ Escribe tu pregunta después de /ai. Ejemplo: <code>/ai ¿cómo ves el mercado hoy?</code>";
         const ctx = await this.buildAiContextSnapshot();
