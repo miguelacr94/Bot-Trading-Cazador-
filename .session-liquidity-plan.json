@@ -1,13 +1,13 @@
 {
-  "sessionKey": "COSECHA_PRENOCTURNA",
-  "sessionTitle": "🏆 HORA TECHO PRE-CIERRE WALL STREET (03:15-04:15 PM COT | Cosechando antes del cierre NY)",
+  "sessionKey": "NOCTURNO_DRENAJE",
+  "sessionTitle": "⏸️ PAUSA CIERRE WALL STREET (04:15 - 06:15 PM COT): Drenaje institucional de las 5:00 PM. Esperando Piso Pre-Asia (08:00 PM).",
   "totalFreeUsdt": 0.27193175,
   "reservedUsdt": 0.16,
   "spendableUsdt": 0.11,
-  "lotFractionPct": 0.45,
-  "trailingBounceTrigger": 0.38,
+  "lotFractionPct": 0.4,
+  "trailingBounceTrigger": 0.55,
   "harvestCallbackPct": 0.15,
-  "reason": "Ventana de Hora Techo histórica. Trailing Take Profit ceñido a 0.15% para asegurar ganancias en la cima antes del retroceso estadístico.",
-  "recommendation": "🏆 Cosechar subidas en USDT y mantener el 60% reservado para la siguiente Hora Piso.",
-  "updatedAt": 1795727676349
+  "reason": "⏸️ PAUSA CIERRE WALL STREET (04:15 - 06:15 PM COT): Drenaje institucional de las 5:00 PM. Esperando Piso Pre-Asia (08:00 PM). Compras estándar detenidas; solo se autoriza la Llave Maestra de Excepción por Evento Atípico (Flash Crash >= -5.8%, RSI <= 26, Mecha >= 35% y CVD >= 55%).",
+  "recommendation": "⏸️ Pausa Horaria Estadística: Cosechando ventas en la cima con Trailing ceñido (0.15%) y guardando munición para la próxima Hora Piso.",
+  "updatedAt": 1795729247284
 }

@@ -1696,6 +1696,22 @@ export class DashboardServer {
                 }
                 return;
             }
+            if ((parsedUrl.pathname === "/api/ranges/study-weekend" || parsedUrl.pathname === "/api/ranges/study") && (req.method === "POST" || req.method === "GET")) {
+                try {
+                    const controls = await this.loadControls();
+                    const core = controls?.coreWatchlist || ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
+                    const meme = controls?.memeWatchlist || ["DOGEUSDT", "PEPEUSDT"];
+                    const symbols = Array.from(new Set([...core, ...meme, "BTCUSDT", "ETHUSDT"]));
+                    const ranges = await marketRangesManager.getMarketRanges(symbols, true);
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ ok: true, ranges, timestamp: Date.now() }));
+                }
+                catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+                return;
+            }
             if (parsedUrl.pathname === "/api/strategies" && req.method === "GET") {
                 try {
                     const oppFile = path.resolve(process.cwd(), ".pending-opportunity.json");

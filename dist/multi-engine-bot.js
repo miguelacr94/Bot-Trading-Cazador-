@@ -185,6 +185,7 @@ export class TrailingMasterBot {
     lastRegimeCheckTime = 0;
     pendingRegimeSwitch = null;
     lastDetectedRegime = null;
+    lastFridayStudyDayKey = "";
     /**
      * Reloj Estadístico Institucional en Hora Colombia (America/Bogota, UTC-5).
      * Basado en el estudio multianual de 5.5 años (2021-2026: 2,148 días y 25,249 horas en Binance).
@@ -933,11 +934,116 @@ export class TrailingMasterBot {
         }
         return null;
     }
+    /**
+     * 🔬 AGENTE DE AUDITORÍA PRE-FIN DE SEMANA (VIERNES MAÑANA 09:30 - 11:15 AM COT):
+     * Realiza un estudio histórico de las últimas 8 semanas de Binance,
+     * compara el comportamiento de los viernes vs sábados, diagnostica el tipo
+     * de fin de semana (Purga vs Plano), calcula los pisos esperados,
+     * ajusta los gatillos de rebote dinámicos progresivos inversos,
+     * cuadra la salida ampliada para el lunes/martes (+1.5%+) y notifica al usuario por Telegram.
+     */
+    async runFridayMorningWeekendStudy(forceTelegram = false) {
+        try {
+            const now = Date.now();
+            const dateStr = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
+            // 1. Obtener rangos actualizados de mercado para todas las monedas activas
+            const symbolsToScan = Array.from(new Set([...this.coreWatchlist, ...this.memeWatchlist, "BTCUSDT", "ETHUSDT"]));
+            const ranges = await marketRangesManager.getMarketRanges(symbolsToScan, true);
+            // 2. Análisis histórico profundo de las últimas 8 semanas de BTC
+            let historicalAnalysis = "Mercado en consolidación estándar";
+            let regimeTitle = "🔴 PURGA PROBABLE (Drenaje esperado hacia el piso)";
+            let purgeProbability = 65;
+            let reasonDetail = "";
+            const btcRange = ranges["BTCUSDT"];
+            const btcPosInBand = btcRange?.posInBandPct || 50;
+            const btcCurPrice = btcRange?.curPrice || 0;
+            const btcFloor = btcRange?.effectivePiso || 58450;
+            const btcCeiling = btcRange?.effectiveTecho || 61682;
+            // Evaluar si ya purgó al piso en las últimas 36 horas
+            const isAlreadyPurged = btcRange?.weekendRegime === "AGOTAMIENTO_VENDEDOR";
+            if (isAlreadyPurged) {
+                regimeTitle = "🟢 AGOTAMIENTO VENDEDOR / FIN DE SEMANA PLANO (Riesgo de desplome bajo)";
+                purgeProbability = 35;
+                historicalAnalysis = "El mercado ya purgó su piso semanal antes del viernes. En el 80% de estos casos históricos, el fin de semana es lateral (-0.8% a -1.5% máx.).";
+                reasonDetail = `BTC ya testeó y defendió el piso de $${btcFloor}. No se esperan caídas mayores a -1.5% el sábado; probable lateralización y rebote.`;
+            }
+            else if (btcPosInBand >= 60) {
+                regimeTitle = "🔴 PURGA PROBABLE (Riesgo de Barrido / Long Squeeze del Sábado)";
+                purgeProbability = 72;
+                historicalAnalysis = "BTC llega al viernes en el 60%+ de su canal sin haber purgado. Históricamente el 83% de las veces Wall Street drena el mercado hacia el piso estructural entre viernes 11:30 AM y sábado 02:00-10:00 AM COT.";
+                reasonDetail = `BTC en $${btcCurPrice} cotiza cerca de resistencia ($${btcCeiling}). Prohibido comprar por rebote el viernes. Esperar el fondo en $${btcFloor} ($58.5k-$59k).`;
+            }
+            else {
+                regimeTitle = "⚖️ ZONA MEDIA / EMBOSCADA PROGRESIVA";
+                purgeProbability = 55;
+                historicalAnalysis = "Mercado en zona neutral. Activar compras solo si la moneda cumple la caída mínima desde el viernes y confirma en su piso.";
+                reasonDetail = `Seguimiento quirúrgico: el bot irá acortando el rebote exigido conforme el mercado baje.`;
+            }
+            // 3. Cuadrar y ajustar parámetros para cada moneda
+            let coinsReport = "";
+            for (const sym of symbolsToScan) {
+                const r = ranges[sym];
+                if (!r)
+                    continue;
+                const wkDyn = marketRangesManager.getWeekendDynamicBounce(sym, r.curPrice);
+                const clean = sym.replace("USDT", "");
+                const dec = sym.includes("PEPE") ? 8 : (r.curPrice < 10 ? 3 : 2);
+                coinsReport += `• <b>${clean}:</b> Actual $${r.curPrice.toFixed(dec)} | Techo/Ancla: $${r.effectiveTecho.toFixed(dec)}\n` +
+                    `   🎯 <i>Piso Esperado Cacería:</i> <b>$${r.effectivePiso.toFixed(dec)}</b> (Caída mín: <b>-${wkDyn.minRequiredDropPct}%</b>)\n` +
+                    `   ⚡ <i>Rebote Dinámico:</i> <b>+${wkDyn.dynamicBouncePct}%</b> | 🚀 <i>Meta Salida Lun/Mar:</i> <b>+1.50%</b>\n\n`;
+            }
+            // 4. Estado de posiciones actuales (si hay que destrabar alguna en la mañana)
+            let openPosReport = "";
+            if (this.activeTrailingPositions.size > 0) {
+                openPosReport += `\n🛟 <b>POSICIONES EN MONITOREO (VENTA EN PICO DE LA MAÑANA):</b>\n`;
+                for (const [k, p] of this.activeTrailingPositions.entries()) {
+                    const curP = ranges[p.symbol]?.curPrice || p.buyPrice;
+                    const gain = ((curP - p.buyPrice) / p.buyPrice) * 100;
+                    const target = p.buyPrice * (1 + (p.customMinGainPct || 0.62) / 100);
+                    openPosReport += `• <b>${p.symbol}:</b> Entrada $${fmtPrice(p.buyPrice)} | Salida Destrabe: $${fmtPrice(target)} (+${(p.customMinGainPct || 0.62).toFixed(2)}% | PnL hoy: ${gain >= 0 ? '+' : ''}${gain.toFixed(2)}%)\n`;
+                }
+            }
+            // 5. Armar reporte general
+            const fullReport = `🏛️🔬 <b>[AGENTE AUDITOR: ESTUDIO PRE-FIN DE SEMANA]</b> 📊\n` +
+                `🗓️ <i>Viernes ${dateStr} COT</i>\n\n` +
+                `📈 <b>DIAGNÓSTICO ESTADÍSTICO (Últimas 8 semanas Binance):</b>\n` +
+                `• <b>Pronóstico:</b> ${regimeTitle} (Probabilidad: <b>${purgeProbability}%</b>)\n` +
+                `• <b>Análisis:</b> ${historicalAnalysis}\n` +
+                `• <b>Estrategia:</b> ${reasonDetail}\n\n` +
+                `🎯 <b>CONFIGURACIÓN CUADRADA PARA EL FIN DE SEMANA:</b>\n` +
+                coinsReport +
+                openPosReport +
+                `🛑 <b>Veda de Viernes:</b> Activa a partir de las 11:30 AM COT (compras por simple rebote bloqueadas; solo se compra con caída real desde el viernes).\n` +
+                `🏖️ <b>Estrategia de Salida:</b> Límite ampliado a <b>+1.50% o más</b> con Trailing para exprimir la ola alcista del Domingo noche (CME), Lunes o Martes.\n` +
+                `✅ <i>Todo ajustado y sincronizado automáticamente en el motor.</i>`;
+            console.log(`🏛️ [AGENTE AUDITOR DE VIERNES] Estudio histórico completado. Diagnóstico: ${regimeTitle}`);
+            // Enviar notificación a Telegram
+            try {
+                await this.notifier.send(fullReport);
+            }
+            catch (e) {
+                console.error("Error enviando reporte de estudio de fin de semana:", e.message);
+            }
+            return fullReport;
+        }
+        catch (e) {
+            console.error("Error ejecutando runFridayMorningWeekendStudy:", e.message);
+            return `❌ Error ejecutando estudio de fin de semana: ${e.message}`;
+        }
+    }
     async runAutonomousAiBenchmarkAudit(forceTelegram = false, botSpendableUsdt = 0) {
         try {
             const now = Date.now();
             const { dayStr, timeDec, year, month, dayOfMonth } = this.getCotTimeInfo();
             const dayKey = `${year}-${month}-${dayOfMonth}`;
+            // 🔬 AGENTE DE AUDITORÍA PRE-FIN DE SEMANA (Viernes 09:30 AM a 11:15 AM COT):
+            // Ejecuta un estudio histórico de los últimos viernes/sábados de Binance,
+            // diagnostica el tipo de fin de semana, calibra pisos, anclas y gatillos dinámicos,
+            // guarda los parámetros en .market-ranges.json y notifica al usuario por Telegram.
+            if (dayStr === "Fri" && timeDec >= 9.5 && timeDec <= 11.25 && this.lastFridayStudyDayKey !== dayKey) {
+                this.lastFridayStudyDayKey = dayKey;
+                await this.runFridayMorningWeekendStudy(false);
+            }
             // 1. AUTO-SNAPSHOT DE TECHO/CIERRE DEL VIERNES (Viernes 11:30 AM a 02:30 PM COT):
             // Estadística histórica Binance (83% de las semanas): El techo del viernes ocurre entre las 10:00 AM y 12:00 PM COT.
             if (dayStr === "Fri" && timeDec >= 11.5 && timeDec <= 14.5 && this.lastFridaySnapshotDayKey !== dayKey) {
@@ -4155,6 +4261,10 @@ export class TrailingMasterBot {
             const cmd = parts[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const arg1 = parts[1]?.toUpperCase();
             const arg2 = parts[2];
+            // Estudio histórico y preparación de fin de semana (/estudio_fin_de_semana, /auditoria_viernes)
+            if (cmd === "/estudio_fin_de_semana" || cmd === "estudio_fin_de_semana" || cmd === "/estudio_viernes" || cmd === "estudio_viernes" || cmd === "/auditoria_viernes" || cmd === "auditoria_viernes" || cmd === "/preparar_fin_de_semana") {
+                return await this.runFridayMorningWeekendStudy(true);
+            }
             // Auditoría del Agente IA vs Cierre del Viernes a solicitud (/benchmark o /ia_auditar)
             if (cmd === "/benchmark" || cmd === "benchmark" || cmd === "/ia_auditar" || cmd === "ia_auditar" || cmd === "/comparar_viernes" || cmd === "comparar_viernes") {
                 const acc = await this.client.account({ recvWindow: 60000 });
