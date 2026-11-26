@@ -3328,6 +3328,9 @@
   let macroVolumeSeries = null;
   let macroPisoLine = null;
   let macroTechoLine = null;
+  let macroIdealBuyLine = null;
+  let macroIdealSellLine = null;
+  let macroDcaLine = null;
   let macroEntryLine = null;
   let currentMacroSymbol = "BTCUSDT";
   let currentMacroTf = "4h";
@@ -3484,6 +3487,25 @@
       }
     }
 
+    // Calcular Puntos Ideales de Compra, Venta y DCA
+    const rangeSpan = (techo > piso) ? (techo - piso) : 0;
+    const isPepe = currentMacroSymbol.includes("PEPE");
+    const idealBuy = r?.idealBuyPrice || Number((piso + rangeSpan * 0.10).toFixed(isPepe ? 8 : 2));
+    const idealSell = r?.idealSellPrice || Number((techo - rangeSpan * 0.04).toFixed(isPepe ? 8 : 2));
+    const dcaTarget = r?.dcaTargetPrice || Number((piso + rangeSpan * 0.05).toFixed(isPepe ? 8 : 2));
+    const channelGain = (idealBuy > 0 && idealSell > idealBuy) ? (((idealSell - idealBuy) / idealBuy) * 100) : (rangeSpan > 0 ? (rangeSpan / piso) * 100 : 0);
+
+    // Actualizar las 4 tarjetas de Puntos Ideales
+    const cardBuy = document.getElementById("macro-ideal-buy-val");
+    const cardSell = document.getElementById("macro-ideal-sell-val");
+    const cardDca = document.getElementById("macro-ideal-dca-val");
+    const cardGain = document.getElementById("macro-channel-gain-val");
+
+    if (cardBuy && idealBuy > 0) cardBuy.textContent = `$${idealBuy.toFixed(2)}`;
+    if (cardSell && idealSell > 0) cardSell.textContent = `$${idealSell.toFixed(2)}`;
+    if (cardDca && dcaTarget > 0) cardDca.textContent = `$${dcaTarget.toFixed(2)}`;
+    if (cardGain && channelGain > 0) cardGain.textContent = `+${channelGain.toFixed(2)}% NETO`;
+
     // Actualizar etiquetas visuales
     const lblPiso = document.getElementById("macro-live-piso-lbl");
     const lblTecho = document.getElementById("macro-live-techo-lbl");
@@ -3493,7 +3515,7 @@
 
     if (lblPiso) lblPiso.textContent = piso ? piso.toFixed(2) : "--";
     if (lblTecho) lblTecho.textContent = techo ? techo.toFixed(2) : "--";
-    if (targetDca) targetDca.textContent = piso ? `$${piso.toFixed(2)}` : "$58,500";
+    if (targetDca) targetDca.textContent = dcaTarget ? `$${dcaTarget.toFixed(2)}` : (piso ? `$${piso.toFixed(2)}` : "$58,500");
 
     if (entryPrice && lblEntry && tagEntry) {
       lblEntry.textContent = entryPrice.toFixed(2);
@@ -3507,40 +3529,88 @@
       try { macroCandleSeries.removePriceLine(macroPisoLine); } catch(e) {}
       macroPisoLine = null;
     }
+    if (macroIdealBuyLine) {
+      try { macroCandleSeries.removePriceLine(macroIdealBuyLine); } catch(e) {}
+      macroIdealBuyLine = null;
+    }
     if (macroTechoLine) {
       try { macroCandleSeries.removePriceLine(macroTechoLine); } catch(e) {}
       macroTechoLine = null;
+    }
+    if (macroIdealSellLine) {
+      try { macroCandleSeries.removePriceLine(macroIdealSellLine); } catch(e) {}
+      macroIdealSellLine = null;
+    }
+    if (macroDcaLine) {
+      try { macroCandleSeries.removePriceLine(macroDcaLine); } catch(e) {}
+      macroDcaLine = null;
     }
     if (macroEntryLine) {
       try { macroCandleSeries.removePriceLine(macroEntryLine); } catch(e) {}
       macroEntryLine = null;
     }
 
-    // Trazar línea de Piso
+    // 1. Trazar línea de Piso
     if (piso > 0) {
       macroPisoLine = macroCandleSeries.createPriceLine({
         price: piso,
+        color: "#059669",
+        lineWidth: 1,
+        lineStyle: window.LightweightCharts.LineStyle.Dotted,
+        axisLabelVisible: true,
+        title: `PISO ($${piso.toFixed(2)})`
+      });
+    }
+
+    // 2. Trazar línea de COMPRA IDEAL (zona de disparo recomendada)
+    if (idealBuy > 0) {
+      macroIdealBuyLine = macroCandleSeries.createPriceLine({
+        price: idealBuy,
         color: "#10b981",
         lineWidth: 2,
         lineStyle: window.LightweightCharts.LineStyle.Solid,
         axisLabelVisible: true,
-        title: `🟢 PISO ($${piso.toFixed(2)})`
+        title: `🟢 COMPRA IDEAL ($${idealBuy.toFixed(2)})`
       });
     }
 
-    // Trazar línea de Techo
+    // 3. Trazar línea de Techo
     if (techo > 0) {
       macroTechoLine = macroCandleSeries.createPriceLine({
         price: techo,
+        color: "#dc2626",
+        lineWidth: 1,
+        lineStyle: window.LightweightCharts.LineStyle.Dotted,
+        axisLabelVisible: true,
+        title: `TECHO ($${techo.toFixed(2)})`
+      });
+    }
+
+    // 4. Trazar línea de VENTA IDEAL (salida antes del rechazo)
+    if (idealSell > 0) {
+      macroIdealSellLine = macroCandleSeries.createPriceLine({
+        price: idealSell,
         color: "#ef4444",
         lineWidth: 2,
         lineStyle: window.LightweightCharts.LineStyle.Solid,
         axisLabelVisible: true,
-        title: `🔴 TECHO ($${techo.toFixed(2)})`
+        title: `🔴 VENTA IDEAL ($${idealSell.toFixed(2)})`
       });
     }
 
-    // Trazar línea de Entrada Actual
+    // 5. Trazar línea de RECOMPRA / DCA (si tenemos posición abierta y el precio está por encima)
+    if (entryPrice && entryPrice > piso && dcaTarget > 0) {
+      macroDcaLine = macroCandleSeries.createPriceLine({
+        price: dcaTarget,
+        color: "#38bdf8",
+        lineWidth: 2,
+        lineStyle: window.LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `💎 PROMEDIAR AQUÍ ($${dcaTarget.toFixed(2)})`
+      });
+    }
+
+    // 6. Trazar línea de Entrada Actual
     if (entryPrice && entryPrice > 0) {
       macroEntryLine = macroCandleSeries.createPriceLine({
         price: entryPrice,
@@ -3548,7 +3618,7 @@
         lineWidth: 2,
         lineStyle: window.LightweightCharts.LineStyle.Dashed,
         axisLabelVisible: true,
-        title: `📍 COMPRA ACTUAL ($${entryPrice.toFixed(2)})`
+        title: `📍 TU COMPRA ($${entryPrice.toFixed(2)})`
       });
     }
 

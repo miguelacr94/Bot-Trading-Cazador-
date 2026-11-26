@@ -22,6 +22,9 @@ export interface MarketRangeItem {
   effectiveTecho: number;
   maxBuyPct: number;
   maxAllowedBuyPrice: number;
+  idealBuyPrice: number;
+  idealSellPrice: number;
+  dcaTargetPrice: number;
   shieldActive: boolean;
   curPrice: number;
   rangeWidthPct: number;
@@ -191,6 +194,9 @@ export class MarketRangesManager {
           const rangeWidthPct = effectivePiso > 0 ? (rangeSpan / effectivePiso) * 100 : 0;
           const posInBandPct = rangeSpan > 0 ? Math.max(0, Math.min(100, ((curPrice - effectivePiso) / rangeSpan) * 100)) : 50;
           const maxAllowedBuyPrice = Number((effectivePiso + rangeSpan * (maxBuyPct / 100)).toFixed(sym.includes("PEPE") ? 8 : 2));
+          const idealBuyPrice = Number((effectivePiso + rangeSpan * 0.10).toFixed(sym.includes("PEPE") ? 8 : 2));
+          const idealSellPrice = Number((effectiveTecho - rangeSpan * 0.04).toFixed(sym.includes("PEPE") ? 8 : 2));
+          const dcaTargetPrice = Number((effectivePiso + rangeSpan * 0.05).toFixed(sym.includes("PEPE") ? 8 : 2));
 
           // Lectura de velas recientes para análisis de patrones
           const lastIdx = closes.length - 1;
@@ -266,6 +272,9 @@ export class MarketRangesManager {
             effectiveTecho,
             maxBuyPct,
             maxAllowedBuyPrice,
+            idealBuyPrice,
+            idealSellPrice,
+            dcaTargetPrice,
             shieldActive,
             curPrice,
             rangeWidthPct: Number(rangeWidthPct.toFixed(2)),
