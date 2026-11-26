@@ -1186,23 +1186,19 @@ export class TrailingMasterBot {
             const aiDec = aiEval.aiDecision;
             const uniqueActiveCount = this.getUniqueActiveSymbols().size;
             const maxUniqueCoins = this.controls?.maxPositions || 4;
-            // Ingestar calibración de parámetros específicos por moneda calculada por el Trader IA:
+            // Ingestar calibración de parámetros específicos por moneda (limitado a salida ágil <= 0.72% para no estancar capital):
             if (aiDec?.coinCalibrations && typeof aiDec.coinCalibrations === "object") {
                 for (const [sym, cal] of Object.entries(aiDec.coinCalibrations)) {
                     if (cal && typeof cal.minGainPct === "number" && typeof cal.callbackPct === "number") {
                         const cleanSym = sym.trim().toUpperCase();
-                        this.aiCoinCalibrations.set(cleanSym, cal);
-                        for (const [k, p] of this.activeTrailingPositions.entries()) {
-                            if (k === cleanSym || p.symbol === cleanSym) {
-                                if (!p.customMinGainPct)
-                                    p.customMinGainPct = cal.minGainPct;
-                                if (!p.customCallbackPct)
-                                    p.customCallbackPct = cal.callbackPct;
-                            }
-                        }
+                        const safeCal = {
+                            ...cal,
+                            minGainPct: Math.min(0.72, Math.max(0.60, cal.minGainPct)),
+                            callbackPct: Math.min(0.22, Math.max(0.12, cal.callbackPct))
+                        };
+                        this.aiCoinCalibrations.set(cleanSym, safeCal);
                     }
                 }
-                await this.saveTrailingPositions();
             }
             // Ejecutar decisiones de gestión de posiciones abiertas del Trader IA (Martes/Jueves Expansión o Cosecha en Techo)
             if (aiDec && aiDec.targetSymbol && aiDec.confidence >= 75) {
@@ -2747,16 +2743,12 @@ export class TrailingMasterBot {
                     // • En Hora Techo Estadística (06:00-09:50 AM Pre-Drenaje NY, 15:30-16:45 Pre-Cierre NY, 22:45-00:30 Pico Asia, Viernes Mañana, Domingo CME):
                     //   ceñir callback a 0.14%-0.15% con ganancia >= +0.68% bruto para cosechar en la cima antes del retroceso programado.
                     // • En Martes Verde, Jueves de Rebote o Inicio de Mes (fuera de Hora Techo): amplía el margen de persecución según el Calendario 5 Años.
-                    const calRegimeExit = this.get5YearCalendarRegime();
-                    const { dayStr: currentDayStr } = this.getCotTimeInfo();
-                    const isMondayHold = currentDayStr === "Mon";
-                    const isMemeCoin = MEME_WATCHLIST.includes(actualSymbol);
-                    const aiCal = this.aiCoinCalibrations.get(symbol) || this.aiCoinCalibrations.get(actualSymbol);
+                    // 🎯 MOTOR DE GANANCIA CONSTANTE (SIN PROTOCOLOS CODICIOSOS QUE ESTANQUEN EL CAPITAL):
+                    // • Activa desde +0.62% a +0.68% bruto (~+0.42% a +0.48% neto real).
+                    // • Persigue el pico más alto mientras la vela siga subiendo, sin límite de techo.
+                    // • Liquida en la cima apenas retroceda el callback corto (0.12% en destrabe / 0.16%-0.20% normal).
                     const isHighEntryTrap = marketRangesManager.isHighChannelEntry(actualSymbol, pos.buyPrice);
                     if (isStagnantPosition || isHighEntryTrap) {
-                        // 🛟 MODO DESTRABE DE CAPITAL (POSICIÓN >18H O COMPRADA EN ZONA ALTA DEL CANAL):
-                        // Sobrescribe cualquier customMinGainPct alto (ej. 1.15%) y reduce la meta a +0.62% bruto (~+0.42% neto real)
-                        // con callback ultra-ceñido de 0.12% para liberar el capital estancado en el primer rebote a verde.
                         callback = 0.12;
                         minGain = 0.62;
                         let dirtyUnstick = false;
@@ -2773,29 +2765,9 @@ export class TrailingMasterBot {
                             this.saveTrailingPositions();
                         }
                     }
-                    else if (aiCal && !pos.customMinGainPct && !pos.customCallbackPct) {
-                        callback = aiCal.callbackPct;
-                        minGain = aiCal.minGainPct;
-                    }
-                    else if (!pos.customMinGainPct && !pos.customCallbackPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
-                        callback = Math.min(callback, isMemeCoin ? 0.25 : 0.15);
-                        minGain = 0.68;
-                    }
-                    else if (!pos.customMinGainPct && !pos.customCallbackPct && isMondayHold) {
-                        // 🛡️ PROTECCIÓN DE ACUMULACIÓN DE LUNES PARA EL MARTES:
-                        // Prohibido vender por migajas (+0.65%) antes del Martes de Expansión (+5.87% histórico).
-                        // Exige al menos +1.15% en Core (BTC/ETH) y +1.85% en Memes, con callback amplio para dejar correr la subida.
-                        callback = isMemeCoin ? 0.45 : 0.28;
-                        minGain = isMemeCoin ? 1.85 : 1.15;
-                    }
-                    else if (!pos.customMinGainPct && !pos.customCallbackPct && (macro.btcStressIndex <= 0.22 || calRegimeExit.tpCallbackMultiplier > 1.05 || isMemeCoin) && !isStagnantPosition) {
-                        const mult = Math.max(1.25, calRegimeExit.tpCallbackMultiplier);
-                        callback = isMemeCoin ? Math.max(callback, 0.42) : Number((callback * mult).toFixed(2));
-                        minGain = isMemeCoin ? 1.45 : 0.85;
-                    }
-                    else if (!pos.customMinGainPct && !pos.customCallbackPct && !isMemeCoin && pos.strategy !== "micro_grid" && !isLot3 && !isMondayHold && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") && gainPct >= 0.65) {
-                        callback = Math.min(callback, (isPreWeekendHarvest || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") ? 0.16 : 0.18);
-                        minGain = 0.65;
+                    else {
+                        callback = Math.min(callback, 0.18);
+                        minGain = Math.min(minGain, 0.68);
                     }
                     // 🕯️ CENTINELA DE MECHA DE RECHAZO, DESCARGA CVD EN CIMA Y ESCUDO ANTI-VENTA TEMPRANA
                     let isRejectionWick = false;

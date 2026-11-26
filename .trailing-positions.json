@@ -27,7 +27,7 @@
       "buyPrice": 1736.33633634,
       "qty": 0.0351648,
       "investedUsdt": 61.0579,
-      "highestPrice": 1749.48,
+      "highestPrice": 1736.33633634,
       "activated": true,
       "buyTime": 1795455995308,
       "strategy": "trailing_rebound",
