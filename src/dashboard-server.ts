@@ -6,6 +6,7 @@ import * as crypto from "crypto";
 import * as dotenv from "dotenv";
 import { Spot } from "@binance/connector";
 import { computeRealizedPnl, PNL_SYMBOLS, PnlSummary } from "./pnl.js";
+import { marketRangesManager } from "./market-ranges.js";
 
 dotenv.config();
 
@@ -1654,6 +1655,81 @@ export class DashboardServer {
             res.end(JSON.stringify({ error: e.message }));
           }
         });
+        return;
+      }
+
+      // --- APIS DE RANGOS DE MERCADO (PISOS, TECHOS Y PATRONES) ---
+      if (parsedUrl.pathname === "/api/ranges" && req.method === "GET") {
+        try {
+          const controls = await this.loadControls();
+          const core = controls?.coreWatchlist || ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
+          const meme = controls?.memeWatchlist || ["DOGEUSDT", "PEPEUSDT"];
+          const symbols = Array.from(new Set([...core, ...meme, "BTCUSDT", "ETHUSDT"]));
+          const forceRefresh = parsedUrl.searchParams.get("refresh") === "true";
+          const ranges = await marketRangesManager.getMarketRanges(symbols, forceRefresh);
+          res.writeHead(200, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+          res.end(JSON.stringify({ ok: true, ranges, symbols }));
+        } catch (e: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/ranges" && req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => (body += chunk));
+        req.on("end", async () => {
+          try {
+            const data = JSON.parse(body || "{}");
+            if (!data.symbol) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Falta symbol" }));
+              return;
+            }
+            const sym = data.symbol.toUpperCase();
+            const updated = await marketRangesManager.saveSettings(sym, {
+              manualPiso: data.manualPiso !== undefined ? (data.manualPiso === null || data.manualPiso === "" ? null : parseFloat(data.manualPiso)) : undefined,
+              manualTecho: data.manualTecho !== undefined ? (data.manualTecho === null || data.manualTecho === "" ? null : parseFloat(data.manualTecho)) : undefined,
+              useManual: data.useManual !== undefined ? Boolean(data.useManual) : undefined,
+              maxBuyPct: data.maxBuyPct !== undefined ? parseFloat(data.maxBuyPct) : undefined,
+              shieldActive: data.shieldActive !== undefined ? Boolean(data.shieldActive) : undefined
+            });
+
+            // Sincronizar en controles de la app
+            const controls = await this.loadControls();
+            if (controls) {
+              controls.marketRanges = updated;
+              await this.saveControls(controls);
+            }
+
+            const refreshed = await marketRangesManager.getMarketRanges([sym], true);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, range: refreshed[sym], allSettings: updated }));
+          } catch (e: any) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
+
+      if (parsedUrl.pathname === "/api/ranges/auto-detect" && req.method === "POST") {
+        try {
+          const controls = await this.loadControls();
+          const core = controls?.coreWatchlist || ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"];
+          const meme = controls?.memeWatchlist || ["DOGEUSDT", "PEPEUSDT"];
+          const symbols = Array.from(new Set([...core, ...meme, "BTCUSDT", "ETHUSDT"]));
+          const ranges = await marketRangesManager.getMarketRanges(symbols, true);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, ranges }));
+        } catch (e: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
         return;
       }
 

@@ -2300,6 +2300,180 @@
       display: none !important;
     }
 
+    /* ========================================================
+       ESTILOS VISUALES: RADAR DE PISOS, TECHOS Y PATRONES
+       ======================================================== */
+    .range-card {
+      background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .range-card:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .range-card.zone-piso {
+      border-color: rgba(16, 185, 129, 0.5);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.12);
+    }
+    .range-card.zone-media {
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+    .range-card.zone-techo {
+      border-color: rgba(239, 68, 68, 0.45);
+    }
+    .range-zone-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .range-zone-badge.piso {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+    .range-zone-badge.media {
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+    .range-zone-badge.techo {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+    .range-zone-badge.alerta {
+      background: rgba(168, 85, 247, 0.2);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.4);
+    }
+    .range-gauge-track {
+      height: 26px;
+      border-radius: 13px;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      position: relative;
+      overflow: visible;
+      margin: 18px 0 10px 0;
+      display: flex;
+    }
+    .range-gauge-section {
+      height: 100%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    }
+    .range-gauge-section.buy-zone {
+      background: linear-gradient(90deg, rgba(16, 185, 129, 0.85), rgba(16, 185, 129, 0.6));
+      color: #ffffff;
+      border-top-left-radius: 12px;
+      border-bottom-left-radius: 12px;
+    }
+    .range-gauge-section.mid-zone {
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.45), rgba(245, 158, 11, 0.35));
+      color: #fde68a;
+    }
+    .range-gauge-section.top-zone {
+      background: linear-gradient(90deg, rgba(239, 68, 68, 0.45), rgba(239, 68, 68, 0.85));
+      color: #ffffff;
+      border-top-right-radius: 12px;
+      border-bottom-right-radius: 12px;
+    }
+    .range-gauge-needle {
+      position: absolute;
+      top: -8px;
+      bottom: -8px;
+      width: 4px;
+      background: #ffffff;
+      border-radius: 2px;
+      transform: translateX(-50%);
+      box-shadow: 0 0 14px #38bdf8, 0 0 4px #ffffff;
+      z-index: 10;
+      transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .range-gauge-needle::before {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 7px solid #38bdf8;
+    }
+    .range-gauge-needle::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-bottom: 7px solid #38bdf8;
+    }
+    .range-pattern-callout {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .range-form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 10px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .range-form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .range-form-group label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    .range-input {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      color: #f8fafc;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 10px;
+      outline: none;
+    }
+    .range-input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+
 </style>
 </head>
 <body>
@@ -2744,6 +2918,11 @@
         <span class="tab-label">Operaciones Spot</span>
         <span class="tab-badge" id="tab-spot-badge">0 activas</span>
       </button>
+      <button class="main-tab-btn" data-tab="tab-ranges" id="btn-tab-ranges">
+        <span class="tab-icon">📐</span>
+        <span class="tab-label">Pisos & Techos</span>
+        <span class="tab-badge green" style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4);">RANGOS & PATRONES</span>
+      </button>
       <button class="main-tab-btn" data-tab="tab-strategies">
         <span class="tab-icon">⚙️</span>
         <span class="tab-label">Estrategias & Presupuesto</span>
@@ -2897,6 +3076,56 @@
         </table>
       </div>
     </div>
+    </div>
+
+    <!-- TAB NUEVO: PISOS, TECHOS & PATRONES DE MERCADO -->
+    <div class="tab-content" id="tab-ranges">
+      <div style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9)); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 16px; padding: 22px 24px; margin-bottom: 22px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:16px; margin-bottom:18px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="background:rgba(56, 189, 248, 0.15); border:1px solid rgba(56, 189, 248, 0.35); border-radius:12px; width:44px; height:44px; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">
+              📐
+            </div>
+            <div>
+              <h2 style="margin:0; font-size:1.15rem; font-weight:800; color:#f8fafc; display:flex; align-items:center; gap:8px;">
+                Radar de Pisos, Techos & Detección de Patrones
+                <span style="font-size:11px; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:3px 8px; border-radius:6px; font-weight:700;">AUTO + MANUAL</span>
+              </h2>
+              <p style="margin:4px 0 0 0; font-size:12px; color:#94a3b8; max-width:750px;">
+                El bot calcula el <b>Piso Estructural (Soporte)</b> y el <b>Techo (Resistencia)</b> de los últimos 3-4 días automáticamente. Puedes definir tus propios rangos manuales para que el bot trabaje sincronizado contigo y <b>bloquee compras si el precio está fuera de la zona de piso</b> (evitando trampas como comprar BTC en $62k cuando el piso está en $59k).
+              </p>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <button id="btn-recalc-all-ranges" class="btn-refresh" style="background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.4); color:#38bdf8; font-weight:700; padding:8px 14px; border-radius:8px; cursor:pointer; font-size:12px; display:flex; align-items:center; gap:6px;">
+              <span>🔄</span> Recalcular Pisos/Techos Auto
+            </button>
+            <span id="ranges-last-update" style="font-size:11px; color:#64748b;">Actualizado: —</span>
+          </div>
+        </div>
+
+        <!-- Barra de Filtros Rápidos por Moneda -->
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+          <span style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">Filtrar:</span>
+          <div id="ranges-filter-pills" style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="ranges-pill active" data-sym="ALL" style="background:#38bdf8; color:#0f172a; border:none; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">TODAS</button>
+            <button class="ranges-pill" data-sym="BTCUSDT" style="background:rgba(255,255,255,0.08); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1); padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">BTC</button>
+            <button class="ranges-pill" data-sym="ETHUSDT" style="background:rgba(255,255,255,0.08); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1); padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">ETH</button>
+            <button class="ranges-pill" data-sym="SOLUSDT" style="background:rgba(255,255,255,0.08); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1); padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">SOL</button>
+            <button class="ranges-pill" data-sym="BNBUSDT" style="background:rgba(255,255,255,0.08); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1); padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">BNB</button>
+            <button class="ranges-pill" data-sym="DOGEUSDT" style="background:rgba(255,255,255,0.08); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1); padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">DOGE</button>
+            <button class="ranges-pill" data-sym="PEPEUSDT" style="background:rgba(255,255,255,0.08); color:#cbd5e1; border:1px solid rgba(255,255,255,0.1); padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">PEPE</button>
+          </div>
+        </div>
+
+        <!-- Contenedor dinámico de Tarjetas de Rango -->
+        <div id="ranges-cards-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px;">
+          <div style="padding:40px; text-align:center; color:#94a3b8; font-size:13px; grid-column:1/-1;">
+            ⏳ Cargando análisis de rangos y detección de patrones...
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- TAB 2: ESTRATEGIAS & PRESUPUESTO -->

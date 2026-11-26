@@ -3049,6 +3049,309 @@
     .then(s => window.updateMicroScalperUi(s))
     .catch(() => {});
 
+  // ========================================================
+  // MÓDULO VISUAL DE PISOS, TECHOS & DETECCIÓN DE PATRONES
+  // ========================================================
+  let currentRangesData = {};
+  let currentRangeFilter = "ALL";
+
+  async function fetchMarketRanges(forceRefresh = false) {
+    try {
+      const url = `/api/ranges${forceRefresh ? "?refresh=true" : ""}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.ranges) {
+        currentRangesData = data.ranges;
+        renderMarketRangesCards();
+        const updateEl = document.getElementById("ranges-last-update");
+        if (updateEl) {
+          const d = new Date();
+          updateEl.textContent = `Actualizado: ${d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+        }
+      }
+    } catch (e) {
+      console.warn("Error cargando rangos de mercado:", e);
+    }
+  }
+
+  function renderMarketRangesCards() {
+    const grid = document.getElementById("ranges-cards-grid");
+    if (!grid) return;
+
+    const symbols = Object.keys(currentRangesData);
+    if (symbols.length === 0) {
+      grid.innerHTML = `<div style="padding:40px; text-align:center; color:#94a3b8; font-size:13px; grid-column:1/-1;">⏳ Cargando y calculando canales institucionales...</div>`;
+      return;
+    }
+
+    const filtered = currentRangeFilter === "ALL" 
+      ? symbols 
+      : symbols.filter(s => s === currentRangeFilter || s.replace("USDT","") === currentRangeFilter);
+
+    let html = "";
+    filtered.forEach(sym => {
+      const r = currentRangesData[sym];
+      if (!r) return;
+
+      const isPiso = r.zone === "PISO_COMPRA";
+      const isTecho = r.zone === "TECHO_RESISTENCIA";
+      const isMedia = r.zone === "ZONA_MEDIA";
+      const isDownBreak = r.zone === "RUPTURA_BAJISTA";
+      const isUpBreak = r.zone === "RUPTURA_ALCISTA";
+
+      const zoneClass = isPiso ? "zone-piso" : isTecho ? "zone-techo" : isMedia ? "zone-media" : "";
+      const badgeClass = isPiso ? "piso" : isTecho ? "techo" : isMedia ? "media" : "alerta";
+      const badgeText = isPiso ? "🟢 EN PISO (COMPRA)" : isTecho ? "🔴 EN TECHO (RESISTENCIA)" : isMedia ? "🟡 ZONA MEDIA (PRECAUCIÓN)" : isDownBreak ? "🚨 RUPTURA BAJISTA" : "🚀 RUPTURA ALCISTA";
+
+      const priceFmt = sym.includes("PEPE") ? r.curPrice.toFixed(8) : r.curPrice.toFixed(2);
+      const pisoFmt = sym.includes("PEPE") ? r.effectivePiso.toFixed(8) : r.effectivePiso.toFixed(2);
+      const techoFmt = sym.includes("PEPE") ? r.effectiveTecho.toFixed(8) : r.effectiveTecho.toFixed(2);
+      const maxBuyFmt = sym.includes("PEPE") ? r.maxAllowedBuyPrice.toFixed(8) : r.maxAllowedBuyPrice.toFixed(2);
+
+      const maxBuyPct = r.maxBuyPct || 25;
+      const midZoneWidth = Math.max(0, 72 - maxBuyPct);
+      const topZoneWidth = 28;
+
+      const pinLeft = Math.max(2, Math.min(98, r.posInBandPct));
+
+      const adviceBg = isPiso 
+        ? "rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.35); color: #6ee7b7;" 
+        : isMedia 
+        ? "rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #fde68a;" 
+        : isTecho
+        ? "rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.35); color: #fca5a5;"
+        : "rgba(168, 85, 247, 0.12); border-color: rgba(168, 85, 247, 0.35); color: #d8b4fe;";
+
+      const shieldBadge = r.shieldActive 
+        ? `<span style="font-size:10px; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:2px 7px; border-radius:4px; font-weight:700;">🛡️ CANDADO ACTIVO</span>`
+        : `<span style="font-size:10px; background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4); padding:2px 7px; border-radius:4px; font-weight:700;">⚠️ CANDADO INACTIVO</span>`;
+
+      html += `
+        <div class="range-card ${zoneClass}" id="card-range-${sym}">
+          <!-- Cabecera de la Moneda -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:1.15rem; font-weight:800; color:#ffffff;">${sym}</span>
+              ${shieldBadge}
+            </div>
+            <span class="range-zone-badge ${badgeClass}">${badgeText}</span>
+          </div>
+
+          <!-- Precio Actual y Ubicación -->
+          <div style="display:flex; justify-content:space-between; align-items:baseline; background:rgba(0,0,0,0.25); border-radius:8px; padding:8px 12px; border:1px solid rgba(255,255,255,0.06);">
+            <div>
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">Precio en Vivo:</span>
+              <div style="font-size:1.25rem; font-weight:800; color:#38bdf8;">$${priceFmt}</div>
+            </div>
+            <div style="text-align:right;">
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">Ubicación en Canal:</span>
+              <div style="font-size:1.05rem; font-weight:800; color:${isPiso ? '#34d399' : isMedia ? '#fbbf24' : '#f87171'};">
+                ${r.posInBandPct.toFixed(1)}%
+              </div>
+            </div>
+          </div>
+
+          <!-- Termómetro / Medidor Visual de Rango -->
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:10px; font-weight:700; color:#94a3b8; margin-bottom:2px;">
+              <span style="color:#34d399;">PISO: $${pisoFmt}</span>
+              <span style="color:#fbbf24;">LÍMITE COMPRA (${maxBuyPct}%): $${maxBuyFmt}</span>
+              <span style="color:#f87171;">TECHO: $${techoFmt}</span>
+            </div>
+
+            <div class="range-gauge-track">
+              <!-- Zona Verde (Piso / Compra) -->
+              <div class="range-gauge-section buy-zone" style="width: ${maxBuyPct}%;" title="Zona de Compra Segura (0% a ${maxBuyPct}%)">
+                ZONA COMPRA
+              </div>
+              <!-- Zona Amarilla (Zona Media / Trampa) -->
+              <div class="range-gauge-section mid-zone" style="width: ${midZoneWidth}%;" title="Zona Media / Espera (${maxBuyPct}% a 72%)">
+                ESPERAR (NO COMPRAR)
+              </div>
+              <!-- Zona Roja (Techo / Distribución) -->
+              <div class="range-gauge-section top-zone" style="width: ${topZoneWidth}%;" title="Zona de Techo / Resistencia (72% a 100%)">
+                TECHO
+              </div>
+              <!-- Pin indicador móvil -->
+              <div class="range-gauge-needle" style="left: ${pinLeft}%;" title="Precio actual: $${priceFmt} (${r.posInBandPct.toFixed(1)}%)"></div>
+            </div>
+
+            <div style="text-align:center; font-size:10px; color:#94a3b8; margin-top:4px;">
+              Ancho del Rango: <b style="color:#f8fafc;">+${r.rangeWidthPct}%</b> de margen entre piso y techo.
+            </div>
+          </div>
+
+          <!-- Patrón y Consejo del Asesor -->
+          <div class="range-pattern-callout" style="background:${adviceBg}">
+            <div style="font-weight:700; font-size:12px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+              <span>${r.pattern}</span>
+            </div>
+            <div style="font-size:11px; line-height:1.4;">
+              ${r.actionAdvice}
+            </div>
+          </div>
+
+          <!-- Panel de Ajuste Manual de Rangos -->
+          <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+              <label style="font-size:11px; font-weight:700; color:#cbd5e1; display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="range-use-manual-${sym}" ${r.useManual ? "checked" : ""} style="cursor:pointer;" onchange="window.onRangeToggleManual('${sym}')">
+                <span>Modificar Piso/Techo Manualmente</span>
+              </label>
+              <label style="font-size:11px; font-weight:700; color:#38bdf8; display:flex; align-items:center; gap:6px; cursor:pointer;" title="Si está activo, el bot tiene prohibido comprar fuera de la zona de piso">
+                <input type="checkbox" id="range-shield-${sym}" ${r.shieldActive ? "checked" : ""} style="cursor:pointer;">
+                <span>🛡️ Candado de Compra</span>
+              </label>
+            </div>
+
+            <div class="range-form-grid" id="range-inputs-box-${sym}" style="opacity:${r.useManual ? '1' : '0.6'}; pointer-events:${r.useManual ? 'auto' : 'none'};">
+              <div class="range-form-group">
+                <label>Piso Manual ($):</label>
+                <input type="number" step="any" class="range-input" id="range-input-piso-${sym}" value="${r.manualPiso || r.autoPiso}">
+                <span style="font-size:9px; color:#64748b;">Auto: $${r.autoPiso}</span>
+              </div>
+              <div class="range-form-group">
+                <label>Techo Manual ($):</label>
+                <input type="number" step="any" class="range-input" id="range-input-techo-${sym}" value="${r.manualTecho || r.autoTecho}">
+                <span style="font-size:9px; color:#64748b;">Auto: $${r.autoTecho}</span>
+              </div>
+              <div class="range-form-group" style="grid-column:1/-1;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <label>Zona de Compra Permitida:</label>
+                  <span id="range-pct-val-${sym}" style="font-size:11px; font-weight:800; color:#34d399;">${maxBuyPct}% del rango</span>
+                </div>
+                <input type="range" min="10" max="45" step="5" value="${maxBuyPct}" id="range-slider-buy-${sym}" style="width:100%; cursor:pointer;" oninput="document.getElementById('range-pct-val-${sym}').textContent = this.value + '% del rango'">
+              </div>
+            </div>
+
+            <!-- Botones de Acción de la Tarjeta -->
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <button onclick="window.saveRangeSettings('${sym}')" class="btn-refresh" style="flex:1; background:linear-gradient(135deg, #0284c7, #0369a1); color:#ffffff; font-weight:700; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:11px;">
+                💾 Guardar Rango & Candado
+              </button>
+              <button onclick="window.resetRangeSettings('${sym}')" style="background:rgba(255,255,255,0.08); color:#cbd5e1; border:1px solid rgba(255,255,255,0.15); padding:8px 10px; border-radius:6px; cursor:pointer; font-size:11px;" title="Restaurar a cálculo automático">
+                🔄 Auto
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    grid.innerHTML = html;
+  }
+
+  window.onRangeToggleManual = function (sym) {
+    const chk = document.getElementById(`range-use-manual-${sym}`);
+    const box = document.getElementById(`range-inputs-box-${sym}`);
+    if (chk && box) {
+      box.style.opacity = chk.checked ? "1" : "0.6";
+      box.style.pointerEvents = chk.checked ? "auto" : "none";
+    }
+  };
+
+  window.saveRangeSettings = async function (sym) {
+    try {
+      const useManual = document.getElementById(`range-use-manual-${sym}`)?.checked ?? false;
+      const shieldActive = document.getElementById(`range-shield-${sym}`)?.checked ?? true;
+      const pisoVal = document.getElementById(`range-input-piso-${sym}`)?.value;
+      const techoVal = document.getElementById(`range-input-techo-${sym}`)?.value;
+      const sliderVal = document.getElementById(`range-slider-buy-${sym}`)?.value;
+
+      const payload = {
+        symbol: sym,
+        useManual,
+        shieldActive,
+        manualPiso: useManual && pisoVal ? parseFloat(pisoVal) : null,
+        manualTecho: useManual && techoVal ? parseFloat(techoVal) : null,
+        maxBuyPct: sliderVal ? parseFloat(sliderVal) : 25
+      };
+
+      const res = await fetch("/api/ranges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.range) {
+          currentRangesData[sym] = data.range;
+          renderMarketRangesCards();
+        }
+      }
+    } catch (e) {
+      console.error("Error guardando rango:", e);
+    }
+  };
+
+  window.resetRangeSettings = async function (sym) {
+    try {
+      const payload = {
+        symbol: sym,
+        useManual: false,
+        manualPiso: null,
+        manualTecho: null
+      };
+
+      const res = await fetch("/api/ranges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.range) {
+          currentRangesData[sym] = data.range;
+          renderMarketRangesCards();
+        }
+      }
+    } catch (e) {
+      console.error("Error restaurando auto rango:", e);
+    }
+  };
+
+  function initMarketRangesModule() {
+    // Filtros por moneda
+    const filterPills = document.querySelectorAll(".ranges-pill");
+    filterPills.forEach(btn => {
+      btn.addEventListener("click", () => {
+        filterPills.forEach(b => {
+          b.style.background = "rgba(255,255,255,0.08)";
+          b.style.color = "#cbd5e1";
+          b.classList.remove("active");
+        });
+        btn.style.background = "#38bdf8";
+        btn.style.color = "#0f172a";
+        btn.classList.add("active");
+        currentRangeFilter = btn.getAttribute("data-sym") || "ALL";
+        renderMarketRangesCards();
+      });
+    });
+
+    // Botón recalcular todo
+    const btnRecalc = document.getElementById("btn-recalc-all-ranges");
+    if (btnRecalc) {
+      btnRecalc.addEventListener("click", async () => {
+        btnRecalc.textContent = "⏳ Calculando...";
+        await fetchMarketRanges(true);
+        btnRecalc.innerHTML = "<span>🔄</span> Recalcular Pisos/Techos Auto";
+      });
+    }
+
+    // Carga inicial y timer cada 25s
+    fetchMarketRanges();
+    setInterval(() => {
+      const tabRanges = document.getElementById("tab-ranges");
+      if (tabRanges && tabRanges.classList.contains("active")) {
+        fetchMarketRanges(false);
+      }
+    }, 25000);
+  }
+
+  initMarketRangesModule();
   initEyeCollapsibleSections();
   initTabNavigation();
   initCrossoverModule();

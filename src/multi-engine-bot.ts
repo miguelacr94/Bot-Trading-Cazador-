@@ -10,6 +10,7 @@ import * as path from "path";
 import { TelegramNotifier } from "./notifier.js";
 import { TelegramCommands } from "./telegram-commands.js";
 import { computeRealizedPnl } from "./pnl.js";
+import { marketRangesManager } from "./market-ranges.js";
 
 dotenv.config();
 
@@ -4027,9 +4028,15 @@ export class TrailingMasterBot {
 
         const curPrice = closes[closes.length - 1];
 
-        // Cooldown y Re-Entrada en Ola Post-Venta (Wave Surfing):
-        // Si acabamos de vender en ganancia y la moneda corrige enseguida >= 0.80% por debajo de nuestra venta,
-        // habilitamos la Re-Entrada en Ola para volver a comprar más barato y montarnos en la siguiente subida.
+        // 🛡️ CANDADO DE RANGO (PISOS Y TECHOS CONFIGURADOS O AUTO-DETECTADOS):
+        // Prohibido armar vigilancia de compra si el precio está fuera de la zona de compra permitida.
+        const rangeCheck = marketRangesManager.isBuyAllowed(sym, curPrice);
+        if (!rangeCheck.allowed) {
+          continue;
+        }
+
+        // Cooldown y Re-Entrada en Ola Post-Venta:
+        // Exige una corrección real de al menos >= 2.5% por debajo de la venta para evitar recompras apresuradas en falso techo
         const lastSold = this.recentlySoldSymbols.get(sym);
         let droppedFromExit = 0;
         let isPostSaleWaveCandidate = false;
@@ -4038,10 +4045,10 @@ export class TrailingMasterBot {
           droppedFromExit = lastSold.sellPrice && lastSold.sellPrice > 0
             ? ((lastSold.sellPrice - curPrice) / lastSold.sellPrice) * 100
             : 0;
-          if (elapsed < 20 * 60 * 1000 && droppedFromExit < 0.80) {
-            continue; // Cooldown activo solo si no ha corregido al menos -0.80% desde nuestro precio de venta
+          if (elapsed < 30 * 60 * 1000 && droppedFromExit < 2.50) {
+            continue; // Cooldown activo si no ha corregido al menos -2.50% desde nuestro precio de venta
           }
-          if (elapsed < 45 * 60 * 1000 && droppedFromExit >= 0.85) {
+          if (elapsed < 60 * 60 * 1000 && droppedFromExit >= 2.50) {
             isPostSaleWaveCandidate = true;
             console.log(`🌊 [RE-ENTRADA EN OLA DETECTADA] ${sym} corrigió -${droppedFromExit.toFixed(2)}% debajo de nuestra venta ($${lastSold.sellPrice} -> $${curPrice}). Evaluando piso de recompra.`);
           }
@@ -4307,6 +4314,13 @@ export class TrailingMasterBot {
         // Si BTC está en Tormenta Macro sin haber tocado piso de capitulación, seguimos bajando el lowestPrice pero NO gatillamos compra aún
         if (sym !== "BTCUSDT" && macro.isMacroStorm && !macro.isBtcCapitulationFloor) {
           console.log(`🌪️ [VETO TORMENTA MACRO: ${sym}] BTC Stress=${(macro.btcStressIndex * 100).toFixed(0)}% (${macro.btcDrop3hPct.toFixed(2)}% en 3h). Reteniendo disparo y acompañando suelo.`);
+          continue;
+        }
+
+        // 🛡️ CANDADO DE RANGO (VERIFICACIÓN EN TIEMPO DE DISPARO DE COMPRA):
+        const rangeCheckBuy = marketRangesManager.isBuyAllowed(sym, cur);
+        if (!rangeCheckBuy.allowed) {
+          console.log(`🛡️ [CANDADO DE RANGO: ${sym}] Compra bloqueada en $${cur}. ${rangeCheckBuy.reason}`);
           continue;
         }
 
@@ -7443,6 +7457,13 @@ export class TrailingMasterBot {
         ]);
 
         const cur = parseFloat(tickerRes.data.price);
+        // 🛡️ CANDADO DE RANGO (VERIFICACIÓN EN TIEMPO DE DISPARO DE COMPRA):
+        const rangeCheckBuy = marketRangesManager.isBuyAllowed(sym, cur);
+        if (!rangeCheckBuy.allowed) {
+          console.log(`🛡️ [CANDADO DE RANGO: ${sym}] Compra bloqueada en $${cur}. ${rangeCheckBuy.reason}`);
+          continue;
+        }
+
         const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
         const isMemeCoin = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("DOGE");
         const reqBounce = isMemeCoin ? 0.45 : 0.35;
