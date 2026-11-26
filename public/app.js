@@ -94,6 +94,9 @@
       if (targetId === "tab-spot" && pnlChart) {
         try { pnlChart.resize(); } catch(e) {}
       }
+      if (targetId === "tab-ranges") {
+        try { window.onMacroRangesTabActivated?.(); } catch(e) {}
+      }
       if (targetId === "tab-practice") {
         try { window.practiceSim?.onTabActivated?.(); } catch(e) {}
       }
@@ -669,6 +672,7 @@
   }
 
   function renderPositions(list) {
+    window.latestPositions = list || [];
     const box = $("positions-container");
     const empty = $("positions-empty");
     setText($("active-positions-count"), `${list.length} lote(s) activo(s)`);
@@ -3306,10 +3310,357 @@
         if (data.range) {
           currentRangesData[sym] = data.range;
           renderMarketRangesCards();
+          if (currentMacroSymbol === sym) {
+            syncMacroChartLines();
+          }
         }
       }
     } catch (e) {
       console.error("Error restaurando auto rango:", e);
+    }
+  };
+
+  // ========================================================
+  // GRÁFICO DE VELAS INTERACTIVO: CANAL MULTI-SEMANA
+  // ========================================================
+  let macroChart = null;
+  let macroCandleSeries = null;
+  let macroVolumeSeries = null;
+  let macroPisoLine = null;
+  let macroTechoLine = null;
+  let macroEntryLine = null;
+  let currentMacroSymbol = "BTCUSDT";
+  let currentMacroTf = "4h";
+
+  function initMacroRangesChart() {
+    const container = document.getElementById("macro-ranges-chart");
+    if (!container || !window.LightweightCharts) return;
+
+    container.innerHTML = "";
+
+    macroChart = window.LightweightCharts.createChart(container, {
+      width: container.clientWidth || 800,
+      height: 460,
+      layout: {
+        background: { type: "solid", color: "#0d111a" },
+        textColor: "#94a3b8",
+        fontSize: 12,
+        fontFamily: "'JetBrains Mono', monospace"
+      },
+      grid: {
+        vertLines: { color: "rgba(255, 255, 255, 0.04)" },
+        horzLines: { color: "rgba(255, 255, 255, 0.04)" }
+      },
+      crosshair: {
+        mode: window.LightweightCharts.CrosshairMode.Normal,
+        vertLine: { color: "rgba(56, 189, 248, 0.4)", width: 1, style: 3 },
+        horzLine: { color: "rgba(56, 189, 248, 0.4)", width: 1, style: 3 }
+      },
+      rightPriceScale: {
+        borderColor: "rgba(255, 255, 255, 0.1)",
+        scaleMargins: { top: 0.1, bottom: 0.18 }
+      },
+      timeScale: {
+        borderColor: "rgba(255, 255, 255, 0.1)",
+        timeVisible: true,
+        secondsVisible: false
+      }
+    });
+
+    macroCandleSeries = macroChart.addCandlestickSeries({
+      upColor: "#10b981",
+      downColor: "#ef4444",
+      borderVisible: false,
+      wickUpColor: "#10b981",
+      wickDownColor: "#ef4444"
+    });
+
+    macroVolumeSeries = macroChart.addHistogramSeries({
+      color: "rgba(56, 189, 248, 0.2)",
+      priceFormat: { type: "volume" },
+      priceScaleId: "",
+      scaleMargins: { top: 0.85, bottom: 0 }
+    });
+
+    window.addEventListener("resize", () => {
+      if (macroChart && container) {
+        macroChart.applyOptions({ width: container.clientWidth });
+      }
+    });
+
+    loadMacroChartData(currentMacroSymbol, currentMacroTf);
+  }
+
+  window.onMacroRangesTabActivated = function () {
+    if (!macroChart) {
+      initMacroRangesChart();
+    } else {
+      setTimeout(() => {
+        const container = document.getElementById("macro-ranges-chart");
+        if (container && macroChart) {
+          macroChart.applyOptions({ width: container.clientWidth });
+          macroChart.timeScale().fitContent();
+        }
+      }, 150);
+    }
+  };
+
+  async function loadMacroChartData(symbol, tf) {
+    currentMacroSymbol = symbol;
+    currentMacroTf = tf;
+
+    try {
+      const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=250`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const klines = await res.json();
+      if (!Array.isArray(klines) || klines.length === 0) return;
+
+      const candles = [];
+      const volumes = [];
+      for (const k of klines) {
+        const t = Math.floor(k[0] / 1000);
+        const o = parseFloat(k[1]), h = parseFloat(k[2]), l = parseFloat(k[3]), c = parseFloat(k[4]);
+        const v = parseFloat(k[5]);
+        candles.push({ time: t, open: o, high: h, low: l, close: c });
+        volumes.push({
+          time: t,
+          value: v,
+          color: c >= o ? "rgba(16, 185, 129, 0.25)" : "rgba(239, 68, 68, 0.25)"
+        });
+      }
+
+      if (macroCandleSeries) macroCandleSeries.setData(candles);
+      if (macroVolumeSeries) macroVolumeSeries.setData(volumes);
+      if (macroChart) macroChart.timeScale().fitContent();
+
+      const lastCandle = candles[candles.length - 1];
+      const livePriceEl = document.getElementById("macro-chart-live-price");
+      if (livePriceEl && lastCandle) {
+        const pFmt = symbol.includes("PEPE") ? lastCandle.close.toFixed(8) : lastCandle.close.toFixed(2);
+        livePriceEl.textContent = `$${pFmt}`;
+      }
+
+      // Sincronizar líneas de Piso, Techo y Compra
+      syncMacroChartLines();
+    } catch (e) {
+      console.warn("Error cargando klines para gráfico macro:", e);
+    }
+  }
+
+  function syncMacroChartLines() {
+    if (!macroCandleSeries) return;
+
+    const r = currentRangesData[currentMacroSymbol];
+    const pisoInput = document.getElementById("macro-input-piso");
+    const techoInput = document.getElementById("macro-input-techo");
+    const shieldInput = document.getElementById("macro-input-shield");
+
+    // Determinar valores de piso y techo
+    let piso = r?.effectivePiso || 0;
+    let techo = r?.effectiveTecho || 0;
+
+    if (pisoInput && (!pisoInput.value || document.activeElement !== pisoInput)) {
+      pisoInput.value = (r?.manualPiso || r?.autoPiso || piso) || "";
+    }
+    if (techoInput && (!techoInput.value || document.activeElement !== techoInput)) {
+      techoInput.value = (r?.manualTecho || r?.autoTecho || techo) || "";
+    }
+    if (shieldInput && r) {
+      shieldInput.checked = r.shieldActive !== false;
+    }
+
+    piso = parseFloat(pisoInput?.value) || piso;
+    techo = parseFloat(techoInput?.value) || techo;
+
+    // Buscar si tenemos posición abierta en esta moneda
+    let entryPrice = null;
+    let posQty = 0;
+    if (window.latestPositions && Array.isArray(window.latestPositions)) {
+      const pos = window.latestPositions.find(p => p.symbol === currentMacroSymbol || p.id === currentMacroSymbol);
+      if (pos) {
+        entryPrice = pos.buyPrice;
+        posQty = pos.qty;
+      }
+    }
+
+    // Actualizar etiquetas visuales
+    const lblPiso = document.getElementById("macro-live-piso-lbl");
+    const lblTecho = document.getElementById("macro-live-techo-lbl");
+    const lblEntry = document.getElementById("macro-live-entry-lbl");
+    const tagEntry = document.getElementById("macro-entry-tag");
+    const targetDca = document.getElementById("dca-piso-target");
+
+    if (lblPiso) lblPiso.textContent = piso ? piso.toFixed(2) : "--";
+    if (lblTecho) lblTecho.textContent = techo ? techo.toFixed(2) : "--";
+    if (targetDca) targetDca.textContent = piso ? `$${piso.toFixed(2)}` : "$58,500";
+
+    if (entryPrice && lblEntry && tagEntry) {
+      lblEntry.textContent = entryPrice.toFixed(2);
+      tagEntry.style.display = "inline-flex";
+    } else if (tagEntry) {
+      tagEntry.style.display = "none";
+    }
+
+    // Remover líneas anteriores
+    if (macroPisoLine) {
+      try { macroCandleSeries.removePriceLine(macroPisoLine); } catch(e) {}
+      macroPisoLine = null;
+    }
+    if (macroTechoLine) {
+      try { macroCandleSeries.removePriceLine(macroTechoLine); } catch(e) {}
+      macroTechoLine = null;
+    }
+    if (macroEntryLine) {
+      try { macroCandleSeries.removePriceLine(macroEntryLine); } catch(e) {}
+      macroEntryLine = null;
+    }
+
+    // Trazar línea de Piso
+    if (piso > 0) {
+      macroPisoLine = macroCandleSeries.createPriceLine({
+        price: piso,
+        color: "#10b981",
+        lineWidth: 2,
+        lineStyle: window.LightweightCharts.LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `🟢 PISO ($${piso.toFixed(2)})`
+      });
+    }
+
+    // Trazar línea de Techo
+    if (techo > 0) {
+      macroTechoLine = macroCandleSeries.createPriceLine({
+        price: techo,
+        color: "#ef4444",
+        lineWidth: 2,
+        lineStyle: window.LightweightCharts.LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `🔴 TECHO ($${techo.toFixed(2)})`
+      });
+    }
+
+    // Trazar línea de Entrada Actual
+    if (entryPrice && entryPrice > 0) {
+      macroEntryLine = macroCandleSeries.createPriceLine({
+        price: entryPrice,
+        color: "#f59e0b",
+        lineWidth: 2,
+        lineStyle: window.LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `📍 COMPRA ACTUAL ($${entryPrice.toFixed(2)})`
+      });
+    }
+
+    // Actualizar Diagnóstico Didáctico DCA
+    const dcaTextEl = document.getElementById("dca-explanation-text");
+    if (dcaTextEl) {
+      if (entryPrice && piso > 0 && techo > piso) {
+        const distFromPisoPct = (((entryPrice - piso) / (techo - piso)) * 100).toFixed(0);
+        const dcaHypotheticalQty = 50 / piso; // $50 invertidos en el piso
+        const totalTokens = (posQty || 0.00159) + dcaHypotheticalQty;
+        const totalInvested = ((posQty || 0.00159) * entryPrice) + 50;
+        const newAvgBuyPrice = totalInvested / totalTokens;
+        const dropPctToFloor = (((entryPrice - piso) / entryPrice) * 100).toFixed(2);
+
+        dcaTextEl.innerHTML = `
+          • Comprado en <b>$${entryPrice.toFixed(2)}</b> (ubicado al <b>${distFromPisoPct}% del canal</b>, zona alta).<br>
+          • 💡 <b>Si el mercado visita el piso ($${piso.toFixed(2)} / -${dropPctToFloor}%):</b> compras un lote DCA de $50 y tu precio promedio baja a <b>$${newAvgBuyPrice.toFixed(2)}</b>.<br>
+          • En el primer rebote al centro del canal ($${((piso + techo) / 2).toFixed(2)}) se vende todo en ganancia líquida asegurada en USDT.<br>
+          • 🚫 <b>Por qué no comprar en $62k:</b> En canal lateral, comprar arriba te deja atrapado. El bot ahora respeta este piso y no comprará fuera de él.
+        `;
+      } else {
+        dcaTextEl.innerHTML = `
+          • Moneda sin posición abierta activa.<br>
+          • Si el precio visita el piso ($${piso.toFixed(2)}), el bot tiene permiso de comprar con Trailing Buy.<br>
+          • En zona media o techo, las compras permanecen bloqueadas para no atrapar capital.
+        `;
+      }
+    }
+  }
+
+  window.onMacroChartChangeSymbol = function (sym) {
+    const sel = document.getElementById("macro-chart-sym-select");
+    if (sel) sel.value = sym;
+    const inputPiso = document.getElementById("macro-input-piso");
+    const inputTecho = document.getElementById("macro-input-techo");
+    if (inputPiso) inputPiso.value = "";
+    if (inputTecho) inputTecho.value = "";
+    loadMacroChartData(sym, currentMacroTf);
+  };
+
+  window.onMacroChartChangeTf = function (tf) {
+    const btns = document.querySelectorAll(".macro-tf-btn");
+    btns.forEach(b => {
+      if (b.getAttribute("data-tf") === tf) {
+        b.style.background = "rgba(56,189,248,0.25)";
+        b.style.border = "1px solid #38bdf8";
+        b.style.color = "#38bdf8";
+        b.classList.add("active");
+      } else {
+        b.style.background = "transparent";
+        b.style.border = "none";
+        b.style.color = "#94a3b8";
+        b.classList.remove("active");
+      }
+    });
+    loadMacroChartData(currentMacroSymbol, tf);
+  };
+
+  window.onMacroLinesInputChange = function () {
+    syncMacroChartLines();
+  };
+
+  window.saveMacroChartRange = async function () {
+    const sym = currentMacroSymbol;
+    const piso = parseFloat(document.getElementById("macro-input-piso")?.value);
+    const techo = parseFloat(document.getElementById("macro-input-techo")?.value);
+    const shieldActive = document.getElementById("macro-input-shield")?.checked ?? true;
+
+    if (!piso || !techo || piso <= 0 || techo <= piso) {
+      alert("Por favor ingresa valores válidos (el Techo debe ser mayor al Piso).");
+      return;
+    }
+
+    try {
+      const payload = {
+        symbol: sym,
+        useManual: true,
+        manualPiso: piso,
+        manualTecho: techo,
+        shieldActive,
+        maxBuyPct: 25
+      };
+
+      const res = await fetch("/api/ranges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.range) {
+          currentRangesData[sym] = data.range;
+          syncMacroChartLines();
+          renderMarketRangesCards();
+          alert(`✅ Rango de ${sym} guardado con éxito:\nPiso: $${piso} | Techo: $${techo}\nEl bot tiene el candado activo.`);
+        }
+      }
+    } catch (e) {
+      console.error("Error guardando rango desde gráfico:", e);
+    }
+  };
+
+  window.autoDetectMacroChartRange = async function () {
+    const sym = currentMacroSymbol;
+    const r = currentRangesData[sym];
+    if (r) {
+      const pInput = document.getElementById("macro-input-piso");
+      const tInput = document.getElementById("macro-input-techo");
+      if (pInput) pInput.value = r.autoPiso;
+      if (tInput) tInput.value = r.autoTecho;
+      syncMacroChartLines();
     }
   };
 
@@ -3342,7 +3693,9 @@
     }
 
     // Carga inicial y timer cada 25s
-    fetchMarketRanges();
+    fetchMarketRanges().then(() => {
+      initMacroRangesChart();
+    });
     setInterval(() => {
       const tabRanges = document.getElementById("tab-ranges");
       if (tabRanges && tabRanges.classList.contains("active")) {
