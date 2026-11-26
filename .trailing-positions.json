@@ -12,9 +12,9 @@
       "activated": true,
       "buyTime": 1795454084148,
       "strategy": "trailing_rebound",
-      "customCallbackPct": 0.25,
-      "customMinGainPct": 1.15,
-      "lockedFloorGainPct": 1.2,
+      "customCallbackPct": 0.12,
+      "customMinGainPct": 0.62,
+      "lockedFloorGainPct": 0.6,
       "partialProfitTaken": false
     }
   ],
@@ -31,8 +31,9 @@
       "activated": true,
       "buyTime": 1795455995308,
       "strategy": "trailing_rebound",
-      "customCallbackPct": 0.25,
-      "customMinGainPct": 1.1,
+      "customCallbackPct": 0.12,
+      "customMinGainPct": 0.62,
+      "lockedFloorGainPct": 0.6,
       "partialProfitTaken": false
     }
   ]

@@ -3026,6 +3026,14 @@ export class TrailingMasterBot {
           this.saveTrailingPositions();
         }
 
+        // 🔄 RESETEO DE PICO HISTÓRICO ANTIGUO SI LA POSICIÓN ESTÁ DEBAJO DE ENTRADA:
+        // Si la posición cayó debajo de buyPrice, reiniciamos highestPrice a buyPrice para que en la nueva ola
+        // alcista persiga el punto MÁS ALTO real y no venda prematuramente camino arriba por un pico viejo.
+        if (gainPct <= 0 && pos.highestPrice > pos.buyPrice) {
+          pos.highestPrice = pos.buyPrice;
+          this.saveTrailingPositions();
+        }
+
         // 2. Si el precio marca un nuevo pico, actualizamos el techo
         if (pos.activated && curPrice > pos.highestPrice) {
           const oldPeak = pos.highestPrice;
@@ -3209,14 +3217,15 @@ export class TrailingMasterBot {
           const effectiveCallbackTrigger = isBullishMomentumAlive ? (dropFromPeak >= callback * 1.55) : (dropFromPeak >= callback);
           const hitCallback = (effectiveCallbackTrigger && gainPct >= minGain) || (hitLockedFloor && gainPct >= 0.58);
 
-          // 🎯 VENTA POR TECHO DE CANAL INSTITUCIONAL:
-          // Si el precio alcanza el Techo del Canal o Zona Ideal de Venta y estamos en ganancia neta, cobrar antes del rechazo
+          // 🎯 VENTA POR TECHO DE CANAL INSTITUCIONAL (CON PERSECUCIÓN DE PICO MÁXIMO):
+          // Si el precio alcanza el Techo del Canal en ganancia neta, NO vende mientras la vela siga subiendo;
+          // persigue el punto más alto y dispara la venta apenas empiece a doblarse desde la cima (dropFromPeak >= 0.10%).
           let hitChannelCeiling = false;
-          if (gainPct >= 0.58) {
+          if (gainPct >= 0.62) {
             const ceilingPrice = marketRangesManager.getEffectiveTecho(actualSymbol);
-            if (ceilingPrice > 0 && curPrice >= ceilingPrice * 0.995) {
+            if (ceilingPrice > 0 && curPrice >= ceilingPrice * 0.995 && dropFromPeak >= 0.10 && !isBullishMomentumAlive) {
               hitChannelCeiling = true;
-              console.log(`🎯 [TECHO DE CANAL ALCANZADO] ${symbol}: Precio $${curPrice} tocó la resistencia de techo ($${ceilingPrice}). Cobrando ganancia asegurada.`);
+              console.log(`🎯 [TECHO DE CANAL EN CIMA] ${symbol}: Precio $${curPrice} alcanzó pico $${pos.highestPrice} en zona de techo ($${ceilingPrice}) y retrocedió ${dropFromPeak.toFixed(2)}%. Cobrando en el punto más alto.`);
             }
           }
 
