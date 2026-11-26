@@ -33,6 +33,8 @@ export interface MarketRangeItem {
   pattern: string;
   recommendation: "COMPRAR" | "ESPERAR" | "VENDER_TOMAR_GANANCIA" | "ALERTA_DESPLOME" | "SEGUIR_CON_TRAILING";
   actionAdvice: string;
+  weekendRegime?: "PURGA_PROBABLE" | "AGOTAMIENTO_VENDEDOR" | "HIBERNACION_LATERAL";
+  weekendAdvice?: string;
   updatedAt: number;
 }
 
@@ -115,6 +117,22 @@ export class MarketRangesManager {
     }
     const calc = this.calculatedCache[symbol];
     return calc?.effectiveTecho || calc?.autoTecho || 0;
+  }
+
+  /**
+   * Detecta si una posición existente fue comprada en la mitad superior del canal (compra alta/mal ubicada)
+   * para activar el Modo Destrabe de Capital (salida rápida en +0.62% bruto / +0.42% neto).
+   */
+  public isHighChannelEntry(symbol: string, buyPrice: number): boolean {
+    const s = this.getSettingsForSymbol(symbol);
+    const calc = this.calculatedCache[symbol];
+    const piso = (s.useManual && s.manualPiso && s.manualPiso > 0) ? s.manualPiso : (calc?.autoPiso || 0);
+    const techo = (s.useManual && s.manualTecho && s.manualTecho > 0) ? s.manualTecho : (calc?.autoTecho || 0);
+    if (piso > 0 && techo > piso) {
+      const entryPctInBand = ((buyPrice - piso) / (techo - piso)) * 100;
+      return entryPctInBand >= 50;
+    }
+    return false;
   }
 
   /**
@@ -270,6 +288,21 @@ export class MarketRangesManager {
             actionAdvice = `El precio está al ${posInBandPct.toFixed(1)}% del rango. Comprar aquí es riesgoso; esperar que baje a menos de $${maxAllowedBuyPrice.toFixed(2)} (zona verde de piso).`;
           }
 
+          // Diagnóstico Inteligente de Régimen de Fin de Semana (¿Caerá o se quedará plano?)
+          const lowsLast36h = lows.slice(-36);
+          const minLow36h = Math.min(...lowsLast36h);
+          const alreadyPurgedToFloor = effectivePiso > 0 && minLow36h <= effectivePiso * 1.012 && curPrice >= effectivePiso * 1.015;
+          let weekendRegime: MarketRangeItem["weekendRegime"] = "HIBERNACION_LATERAL";
+          let weekendAdvice = "Canal comprimido: operar solo extremos del rango.";
+
+          if (alreadyPurgedToFloor) {
+            weekendRegime = "AGOTAMIENTO_VENDEDOR";
+            weekendAdvice = "🟢 Ya purgó al piso recientemente y absorbió ventas. Baja probabilidad de desplome extra el fin de semana (esperar lateralización o rebote al techo).";
+          } else if (posInBandPct >= 60 || rsi >= 58) {
+            weekendRegime = "PURGA_PROBABLE";
+            weekendAdvice = "🔴 Precio alto sin purga previa: Alto riesgo de caída de fin de semana (Long Squeeze). Prohibido comprar arriba; esperar emboscada en el piso.";
+          }
+
           results[sym] = {
             symbol: sym,
             autoPiso,
@@ -292,6 +325,8 @@ export class MarketRangesManager {
             pattern,
             recommendation,
             actionAdvice,
+            weekendRegime,
+            weekendAdvice,
             updatedAt: Date.now()
           };
         } catch (e: any) {

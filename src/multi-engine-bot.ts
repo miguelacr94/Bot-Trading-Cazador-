@@ -3109,10 +3109,27 @@ export class TrailingMasterBot {
           const isMondayHold = currentDayStr === "Mon";
           const isMemeCoin = MEME_WATCHLIST.includes(actualSymbol);
           const aiCal = this.aiCoinCalibrations.get(symbol) || this.aiCoinCalibrations.get(actualSymbol);
-          if (isStagnantPosition && gainPct >= 0.78) {
-            // 🛟 POSICIÓN >18H EN GANANCIA REAL: Al superar +0.78% bruto (~+0.58% neto real), usa callback de 0.20% para asegurar ganancia sólida y seguir subiendo si hay impulso
-            if (!pos.customCallbackPct) callback = 0.20;
-            if (!pos.customMinGainPct) minGain = 0.78;
+          const isHighEntryTrap = marketRangesManager.isHighChannelEntry(actualSymbol, pos.buyPrice);
+
+          if (isStagnantPosition || isHighEntryTrap) {
+            // 🛟 MODO DESTRABE DE CAPITAL (POSICIÓN >18H O COMPRADA EN ZONA ALTA DEL CANAL):
+            // Sobrescribe cualquier customMinGainPct alto (ej. 1.15%) y reduce la meta a +0.62% bruto (~+0.42% neto real)
+            // con callback ultra-ceñido de 0.12% para liberar el capital estancado en el primer rebote a verde.
+            callback = 0.12;
+            minGain = 0.62;
+            let dirtyUnstick = false;
+            if (pos.customMinGainPct !== 0.62 || pos.customCallbackPct !== 0.12) {
+              pos.customMinGainPct = 0.62;
+              pos.customCallbackPct = 0.12;
+              dirtyUnstick = true;
+            }
+            if (!pos.lockedFloorGainPct || pos.lockedFloorGainPct > 0.60) {
+              pos.lockedFloorGainPct = 0.60;
+              dirtyUnstick = true;
+            }
+            if (dirtyUnstick) {
+              this.saveTrailingPositions();
+            }
           } else if (aiCal && !pos.customMinGainPct && !pos.customCallbackPct) {
             callback = aiCal.callbackPct;
             minGain = aiCal.minGainPct;
@@ -3204,7 +3221,7 @@ export class TrailingMasterBot {
           }
 
           // CANDADO FÉRREO: Prohibido vender con menos de +0.58% bruto (garantizando mínimo ~+0.38% a +0.50% neto real tras comisiones)
-          const minAllowedExit = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.58) ? 0.58 : (pos.strategy === "micro_grid" ? 0.58 : 0.65);
+          const minAllowedExit = (isStagnantPosition || isHighEntryTrap || (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.58) || pos.strategy === "micro_grid") ? 0.58 : 0.65;
           if ((hitCallback || hitHardCap || isRejectionWick || isOrderFlowExhaustion || hitChannelCeiling) && gainPct >= minAllowedExit) {
             const reasonOverride = hitChannelCeiling ? "TECHO_CANAL_ALCANZADO" : (isOrderFlowExhaustion ? "DESCARGA_ORDER_FLOW" : (isRejectionWick ? "RECHAZO_MECHA" : (hitLockedFloor ? "CANDADO_CERO_DEVOLUCION" : undefined)));
             console.log(`🏆 ¡CERRANDO EN GANANCIA! Venta en ${symbol} a ${curPrice} (+${gainPct.toFixed(2)}% | Pico: ${pos.highestPrice}) [${reasonOverride || 'TRAILING'}]`);
