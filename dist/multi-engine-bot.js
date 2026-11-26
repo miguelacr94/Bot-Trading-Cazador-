@@ -524,20 +524,29 @@ export class TrailingMasterBot {
         }
     }
     /**
-     * VEDA DE COMPRAS DE VIERNES (Viernes 00:00 COT a Sábado 02:00 AM COT):
-     * Bloquea compras preventivamente todo el viernes hasta la madrugada del sábado.
-     * EXCEPCIÓN: Si la moneda sufre una caída extrema / capitulación profunda (>= -4.5% o RSI <= 26).
+     * VEDA DE COMPRAS DE VIERNES Y MEDICIÓN PROGRESIVA DESDE EL PICO DEL VIERNES (Viernes 11:30 AM COT a Domingo):
+     * Estadística histórica de Binance (83% de los viernes): El techo del viernes se marca entre 10:00 AM y 12:00 PM COT.
+     * A partir de las 11:30 AM COT del viernes, se bloquean las compras por simple rebote y solo se permite cazar
+     * si la moneda acumula una caída real desde el cierre/pico del viernes (>= -2.0% dinámico según su volatilidad),
+     * acortando progresivamente el rebote exigido entre más profundo caiga.
      */
     isFridayBuyVeda(sym, curPrice, rsi, drop24hPct) {
         try {
             const { dayStr, timeDec } = this.getCotTimeInfo();
-            const isFriday = dayStr === "Fri";
+            const isFridayAfterPeak = dayStr === "Fri" && timeDec >= 11.5;
             const isEarlySaturday = dayStr === "Sat" && timeDec < 2.0;
-            if (!isFriday && !isEarlySaturday)
+            if (!isFridayAfterPeak && !isEarlySaturday)
                 return false;
-            // EXCEPCIÓN AUTORIZADA POR EL USUARIO: "a menos que la moneda caiga mucho"
-            if ((drop24hPct && drop24hPct >= 4.5) || (rsi && rsi <= 26)) {
-                console.log(`⚡ [EXCEPCIÓN VEDA VIERNES AUTORIZADA] ${sym || 'Moneda'}: Caída extrema (-${drop24hPct?.toFixed(1) || 0}% | RSI: ${rsi?.toFixed(0) || 0}). Aprovechando piso atípico antes del sábado.`);
+            if (sym && curPrice && curPrice > 0) {
+                const wkInfo = marketRangesManager.getWeekendDynamicBounce(sym, curPrice, drop24hPct || 0);
+                // Durante el viernes tarde/noche solo se rompe la veda si la caída desde el pico del viernes ya es profunda (>= 1.8x el mínimo o >= -4.2%)
+                const fridayEarlyThreshold = Math.max(4.0, wkInfo.minRequiredDropPct * 1.85);
+                if (wkInfo.fridayDropPct >= fridayEarlyThreshold && (!rsi || rsi <= 28)) {
+                    console.log(`⚡ [CAÍDA PROFUNDA ANTICIPADA DESDE VIERNES] ${sym}: Cayó -${wkInfo.fridayDropPct.toFixed(2)}% desde el viernes ($${wkInfo.fridayAnchorPrice} -> $${curPrice}). Gatillo dinámico acortado a +${wkInfo.dynamicBouncePct.toFixed(2)}%.`);
+                    return false;
+                }
+            }
+            else if ((drop24hPct && drop24hPct >= 4.5) || (rsi && rsi <= 26)) {
                 return false;
             }
             return true;
@@ -929,9 +938,9 @@ export class TrailingMasterBot {
             const now = Date.now();
             const { dayStr, timeDec, year, month, dayOfMonth } = this.getCotTimeInfo();
             const dayKey = `${year}-${month}-${dayOfMonth}`;
-            // 1. AUTO-SNAPSHOT DE CIERRE DEL VIERNES (Viernes 12:00 PM a 02:15 PM COT):
-            // El bot captura por sí solo los precios de referencia del viernes antes del drenaje de fin de semana.
-            if (dayStr === "Fri" && timeDec >= 12.0 && timeDec <= 14.25 && this.lastFridaySnapshotDayKey !== dayKey) {
+            // 1. AUTO-SNAPSHOT DE TECHO/CIERRE DEL VIERNES (Viernes 11:30 AM a 02:30 PM COT):
+            // Estadística histórica Binance (83% de las semanas): El techo del viernes ocurre entre las 10:00 AM y 12:00 PM COT.
+            if (dayStr === "Fri" && timeDec >= 11.5 && timeDec <= 14.5 && this.lastFridaySnapshotDayKey !== dayKey) {
                 const currentBench = this.getFridayBenchmarks();
                 const ageHours = currentBench?.liquidatedAt ? (now - currentBench.liquidatedAt) / 3600000 : 999;
                 if (ageHours >= 12) {
@@ -3959,11 +3968,25 @@ export class TrailingMasterBot {
                 if (aiCalBuy?.targetFloorPrice && aiCalBuy.targetFloorPrice > 0 && cur > aiCalBuy.targetFloorPrice * 1.008) {
                     continue;
                 }
-                const reqBounce = (aiCalBuy && typeof aiCalBuy.bounceBuyPct === "number")
-                    ? aiCalBuy.bounceBuyPct
-                    : (isWeekendNow
-                        ? (isMemeCoin ? 0.65 : 0.55)
-                        : (isMemeCoin ? 0.48 : 0.38));
+                // 📉 MOTOR PROGRESIVO INVERSO DE FIN DE SEMANA (COMPARACIÓN DESDE EL VIERNES + REBOTE DINÁMICO):
+                const benchData = this.getFridayBenchmarks();
+                const friBenchPrice = benchData?.benchmarks?.[sym] || 0;
+                const dropFromFriBench = (friBenchPrice > 0 && w.lowestPrice > 0)
+                    ? Math.max(0, ((friBenchPrice - w.lowestPrice) / friBenchPrice) * 100)
+                    : 0;
+                const wkDyn = marketRangesManager.getWeekendDynamicBounce(sym, w.lowestPrice, Math.max(effectiveDropSoFar, dropFromFriBench));
+                if (isWeekendNow && !wkDyn.qualifiesDrop) {
+                    if (bounce >= 0.25) {
+                        console.log(`📉 [FILTRO CAÍDA DESDE VIERNES: ${sym}] Caída acumulada (-${wkDyn.fridayDropPct.toFixed(2)}%) aún no alcanza el mínimo dinámico para esta moneda (-${wkDyn.minRequiredDropPct.toFixed(2)}% desde el viernes). Ignorando mero rebote.`);
+                    }
+                    continue;
+                }
+                // Rebote exigido dinámico: entre más profundo cae desde el viernes, más corto es el rebote para comprar en el fondo exacto
+                const reqBounce = isWeekendNow
+                    ? wkDyn.dynamicBouncePct
+                    : ((aiCalBuy && typeof aiCalBuy.bounceBuyPct === "number")
+                        ? aiCalBuy.bounceBuyPct
+                        : (isMemeCoin ? 0.35 : 0.28));
                 const floorState = this.isHistoricalFloorWindow();
                 const effectiveSpendable = (floorState.active || (strat === "cazador_weekend" && this.isWeekendWindow()))
                     ? Math.max(sessionPlan.spendableUsdt, botAvailableUsdt * 0.95)

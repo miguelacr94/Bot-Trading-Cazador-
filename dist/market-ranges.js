@@ -90,6 +90,40 @@ export class MarketRangesManager {
         return false;
     }
     /**
+     * Calcula el gatillo de rebote dinámico progresivo inverso desde el cierre/pico del viernes (11:30 AM COT)
+     * adaptado a la volatilidad propia de cada moneda y a qué tan profundo ha caído.
+     */
+    getWeekendDynamicBounce(symbol, curPrice, fallbackDropPct = 0) {
+        const calc = this.calculatedCache[symbol];
+        const rangeWidthPct = calc?.rangeWidthPct || 5.0;
+        const volFactor = Math.max(0.85, Math.min(1.65, rangeWidthPct / 5.2));
+        const minRequiredDropPct = Number((1.95 * volFactor).toFixed(2));
+        const deepCapitulationDrop = Number((5.20 * volFactor).toFixed(2));
+        const fridayAnchorPrice = calc?.fridayAnchorPrice || calc?.effectiveTecho || 0;
+        const calcFridayDrop = (fridayAnchorPrice > 0 && curPrice > 0)
+            ? Math.max(0, ((fridayAnchorPrice - curPrice) / fridayAnchorPrice) * 100)
+            : 0;
+        const fridayDropPct = Number(Math.max(calcFridayDrop, fallbackDropPct).toFixed(2));
+        const qualifiesDrop = fridayDropPct >= minRequiredDropPct;
+        const dropProgress = fridayDropPct <= minRequiredDropPct
+            ? 0
+            : Math.min(1, (fridayDropPct - minRequiredDropPct) / Math.max(1, deepCapitulationDrop - minRequiredDropPct));
+        // A mayor caída desde el viernes, más corto y efectivo es el rebote exigido:
+        // -2% -> ~0.35% | -3.5% -> ~0.27% | -5%+ -> ~0.18% (escalado a la volatilidad de la moneda)
+        let dynamicBouncePct = (0.35 - dropProgress * 0.17) * Math.sqrt(volFactor);
+        if (calc && calc.posInBandPct <= 12) {
+            dynamicBouncePct -= 0.03;
+        }
+        dynamicBouncePct = Number(Math.max(0.14, Math.min(0.48, dynamicBouncePct)).toFixed(2));
+        return {
+            fridayAnchorPrice,
+            fridayDropPct,
+            minRequiredDropPct,
+            qualifiesDrop,
+            dynamicBouncePct
+        };
+    }
+    /**
      * Verifica si el bot tiene permitido comprar según el rango configurado.
      */
     isBuyAllowed(symbol, curPrice) {
@@ -247,6 +281,39 @@ export class MarketRangesManager {
                     weekendRegime = "PURGA_PROBABLE";
                     weekendAdvice = "🔴 Precio alto sin purga previa: Alto riesgo de caída de fin de semana (Long Squeeze). Prohibido comprar arriba; esperar emboscada en el piso.";
                 }
+                // 📉 ANCLA DEL VIERNES (10:00-12:00 COT) Y REBOTE PROGRESIVO INVERSO DINÁMICO:
+                // Buscamos la vela del último viernes entre 10:00 AM y 12:00 PM COT (o el pico de las últimas 36h si estamos en viernes/sábado)
+                let fridayAnchorPrice = effectiveTecho;
+                try {
+                    let foundFriAnchor = 0;
+                    for (let i = klines.length - 1; i >= 0; i--) {
+                        const kTimeCot = new Date(klines[i][0] - 5 * 3600 * 1000);
+                        const dDay = kTimeCot.getUTCDay();
+                        const dHr = kTimeCot.getUTCHours();
+                        if (dDay === 5 && dHr >= 10 && dHr <= 13) {
+                            const kh = parseFloat(klines[i][2]);
+                            if (kh > foundFriAnchor)
+                                foundFriAnchor = kh;
+                        }
+                    }
+                    if (foundFriAnchor > 0)
+                        fridayAnchorPrice = foundFriAnchor;
+                }
+                catch { }
+                const fridayDropPct = fridayAnchorPrice > 0 ? Number((Math.max(0, ((fridayAnchorPrice - curPrice) / fridayAnchorPrice) * 100)).toFixed(2)) : 0;
+                // Escala dinámica según volatilidad propia de la moneda (rangeWidthPct) y ubicación en el canal:
+                const volFactor = Math.max(0.85, Math.min(1.65, rangeWidthPct / 5.2));
+                const minRequiredDrop = Number((1.95 * volFactor).toFixed(2));
+                const deepCapitulationDrop = Number((5.20 * volFactor).toFixed(2));
+                const dropProgress = fridayDropPct <= minRequiredDrop
+                    ? 0
+                    : Math.min(1, (fridayDropPct - minRequiredDrop) / Math.max(1, deepCapitulationDrop - minRequiredDrop));
+                // Curva progresiva inversa: en caída inicial (-2%) exige ~0.35% (escalado a la moneda); en caída profunda (-5%+) baja hasta ~0.16%-0.22%
+                let dynamicBounceTriggerPct = (0.35 - dropProgress * 0.17) * Math.sqrt(volFactor);
+                if (posInBandPct <= 12 && lowerWickRatio >= 0.30) {
+                    dynamicBounceTriggerPct -= 0.03; // En piso extremo con mecha de absorción, disparo ultra-rápido
+                }
+                dynamicBounceTriggerPct = Number(Math.max(0.14, Math.min(0.48, dynamicBounceTriggerPct)).toFixed(2));
                 results[sym] = {
                     symbol: sym,
                     autoPiso,
@@ -271,6 +338,9 @@ export class MarketRangesManager {
                     actionAdvice,
                     weekendRegime,
                     weekendAdvice,
+                    fridayAnchorPrice: Number(fridayAnchorPrice.toFixed(sym.includes("PEPE") ? 8 : 2)),
+                    fridayDropPct,
+                    dynamicBounceTriggerPct,
                     updatedAt: Date.now()
                 };
             }

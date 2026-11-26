@@ -96,10 +96,10 @@
         "Filtro Anti-Cuchillo 15m: Espera vela verde o mecha ≥30% antes de comprar",
         "Lotes 100% Independientes: Cada lote cobra su propia ganancia en verde"
       ],
-      "expiresAt": 1795731149932,
+      "expiresAt": 1795732199069,
       "isCurrent": true,
       "timeframe": "4h",
-      "updatedAt": 1795727549932,
+      "updatedAt": 1795728599069,
       "btcRange24h": 2.849670366352328,
       "stopLossPct": 6
     },
@@ -112,10 +112,10 @@
         "Rango Bitcoin: 2.85% (Mercado con ondas direccionales)",
         "Auto-transferencia de presupuesto al 100% hacia Cazador Trailing"
       ],
-      "expiresAt": 1795731149932,
+      "expiresAt": 1795732199069,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1795727549932,
+      "updatedAt": 1795728599069,
       "btcRange24h": 2.849670366352328,
       "stopLossPct": 2
     },
@@ -128,10 +128,10 @@
         "Viernes 14:00 a Sábado 02:00 AM COT: Pausa de compras para evitar el drenaje del viernes (82% prob.)",
         "Días hábiles: Presupuesto cedido al sistema de Doble Bolsillo (60% Horas Piso / 40% Abierto)"
       ],
-      "expiresAt": 1795731149932,
+      "expiresAt": 1795732199069,
       "isCurrent": true,
       "timeframe": "1h",
-      "updatedAt": 1795727549932,
+      "updatedAt": 1795728599069,
       "btcRange24h": 2.849670366352328,
       "stopLossPct": 5
     },
@@ -146,10 +146,10 @@
         "Filtro de Entrada: Bollinger (%B ≤ 0.08) + RVOL + Giro en vela 5m",
         "Pirámide Invertida Nivel 1: Lote Explorador (máx 8.5% del portafolio)"
       ],
-      "expiresAt": 1795731149932,
+      "expiresAt": 1795732199069,
       "isCurrent": true,
       "timeframe": "15m",
-      "updatedAt": 1795727549932,
+      "updatedAt": 1795728599069,
       "btcRange24h": 2.849670366352328,
       "stopLossPct": 3.5
     }
@@ -193,5 +193,5 @@
   "memeWatchlist": [
     "PEPEUSDT"
   ],
-  "updatedAt": 1795727549934
+  "updatedAt": 1795728599070
 }

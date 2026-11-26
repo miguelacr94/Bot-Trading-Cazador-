@@ -3194,6 +3194,10 @@
             <div style="font-size:11px; line-height:1.4;">
               ${r.actionAdvice}
             </div>
+            <div style="margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.12); display:flex; justify-content:space-between; align-items:center; font-size:10px; color:#cbd5e1; flex-wrap:wrap; gap:6px;">
+              <span>📉 Caída vs. Viernes ($${r.fridayAnchorPrice || r.effectiveTecho}): <b style="color:${(r.fridayDropPct || 0) >= 2.0 ? '#34d399' : '#f87171'};">-${(r.fridayDropPct || 0).toFixed(2)}%</b></span>
+              <span>🎯 Gatillo Rebote Dinámico: <b style="color:#38bdf8;">+${(r.dynamicBounceTriggerPct || 0.30).toFixed(2)}%</b></span>
+            </div>
           </div>
 
           <!-- Panel de Ajuste Manual de Rangos -->
