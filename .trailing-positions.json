@@ -1,1 +1,39 @@
-[]
+[
+  [
+    "BTCUSDT",
+    {
+      "symbol": "BTCUSDT",
+      "lotId": "BTCUSDT",
+      "lotIndex": 1,
+      "buyPrice": 62103.31331331,
+      "qty": 0.0015984,
+      "investedUsdt": 99.2659,
+      "highestPrice": 62103.31331331,
+      "activated": true,
+      "buyTime": 1795454084148,
+      "strategy": "trailing_rebound",
+      "customCallbackPct": 0.25,
+      "customMinGainPct": 1.15,
+      "lockedFloorGainPct": 1.2,
+      "partialProfitTaken": false
+    }
+  ],
+  [
+    "ETHUSDT",
+    {
+      "symbol": "ETHUSDT",
+      "lotId": "ETHUSDT",
+      "lotIndex": 1,
+      "buyPrice": 1736.33633634,
+      "qty": 0.0351648,
+      "investedUsdt": 61.0579,
+      "highestPrice": 1749.48,
+      "activated": true,
+      "buyTime": 1795455995308,
+      "strategy": "trailing_rebound",
+      "customCallbackPct": 0.25,
+      "customMinGainPct": 1.1,
+      "partialProfitTaken": false
+    }
+  ]
+]

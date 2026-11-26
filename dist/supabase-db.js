@@ -80,6 +80,9 @@ export class SupabaseDbService {
                 allocations: data.allocations,
                 baseAllocations: data.base_allocations,
                 strategySettings: { ...settings, coreWatchlist, memeWatchlist },
+                symbolTimeframes: settings.symbolTimeframes || {},
+                rejectedSuggestions: settings.rejectedSuggestions || {},
+                marketRanges: settings.marketRanges || {},
                 suggestions: data.suggestions,
                 trailingCallbacks: data.trailing_callbacks,
                 recoveryTracker: data.recovery_tracker,
@@ -111,6 +114,9 @@ export class SupabaseDbService {
                 maxPerCoinPct: controls.maxPerCoinPct ?? 30.0,
                 autoPilot: controls.autoPilot !== false,
                 aiEnabled: controls.aiEnabled === true,
+                symbolTimeframes: controls.symbolTimeframes || controls.strategySettings?.symbolTimeframes || {},
+                rejectedSuggestions: controls.rejectedSuggestions || controls.strategySettings?.rejectedSuggestions || {},
+                marketRanges: controls.marketRanges || controls.strategySettings?.marketRanges || {},
                 coreWatchlist,
                 memeWatchlist
             };

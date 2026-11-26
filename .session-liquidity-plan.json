@@ -1,13 +1,13 @@
 {
   "sessionKey": "COSECHA_PRENOCTURNA",
-  "sessionTitle": "🏆 HORA TECHO APERTURA NY (06:00-09:00 AM COT | Cosechando antes del drenaje de las 9-11 AM)",
-  "totalFreeUsdt": 160.59551628,
-  "reservedUsdt": 96.36,
-  "spendableUsdt": 64.24,
+  "sessionTitle": "🏆 HORA TECHO PRE-CIERRE WALL STREET (03:15-04:15 PM COT | Cosechando antes del cierre NY)",
+  "totalFreeUsdt": 0.27193175,
+  "reservedUsdt": 0.16,
+  "spendableUsdt": 0.11,
   "lotFractionPct": 0.45,
   "trailingBounceTrigger": 0.38,
   "harvestCallbackPct": 0.15,
   "reason": "Ventana de Hora Techo histórica. Trailing Take Profit ceñido a 0.15% para asegurar ganancias en la cima antes del retroceso estadístico.",
   "recommendation": "🏆 Cosechar subidas en USDT y mantener el 60% reservado para la siguiente Hora Piso.",
-  "updatedAt": 1795441388305
+  "updatedAt": 1795724187809
 }

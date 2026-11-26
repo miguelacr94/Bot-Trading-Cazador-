@@ -108,6 +108,15 @@ export class MarketRangesManager {
     };
   }
 
+  public getEffectiveTecho(symbol: string): number {
+    const s = this.getSettingsForSymbol(symbol);
+    if (s.useManual && s.manualTecho && s.manualTecho > 0) {
+      return s.manualTecho;
+    }
+    const calc = this.calculatedCache[symbol];
+    return calc?.effectiveTecho || calc?.autoTecho || 0;
+  }
+
   /**
    * Verifica si el bot tiene permitido comprar según el rango configurado.
    */

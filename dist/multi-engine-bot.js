@@ -10,6 +10,7 @@ import * as path from "path";
 import { TelegramNotifier } from "./notifier.js";
 import { TelegramCommands } from "./telegram-commands.js";
 import { computeRealizedPnl } from "./pnl.js";
+import { marketRangesManager } from "./market-ranges.js";
 dotenv.config();
 // Tasa de referencia COP por USDT (P2P Colombia aprox.)
 const COP_PER_USDT = 4200;
@@ -892,6 +893,7 @@ export class TrailingMasterBot {
     aiCopilot = new AiCopilot();
     lastAiBenchmarkCheckTime = 0;
     lastAiBenchmarkTelegramTime = 0;
+    aiLowBalancePaused = false;
     lastFridaySnapshotDayKey = "";
     notifiedBenchmarkMilestones = new Map();
     activeAtypicalOverride = "NONE";
@@ -959,8 +961,22 @@ export class TrailingMasterBot {
                     }
                 }
             }
-            // Ejecutar chequeo interno cada 15 minutos (o inmediato si forceTelegram === true)
-            if (!forceTelegram && (now - this.lastAiBenchmarkCheckTime) < 15 * 60 * 1000) {
+            // Pausar Agente IA autónomo cuando no hay saldo suficiente para operar (ahorro de tokens y llamadas API),
+            // reactivándolo automáticamente cuando entre liquidez o cuando el usuario consulte explícitamente por Telegram (forceTelegram=true).
+            const minUsdtForAutonomousAi = this.activeTrailingPositions.size > 0 ? 25 : Math.max(this.minUsdtToTrade, 35);
+            if (!forceTelegram && botSpendableUsdt < minUsdtForAutonomousAi) {
+                if (!this.aiLowBalancePaused) {
+                    this.aiLowBalancePaused = true;
+                    console.log(`⏸️ [AGENTE IA EN PAUSA] Saldo libre insuficiente ($${botSpendableUsdt.toFixed(2)} USDT < $${minUsdtForAutonomousAi.toFixed(2)} USDT mín.). Deteniendo consultas automáticas para no consumir tokens hasta recuperar liquidez o comando en Telegram.`);
+                }
+                return "";
+            }
+            if (this.aiLowBalancePaused && botSpendableUsdt >= minUsdtForAutonomousAi) {
+                this.aiLowBalancePaused = false;
+                console.log(`🟢 [AGENTE IA REACTIVADO] Liquidez recuperada ($${botSpendableUsdt.toFixed(2)} USDT). Reanudando análisis autónomo.`);
+            }
+            // Ejecutar chequeo dinámico del Agente IA cada 3 minutos (o inmediato si forceTelegram === true)
+            if (!forceTelegram && (now - this.lastAiBenchmarkCheckTime) < 3 * 60 * 1000) {
                 return "";
             }
             this.lastAiBenchmarkCheckTime = now;
@@ -979,65 +995,120 @@ export class TrailingMasterBot {
             for (const sym of symbolsToCheck) {
                 try {
                     const [k15Res, k5Res] = await Promise.all([
-                        this.client.klines(sym, "15m", { limit: 96 }),
+                        this.client.klines(sym, "15m", { limit: 384 }), // 4 días completos (96 horas) para Memoria Estructural Multidía
                         this.client.klines(sym, "5m", { limit: 6 })
                     ]);
-                    const k15 = k15Res.data;
+                    const k15All = k15Res.data;
                     const k5 = k5Res.data;
-                    if (!k15 || k15.length < 15)
+                    if (!k15All || k15All.length < 15)
                         continue;
+                    const k15 = k15All.slice(-96); // Últimas 24 horas
+                    // Memoria Estructural de 4 Días (evita amnesia de 24h cuando la moneda lleva días bajando a un piso como $59k):
+                    const highs4d = k15All.map((r) => parseFloat(r[2]));
+                    const lows4d = k15All.map((r) => parseFloat(r[3]));
+                    const sortedLows4d = [...lows4d].sort((a, b) => a - b);
+                    // Piso estructural recurrente de 4 días (Percentil 10 de los mínimos de 4 días, filtrando mechas aisladas extremas)
+                    const structuralFloor4d = sortedLows4d[Math.floor(sortedLows4d.length * 0.10)] || Math.min(...lows4d);
+                    const high4d = Math.max(...highs4d);
                     const closes15 = k15.map((r) => parseFloat(r[4]));
                     const highs15 = k15.map((r) => parseFloat(r[2]));
                     const lows15 = k15.map((r) => parseFloat(r[3]));
                     const curPrice = closes15[closes15.length - 1];
                     const high24h = Math.max(...highs15);
                     const low24h = Math.min(...lows15);
+                    const fibPosition4d = (high4d - structuralFloor4d) > 0 ? Math.max(0, (curPrice - structuralFloor4d) / (high4d - structuralFloor4d)) : 0.5;
+                    const downsideTo4dFloorPct = curPrice > 0 ? Math.max(0, ((curPrice - structuralFloor4d) / curPrice) * 100) : 0;
+                    const sma24h = closes15.reduce((acc, v) => acc + v, 0) / closes15.length;
+                    const distFromSma24hPct = sma24h > 0 ? ((curPrice - sma24h) / sma24h) * 100 : 0;
+                    const downsideToFloorPct = curPrice > 0 ? ((curPrice - low24h) / curPrice) * 100 : 0;
+                    // Estudio anti-engaño (Pump & Dump / Mechazo falso + Memoria Multidía 4D):
+                    const sortedCloses24 = [...closes15].sort((a, b) => a - b);
+                    const p25_24h = sortedCloses24[Math.floor(sortedCloses24.length * 0.25)] || low24h;
+                    const p75_24h = sortedCloses24[Math.floor(sortedCloses24.length * 0.75)] || high24h;
+                    const closes1h = k15All.map((r) => parseFloat(r[4])).filter((_, idx, arr) => (arr.length - 1 - idx) % 4 === 0);
+                    const rsi1h = closes1h.length >= 15 ? this.calculateRSI(closes1h, 14) : this.calculateRSI(closes15, 14);
+                    let isBullTrapFakeout = (high24h > p75_24h * 1.018 && curPrice > p25_24h * 1.006) ||
+                        distFromSma24hPct > -1.0 ||
+                        downsideToFloorPct > 1.35 ||
+                        fibPosition4d > 0.30 ||
+                        downsideTo4dFloorPct > 2.1 ||
+                        rsi1h > 43;
                     const exitPrice = benchData.benchmarks[sym] || high24h;
                     const benchDropPct = exitPrice > 0 ? ((curPrice - exitPrice) / exitPrice) * 100 : 0;
                     const drop24hPct = high24h > 0 ? ((high24h - curPrice) / high24h) * 100 : 0;
                     const fibPosition24h = (high24h - low24h) > 0 ? (curPrice - low24h) / (high24h - low24h) : 0.5;
                     const coinRange24hPct = low24h > 0 ? ((high24h - low24h) / low24h) * 100 : 2.5;
                     const rsi15m = this.calculateRSI(closes15, 14);
+                    // 🧲 FACTOR INSTITUCIONAL FALTANTE: IMÁN DEL GAP CME DEL VIERNES E INVERSIÓN DE POLARIDAD SEMANAL:
+                    // Si el fin de semana NO cayó sino que SUBIÓ por encima del cierre del viernes (benchDropPct > +1.5%),
+                    // se genera un Gap CME Alcista abierto ABAJO (en exitPrice) y el ciclo de Lunes/Martes SE INVIERTE:
+                    // Wall Street vende el lunes/martes para bajar a cerrar el Gap del viernes (ej. bajar de $64k/$62k a $59k).
+                    // Prohibido comprar arriba del cierre del viernes cuando el Gap CME está abajo sin cerrar.
+                    const isCmeGapBelowTrap = benchDropPct > 1.5 && fibPosition4d > 0.22 && rsi1h > 33;
+                    if (isCmeGapBelowTrap) {
+                        isBullTrapFakeout = true;
+                    }
                     const last15 = k15[k15.length - 1];
+                    const prev15 = k15[k15.length - 2] || last15;
                     const o15 = parseFloat(last15[1]), h15 = parseFloat(last15[2]), l15 = parseFloat(last15[3]), c15 = parseFloat(last15[4]);
+                    const prevLow15 = parseFloat(prev15[3]);
                     const range15 = Math.max(1e-9, h15 - l15);
                     const lowerWick15mPct = ((Math.min(o15, c15) - l15) / range15) * 100;
-                    const isGreenOrWick15m = c15 >= o15 || lowerWick15mPct >= 28;
+                    // Freno real de sangría (Higher Low en 15m o mecha de absorción climática >= 38%)
+                    const isStoppingBleed15m = (l15 >= prevLow15 * 0.999 && c15 >= o15) || lowerWick15mPct >= 38;
+                    const isGreenOrWick15m = isStoppingBleed15m;
                     let cvd5mPct = 50;
                     let isGreen5m = false;
                     if (k5 && k5.length >= 2) {
                         const last5 = k5[k5.length - 1];
+                        const prev5 = k5[k5.length - 2];
                         const o5 = parseFloat(last5[1]), h5 = parseFloat(last5[2]), l5 = parseFloat(last5[3]), c5 = parseFloat(last5[4]);
+                        const prevLow5 = parseFloat(prev5[3]);
                         const range5 = Math.max(1e-9, h5 - l5);
                         const wick5 = (Math.min(o5, c5) - l5) / range5;
-                        isGreen5m = c5 >= o5 || wick5 >= 0.30;
+                        isGreen5m = (c5 > o5 && l5 >= prevLow5 * 0.999) || (c5 >= o5 && wick5 >= 0.35);
                         const totQ = parseFloat(last5[7] || "0");
                         const buyQ = parseFloat(last5[10] || "0");
                         cvd5mPct = totQ > 0 ? (buyQ / totQ) * 100 : 50;
                     }
                     const isMeme = this.memeWatchlist.includes(sym) || sym.includes("PEPE");
+                    const isBtc = sym === "BTCUSDT";
                     const isSellingExpansionDay = dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri";
-                    const targetBenchDrop = isMeme ? -6.0 : -4.8;
-                    // Prohibido "comprar por comprar":
-                    // • Sábado/Domingo: Exige descuento profundo >= -4.8% vs cierre del viernes (o caída >= 4.6% en 24h) en el fondo del canal (fib <= 0.25).
-                    // • Lunes y Miércoles (Días de Acumulación en Máxima Caída para vender Martes y Jueves): Exige caída profunda >= 3.6% (core) / >= 5.0% (meme), fondo del canal <= 0.22 y RSI <= 35.
-                    // • Martes, Jueves y Viernes (Días de Venta en Alza / Cosecha): Compras bloqueadas salvo capitulación extrema >= 5.2% con RSI <= 30 y fondo <= 0.15.
-                    const reqWeekdayDrop = isSellingExpansionDay ? (isMeme ? 6.5 : 5.2) : (isMeme ? 5.0 : 3.6);
-                    const reqWeekdayRsi = isSellingExpansionDay ? 30 : (isMeme ? 33 : 35);
-                    const reqWeekdayFib = isSellingExpansionDay ? 0.15 : 0.22;
-                    const isStrategicWeekdayFloor = !isWeekend && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
-                    // 🚀 ACUMULACIÓN DOMINGO PRE-RALLY (17:30 a 23:59 COT):
-                    // En domingo noche, la apertura de Futuros CME y Asia suele anticipar el alza de Lunes/Martes.
-                    // Si el fin de semana fue alcista o lateral y no sangró -4.8%, no nos quedamos afuera: basta un retroceso técnico a soporte (>= 1.6% con RSI <= 48 y CVD >= 51%).
+                    const isMonday = dayStr === "Mon";
+                    const targetBenchDrop = isMeme ? -6.0 : (isBtc ? -3.8 : -4.8);
+                    // 🛡️ ESCUDO ANTI-CAÍDA DE -3% POST-COMPRA (PROHIBIDO COMPRAR FALSOS TECHOS / PUMP & DUMP):
+                    // 1. El precio DEBE estar por debajo del promedio de 24h (distFromSma24hPct <= -1.2%), jamás arriba de la media tras un mechazo falso matutino.
+                    // 2. Ubicación en el fondo real del canal de 24h (fibPosition24h <= 0.18 en Core / <= 0.15 en BTC) para que no quede un -3% de vacío hacia el piso.
+                    // 3. Sobreventa real en 15m (RSI <= 34 en Altcoins / <= 32 en BTC), nunca en RSI 42-46 a mitad de caída.
+                    const reqWeekdayDrop = isSellingExpansionDay
+                        ? (isMeme ? 6.5 : (isBtc ? 4.5 : 5.2))
+                        : (isMonday
+                            ? (isMeme ? 3.8 : (isBtc ? 3.5 : 2.8))
+                            : (isMeme ? 4.2 : (isBtc ? 3.5 : 3.2)));
+                    const reqWeekdayRsi = isSellingExpansionDay
+                        ? 29
+                        : (isMonday ? (isMeme ? 33 : (isBtc ? 32 : 34)) : 33);
+                    const reqWeekdayFib = isSellingExpansionDay
+                        ? 0.14
+                        : (isMonday ? (isBtc ? 0.16 : 0.18) : 0.18);
+                    const isBelow24hMean = distFromSma24hPct <= (isBtc ? -1.4 : -1.2) && !isBullTrapFakeout && downsideToFloorPct <= 1.25 && rsi1h <= 42;
+                    const isStrategicWeekdayFloor = !isWeekend && isBelow24hMean && drop24hPct >= reqWeekdayDrop && fibPosition24h <= reqWeekdayFib && rsi15m <= reqWeekdayRsi;
+                    // 🚀 ACUMULACIÓN DOMINGO PRE-RALLY (17:30 a 23:59 COT) CON ESCUDO DE PISO REAL:
                     const isSundayPreRally = dayStr === "Sun" && timeDec >= 17.5 && timeDec <= 23.95;
-                    const isSundayPreRallyFloor = isSundayPreRally && (drop24hPct >= 1.6 || benchDropPct <= -1.8) && fibPosition24h <= 0.42 && rsi15m <= 48 && cvd5mPct >= 51;
-                    const isStrategicWeekendFloor = isWeekend && (benchDropPct <= targetBenchDrop || (drop24hPct >= (isMeme ? 5.8 : 4.6) && fibPosition24h <= 0.22) || isSundayPreRallyFloor) && (isSundayPreRallyFloor ? rsi15m <= 48 : rsi15m <= (isMeme ? 35 : 38));
+                    const isSundayPreRallyFloor = isSundayPreRally && isBelow24hMean && (drop24hPct >= 2.8 || benchDropPct <= -2.8) && fibPosition24h <= 0.20 && rsi15m <= 35 && cvd5mPct >= 53;
+                    const isStrategicWeekendFloor = isWeekend && isBelow24hMean && (benchDropPct <= targetBenchDrop || (drop24hPct >= (isMeme ? 5.8 : 4.6) && fibPosition24h <= 0.18) || isSundayPreRallyFloor) && (isSundayPreRallyFloor ? rsi15m <= 35 : rsi15m <= (isMeme ? 32 : 34));
                     const isDeepDiscount = isStrategicWeekendFloor || isStrategicWeekdayFloor;
                     const qualifiesToArmWatch = isDeepDiscount;
+                    // PROHIBIDO comprar directo a mercado sin pasar por Trailing Buy (buyWatches), salvo capitulación extrema en el fondo absoluto (fib <= 0.12, RSI <= 28) con freno confirmado:
                     const qualifiesToBuy = isDeepDiscount &&
-                        isGreenOrWick15m &&
+                        fibPosition24h <= 0.12 &&
+                        rsi15m <= 28 &&
+                        rsi1h <= 34 &&
+                        downsideToFloorPct <= 0.85 &&
+                        distFromSma24hPct <= -2.5 &&
+                        isStoppingBleed15m &&
                         isGreen5m &&
-                        cvd5mPct >= 53 &&
+                        cvd5mPct >= 55 &&
                         (!pauseWin.paused || benchDropPct <= -6.2 || drop24hPct >= 5.8);
                     // Detectar cruce de hitos de caída (-3%, -5%, -8%, -10%) para alerta inmediata en Telegram
                     const effDrop = isWeekend ? benchDropPct : -drop24hPct;
@@ -1051,12 +1122,21 @@ export class TrailingMasterBot {
                         symbol: sym,
                         exitPrice,
                         curPrice,
+                        low24h,
+                        structuralFloor4d,
+                        fibPosition4d,
+                        downsideTo4dFloorPct,
+                        sma24h,
+                        distFromSma24hPct,
+                        downsideToFloorPct,
+                        isBullTrapFakeout,
                         benchDropPct,
                         drop24hPct,
                         fibPosition24h,
                         high24h: Math.max(high24h, exitPrice),
                         coinRange24hPct,
                         rsi15m,
+                        rsi1h,
                         lowerWick15mPct,
                         cvd5mPct,
                         isGreenOrWick15m,
@@ -1114,8 +1194,10 @@ export class TrailingMasterBot {
                         this.aiCoinCalibrations.set(cleanSym, cal);
                         for (const [k, p] of this.activeTrailingPositions.entries()) {
                             if (k === cleanSym || p.symbol === cleanSym) {
-                                p.customMinGainPct = cal.minGainPct;
-                                p.customCallbackPct = cal.callbackPct;
+                                if (!p.customMinGainPct)
+                                    p.customMinGainPct = cal.minGainPct;
+                                if (!p.customCallbackPct)
+                                    p.customCallbackPct = cal.callbackPct;
                             }
                         }
                     }
@@ -1160,25 +1242,52 @@ export class TrailingMasterBot {
                     aiActionNote += `\n🚀 <b>Cambio Dinámico de Estrategia:</b> Rally alcista atípico detectado → <b>Modo Cosecha en Cima y Escudo Anti-FOMO ACTIVADOS</b>.`;
                 }
             }
-            // Evaluar candidato sugerido por el Trader IA (adaptándose si hay comportamiento atípico CRASH_HUNTER)
+            // Evaluar candidato sugerido por el Trader IA (con Escudo Anti-Caída de -3% Post-Compra)
+            const isMonday = dayStr === "Mon";
             const isSellingDayNow = (dayStr === "Tue" || dayStr === "Thu" || dayStr === "Fri") && this.activeAtypicalOverride !== "CRASH_HUNTER";
-            const minAiDropReq = isSellingDayNow ? 5.0 : (this.activeAtypicalOverride === "CRASH_HUNTER" ? 3.4 : 3.5);
-            const maxAiRsiReq = isSellingDayNow ? 31 : 36;
-            const maxAiFibReq = isSellingDayNow ? 0.16 : 0.25;
-            if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 80) {
+            const minAiDropReq = isSellingDayNow
+                ? 5.0
+                : (this.activeAtypicalOverride === "CRASH_HUNTER" ? 3.4 : (isMonday ? 2.8 : 3.2));
+            const maxAiRsiReq = isSellingDayNow
+                ? 29
+                : (isMonday ? 34 : 33);
+            const maxAiFibReq = isSellingDayNow
+                ? 0.14
+                : 0.18;
+            if (aiDec && (aiDec.action === "BUY_NOW" || aiDec.action === "ARM_TRAILING_BUY") && aiDec.targetSymbol && aiDec.confidence >= 75) {
                 const aiCand = coinEvaluations.find((c) => c.symbol === aiDec.targetSymbol || c.symbol.replace("USDT", "") === aiDec.targetSymbol);
-                if (aiCand && aiCand.fibPosition24h <= maxAiFibReq && aiCand.rsi15m <= maxAiRsiReq && (aiCand.drop24hPct >= minAiDropReq || aiCand.benchDropPct <= -4.5)) {
-                    if (aiDec.action === "ARM_TRAILING_BUY") {
+                if (aiCand) {
+                    const isCandMeme = this.memeWatchlist.includes(aiCand.symbol) || aiCand.symbol.includes("PEPE");
+                    const isCandBtc = aiCand.symbol === "BTCUSDT";
+                    const effMinDrop = isMonday ? (isCandMeme ? 3.8 : (isCandBtc ? 3.5 : 2.8)) : minAiDropReq;
+                    const effMaxRsi = isMonday ? (isCandMeme ? 33 : (isCandBtc ? 32 : 34)) : maxAiRsiReq;
+                    const effMaxFib = isCandBtc ? 0.16 : maxAiFibReq;
+                    if (aiCand.fibPosition24h <= effMaxFib && aiCand.rsi15m <= effMaxRsi && (aiCand.drop24hPct >= effMinDrop || aiCand.benchDropPct <= -4.5)) {
+                        // Siempre armar Trailing Buy para perseguir el piso hasta el último centavo; solo disparar BUY_NOW directo en suelo extremo (fib <= 0.12, RSI <= 28)
                         aiCand.qualifiesToArmWatch = true;
-                    }
-                    else if (aiDec.action === "BUY_NOW" && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 52 && (!pauseWin.paused || aiCand.drop24hPct >= 5.0 || this.activeAtypicalOverride === "CRASH_HUNTER")) {
-                        aiCand.qualifiesToBuy = true;
+                        if (aiDec.action === "BUY_NOW" && aiCand.fibPosition24h <= 0.12 && aiCand.rsi15m <= 28 && aiCand.isGreenOrWick15m && aiCand.cvd5mPct >= 55 && !pauseWin.paused) {
+                            aiCand.qualifiesToBuy = true;
+                        }
                     }
                 }
             }
+            let armedNewWatch = false;
             for (const candidate of coinEvaluations) {
                 if (this.hasActivePositionForSymbol(candidate.symbol))
                     continue;
+                const aiCalCand = this.aiCoinCalibrations.get(candidate.symbol);
+                if (aiCalCand?.trapDetected || aiCalCand?.strategyMode === "AVOID_BULL_TRAP" || candidate.isBullTrapFakeout) {
+                    continue;
+                }
+                if (aiCalCand?.maxEntryRsi && candidate.rsi15m > aiCalCand.maxEntryRsi) {
+                    continue;
+                }
+                if (aiCalCand?.maxEntryFib && candidate.fibPosition24h > aiCalCand.maxEntryFib) {
+                    continue;
+                }
+                if (aiCalCand?.targetFloorPrice && aiCalCand.targetFloorPrice > 0 && candidate.curPrice > aiCalCand.targetFloorPrice * 1.008) {
+                    continue;
+                }
                 // A) Si está en descuento atractivo pero aún sigue cayendo, armar Trailing Buy para atrapar el fondo exacto
                 if (candidate.qualifiesToArmWatch && !this.buyWatches.has(candidate.symbol) && uniqueActiveCount < maxUniqueCoins) {
                     const upsideGap = candidate.curPrice > 0 ? ((candidate.high24h - candidate.curPrice) / candidate.curPrice) * 100 : Math.abs(candidate.benchDropPct);
@@ -1196,6 +1305,8 @@ export class TrailingMasterBot {
                         strategy: isWeekend ? "cazador_weekend" : "trailing_rebound"
                     });
                     this.saveBuyWatches();
+                    armedNewWatch = true;
+                    aiActionNote += `\n🎯 <b>Vigilancia Trailing Buy armada en ${candidate.symbol}</b> (Caída: -${candidate.drop24hPct.toFixed(2)}% | RSI: ${candidate.rsi15m.toFixed(0)}).`;
                     console.log(`🤖🎯 [AGENTE TRADER IA] Vigilancia Trailing Buy armada en ${candidate.symbol} (${dayStr} | -${candidate.drop24hPct.toFixed(2)}% 24h | ${candidate.benchDropPct.toFixed(2)}% vs viernes).`);
                 }
                 // B) Si ya confirmó freno y giro en el piso, disparar compra automática
@@ -1228,12 +1339,13 @@ export class TrailingMasterBot {
                     }
                 }
             }
-            // 3. REPORTE PERIÓDICO DEL AGENTE IA A TELEGRAM (Cada 2 horas, o al cruzar hito de caída, o al comprar, o por comando):
+            // 3. REPORTE PERIÓDICO DEL AGENTE IA A TELEGRAM (Cada hora, o al armar vigilancia, o al comprar, o por comando):
             const shouldSendTelegram = forceTelegram ||
                 Boolean(executedSymbol) ||
                 Boolean(aiActionNote) ||
+                armedNewWatch ||
                 crossedNewMilestone ||
-                (now - this.lastAiBenchmarkTelegramTime) >= 2 * 3600 * 1000;
+                (now - this.lastAiBenchmarkTelegramTime) >= 1 * 3600 * 1000;
             if (!shouldSendTelegram)
                 return "";
             this.lastAiBenchmarkTelegramTime = now;
@@ -1498,89 +1610,115 @@ export class TrailingMasterBot {
         try {
             const file = path.resolve(process.cwd(), ".position-action.json");
             if (fs.existsSync(file)) {
-                const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+                const raw = JSON.parse(fs.readFileSync(file, "utf-8"));
                 fs.unlinkSync(file);
-                if (data.action === "manual_sell" && data.id) {
-                    let pos = this.activeTrailingPositions.get(data.id);
-                    let posKey = data.id;
-                    if (!pos) {
+                const actions = Array.isArray(raw) ? raw : [raw];
+                for (const data of actions) {
+                    if (!data || !data.action)
+                        continue;
+                    if (data.action === "update_pos_params") {
+                        const cleanSym = String(data.symbol || data.id || "").trim().toUpperCase().split("_")[0];
+                        let updatedAny = false;
                         for (const [k, p] of this.activeTrailingPositions.entries()) {
-                            if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
-                                pos = p;
-                                posKey = k;
-                                break;
+                            const matches = (data.id && (k === data.id || p.lotId === data.id)) ||
+                                (cleanSym && (p.symbol === cleanSym || k === cleanSym || k.startsWith(cleanSym + "_lot_")));
+                            if (matches) {
+                                if (typeof data.customCallbackPct === "number" && data.customCallbackPct > 0) {
+                                    p.customCallbackPct = data.customCallbackPct;
+                                }
+                                if (typeof data.customTimeframe === "string" && data.customTimeframe) {
+                                    p.customTimeframe = data.customTimeframe;
+                                }
+                                updatedAny = true;
                             }
                         }
-                    }
-                    if (pos) {
-                        console.log(`🌐 [VENTA MANUAL RECIBIDA] Ejecutando venta manual para ${pos.symbol} (allowLoss: ${!!data.allowLoss})...`);
-                        const actualSym = pos.symbol.split('_')[0];
-                        const ticker = await this.client.tickerPrice(actualSym);
-                        const curPrice = parseFloat(ticker.data.price);
-                        const sold = await this.executeTrailingSell(pos, curPrice, false, false, "MANUAL_DASHBOARD", true, !!data.allowLoss);
-                        if (sold) {
-                            this.activeTrailingPositions.delete(posKey);
+                        if (updatedAny) {
                             await this.saveTrailingPositions();
-                            await this.notifier.send(`🌐 <b>[VENTA MANUAL CONFIRMADA]</b> Posición <b>${pos.symbol}</b> cerrada desde el Dashboard a ${fmtPrice(curPrice)}.`);
+                            console.log(`⚙️ [DASHBOARD SYNC] Parámetros actualizados en ${cleanSym || data.id}: callback=${data.customCallbackPct ?? "-"}% | tf=${data.customTimeframe ?? "-"}`);
                         }
                     }
-                }
-                else if (data.action === "manual_buy" && data.symbol && data.usdtAmount) {
-                    const sym = String(data.symbol).trim().toUpperCase();
-                    const amount = parseFloat(data.usdtAmount);
-                    console.log("🌐 [COMPRA MANUAL DESDE RADAR] Recibida orden para " + sym + " por $" + amount + " USDT...");
-                    if (amount >= this.minUsdtToTrade) {
-                        const ok = await this.executeSmartBuy(sym, amount, "Manual desde Radar Web", "trailing_rebound");
-                        if (ok) {
-                            const pos = this.activeTrailingPositions.get(sym);
-                            if (pos) {
-                                pos.isManual = true;
-                                if (data.triggerGainPct)
-                                    pos.customMinGainPct = parseFloat(data.triggerGainPct);
-                                if (data.callbackPct)
-                                    pos.customCallbackPct = parseFloat(data.callbackPct);
+                    else if (data.action === "manual_sell" && data.id) {
+                        let pos = this.activeTrailingPositions.get(data.id);
+                        let posKey = data.id;
+                        if (!pos) {
+                            for (const [k, p] of this.activeTrailingPositions.entries()) {
+                                if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
+                                    pos = p;
+                                    posKey = k;
+                                    break;
+                                }
+                            }
+                        }
+                        if (pos) {
+                            console.log(`🌐 [VENTA MANUAL RECIBIDA] Ejecutando venta manual para ${pos.symbol} (allowLoss: ${!!data.allowLoss})...`);
+                            const actualSym = pos.symbol.split('_')[0];
+                            const ticker = await this.client.tickerPrice(actualSym);
+                            const curPrice = parseFloat(ticker.data.price);
+                            const sold = await this.executeTrailingSell(pos, curPrice, false, false, "MANUAL_DASHBOARD", true, !!data.allowLoss);
+                            if (sold) {
+                                this.activeTrailingPositions.delete(posKey);
                                 await this.saveTrailingPositions();
-                            }
-                            this.deductFromManualWallet(amount);
-                            await this.notifier.send("👤 <b>[COMPRA MANUAL CONFIRMADA DESDE RADAR]</b> 🚀\n\n" +
-                                "• <b>Moneda:</b> <b>" + sym + "</b>\n" +
-                                "• <b>Inversión:</b> $" + amount.toFixed(2) + " USDT (Saldo Manual)\n" +
-                                "• <b>Trailing Take Profit:</b> Activa al +" + (data.triggerGainPct || 0.8).toFixed(2) + "% (retroceso " + (data.callbackPct || 0.25).toFixed(2) + "%)\n\n" +
-                                "🛡️ <i>Protegida 100% contra ventas a pérdida y rastreando picos en tiempo real.</i>");
-                        }
-                    }
-                    else {
-                        console.error("Monto de compra manual inválido: " + amount);
-                    }
-                }
-                else if (data.action === "lock_profit" && data.id) {
-                    let pos = this.activeTrailingPositions.get(data.id);
-                    if (!pos) {
-                        for (const [k, p] of this.activeTrailingPositions.entries()) {
-                            if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
-                                pos = p;
-                                break;
+                                await this.notifier.send(`🌐 <b>[VENTA MANUAL CONFIRMADA]</b> Posición <b>${pos.symbol}</b> cerrada desde el Dashboard a ${fmtPrice(curPrice)}.`);
                             }
                         }
                     }
-                    if (pos) {
-                        pos.activated = true;
-                        if (data.targetGainPct && data.targetGainPct > 0) {
-                            pos.lockedFloorGainPct = data.targetGainPct;
-                            pos.customMinGainPct = data.targetGainPct;
-                            const floorPrice = pos.buyPrice * (1 + data.targetGainPct / 100);
-                            if ((pos.highestPrice || 0) < floorPrice) {
-                                pos.highestPrice = floorPrice;
+                    else if (data.action === "manual_buy" && data.symbol && data.usdtAmount) {
+                        const sym = String(data.symbol).trim().toUpperCase();
+                        const amount = parseFloat(data.usdtAmount);
+                        console.log("🌐 [COMPRA MANUAL DESDE RADAR] Recibida orden para " + sym + " por $" + amount + " USDT...");
+                        if (amount >= this.minUsdtToTrade) {
+                            const ok = await this.executeSmartBuy(sym, amount, "Manual desde Radar Web", "trailing_rebound");
+                            if (ok) {
+                                const pos = this.activeTrailingPositions.get(sym);
+                                if (pos) {
+                                    pos.isManual = true;
+                                    if (data.triggerGainPct)
+                                        pos.customMinGainPct = parseFloat(data.triggerGainPct);
+                                    if (data.callbackPct)
+                                        pos.customCallbackPct = parseFloat(data.callbackPct);
+                                    await this.saveTrailingPositions();
+                                }
+                                this.deductFromManualWallet(amount);
+                                await this.notifier.send("👤 <b>[COMPRA MANUAL CONFIRMADA DESDE RADAR]</b> 🚀\n\n" +
+                                    "• <b>Moneda:</b> <b>" + sym + "</b>\n" +
+                                    "• <b>Inversión:</b> $" + amount.toFixed(2) + " USDT (Saldo Manual)\n" +
+                                    "• <b>Trailing Take Profit:</b> Activa al +" + (data.triggerGainPct || 0.8).toFixed(2) + "% (retroceso " + (data.callbackPct || 0.25).toFixed(2) + "%)\n\n" +
+                                    "🛡️ <i>Protegida 100% contra ventas a pérdida y rastreando picos en tiempo real.</i>");
                             }
                         }
-                        await this.saveTrailingPositions();
-                        const lockedVal = (pos.lockedFloorGainPct || data.targetGainPct).toFixed(2);
-                        const msg = "🔒 <b>[CANDADO MANUAL ASEGURADO: " + pos.symbol + "]</b>\n\n" +
-                            "• Ganancia asegurada fijada en: <b>+" + lockedVal + "%</b>\n" +
-                            "• Si el precio retrocede, venderá asegurando este piso.\n" +
-                            "• Si sigue subiendo, ¡seguirá persiguiendo la cima con Trailing Take Profit! 🚀";
-                        await this.notifier.send(msg);
-                        console.log("🔒 Candado asegurado para " + pos.symbol + " en +" + lockedVal + "%");
+                        else {
+                            console.error("Monto de compra manual inválido: " + amount);
+                        }
+                    }
+                    else if (data.action === "lock_profit" && data.id) {
+                        let pos = this.activeTrailingPositions.get(data.id);
+                        if (!pos) {
+                            for (const [k, p] of this.activeTrailingPositions.entries()) {
+                                if (k === data.id || p.lotId === data.id || p.symbol === data.id) {
+                                    pos = p;
+                                    break;
+                                }
+                            }
+                        }
+                        if (pos) {
+                            pos.activated = true;
+                            if (data.targetGainPct && data.targetGainPct > 0) {
+                                pos.lockedFloorGainPct = data.targetGainPct;
+                                pos.customMinGainPct = data.targetGainPct;
+                                const floorPrice = pos.buyPrice * (1 + data.targetGainPct / 100);
+                                if ((pos.highestPrice || 0) < floorPrice) {
+                                    pos.highestPrice = floorPrice;
+                                }
+                            }
+                            await this.saveTrailingPositions();
+                            const lockedVal = (pos.lockedFloorGainPct || data.targetGainPct).toFixed(2);
+                            const msg = "🔒 <b>[CANDADO MANUAL ASEGURADO: " + pos.symbol + "]</b>\n\n" +
+                                "• Ganancia asegurada fijada en: <b>+" + lockedVal + "%</b>\n" +
+                                "• Si el precio retrocede, venderá asegurando este piso.\n" +
+                                "• Si sigue subiendo, ¡seguirá persiguiendo la cima con Trailing Take Profit! 🚀";
+                            await this.notifier.send(msg);
+                            console.log("🔒 Candado asegurado para " + pos.symbol + " en +" + lockedVal + "%");
+                        }
                     }
                 }
             }
@@ -2458,7 +2596,8 @@ export class TrailingMasterBot {
                 const calRegimeNow = this.get5YearCalendarRegime();
                 const hoursOpen = pos.buyTime ? (Date.now() - pos.buyTime) / 3600000 : 0;
                 const isExpansionDay = calRegimeNow.regimeKey === "MARTES_JUEVES_EXPANSION" || calRegimeNow.tpCallbackMultiplier >= 1.12 || this.activeAtypicalOverride === "RALLY_HARVESTER";
-                const isStagnantPosition = !isExpansionDay && hoursOpen >= 18.0 && gainPct < 0.85;
+                // Si una posición lleva >= 18 horas atrapada, activar Modo Rescate de Liquidez en Verde (incluso en días de expansión) para liberar el capital apenas toque +0.58% bruto
+                const isStagnantPosition = hoursOpen >= 18.0 && gainPct < 0.85;
                 const isBearishMacroRelief = macro.btcStressIndex >= 0.55 && !isExpansionDay;
                 const isReliefHarvestMode = isBearishMacroRelief || isStagnantPosition;
                 const isLot3 = (pos.lotIndex && pos.lotIndex >= 3) || symbol.includes("_lot_3");
@@ -2508,7 +2647,7 @@ export class TrailingMasterBot {
                     console.log(`🔒 [CANDADO CERO DEVOLUCIÓN: ${symbol}] Pico +${currentPeakGain.toFixed(2)}% -> Piso blindado en +${autoRatchetFloor.toFixed(2)}% bruto.`);
                     this.saveTrailingPositions();
                 }
-                // Activación de Trailing: mínimo +0.65% bruto (nunca +0.42% que estrangula el recorrido y vende por centavos)
+                // Activación de Trailing: mínimo +0.68% bruto (+0.75% en rescate de posición estancada >= 18h para destrabar capital en verde)
                 let activationTarget = pos.customMinGainPct || 0.68;
                 if (pos.strategy === "micro_grid" && !pos.customMinGainPct) {
                     activationTarget = 0.58;
@@ -2516,8 +2655,8 @@ export class TrailingMasterBot {
                 else if (isLot3 && (!pos.customMinGainPct || pos.customMinGainPct <= 0.8)) {
                     activationTarget = 0.85;
                 }
-                else if (!pos.customMinGainPct) {
-                    activationTarget = 0.68;
+                else if (isStagnantPosition && !pos.customMinGainPct) {
+                    activationTarget = 0.75;
                 }
                 if (gainPct >= activationTarget && !pos.activated) {
                     pos.activated = true;
@@ -2602,22 +2741,38 @@ export class TrailingMasterBot {
                     //   ceñir callback a 0.14%-0.15% con ganancia >= +0.68% bruto para cosechar en la cima antes del retroceso programado.
                     // • En Martes Verde, Jueves de Rebote o Inicio de Mes (fuera de Hora Techo): amplía el margen de persecución según el Calendario 5 Años.
                     const calRegimeExit = this.get5YearCalendarRegime();
+                    const { dayStr: currentDayStr } = this.getCotTimeInfo();
+                    const isMondayHold = currentDayStr === "Mon";
                     const isMemeCoin = MEME_WATCHLIST.includes(actualSymbol);
                     const aiCal = this.aiCoinCalibrations.get(symbol) || this.aiCoinCalibrations.get(actualSymbol);
-                    if (aiCal && !pos.customMinGainPct) {
+                    if (isStagnantPosition && gainPct >= 0.78) {
+                        // 🛟 POSICIÓN >18H EN GANANCIA REAL: Al superar +0.78% bruto (~+0.58% neto real), usa callback de 0.20% para asegurar ganancia sólida y seguir subiendo si hay impulso
+                        if (!pos.customCallbackPct)
+                            callback = 0.20;
+                        if (!pos.customMinGainPct)
+                            minGain = 0.78;
+                    }
+                    else if (aiCal && !pos.customMinGainPct && !pos.customCallbackPct) {
                         callback = aiCal.callbackPct;
                         minGain = aiCal.minGainPct;
                     }
-                    else if (!pos.customMinGainPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
+                    else if (!pos.customMinGainPct && !pos.customCallbackPct && isHistoricalPeakHarvest && gainPct >= 0.68) {
                         callback = Math.min(callback, isMemeCoin ? 0.25 : 0.15);
                         minGain = 0.68;
                     }
-                    else if (!pos.customMinGainPct && (macro.btcStressIndex <= 0.22 || calRegimeExit.tpCallbackMultiplier > 1.05 || isMemeCoin) && !isStagnantPosition) {
+                    else if (!pos.customMinGainPct && !pos.customCallbackPct && isMondayHold) {
+                        // 🛡️ PROTECCIÓN DE ACUMULACIÓN DE LUNES PARA EL MARTES:
+                        // Prohibido vender por migajas (+0.65%) antes del Martes de Expansión (+5.87% histórico).
+                        // Exige al menos +1.15% en Core (BTC/ETH) y +1.85% en Memes, con callback amplio para dejar correr la subida.
+                        callback = isMemeCoin ? 0.45 : 0.28;
+                        minGain = isMemeCoin ? 1.85 : 1.15;
+                    }
+                    else if (!pos.customMinGainPct && !pos.customCallbackPct && (macro.btcStressIndex <= 0.22 || calRegimeExit.tpCallbackMultiplier > 1.05 || isMemeCoin) && !isStagnantPosition) {
                         const mult = Math.max(1.25, calRegimeExit.tpCallbackMultiplier);
                         callback = isMemeCoin ? Math.max(callback, 0.42) : Number((callback * mult).toFixed(2));
                         minGain = isMemeCoin ? 1.45 : 0.85;
                     }
-                    else if (!pos.customMinGainPct && !isMemeCoin && pos.strategy !== "micro_grid" && !isLot3 && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") && gainPct >= 0.65) {
+                    else if (!pos.customMinGainPct && !pos.customCallbackPct && !isMemeCoin && pos.strategy !== "micro_grid" && !isLot3 && !isMondayHold && (isPreNightHarvest || isPreWeekendHarvest || isQuietRegime || isWeekendChop || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") && gainPct >= 0.65) {
                         callback = Math.min(callback, (isPreWeekendHarvest || isReliefHarvestMode || calRegimeExit.regimeKey === "FIN_DE_MES_DRENAJE") ? 0.16 : 0.18);
                         minGain = 0.65;
                     }
@@ -2676,10 +2831,20 @@ export class TrailingMasterBot {
                     // CANDADO SUPREMO: hitCallback también respeta el escudo anti-venta temprana salvo que caiga más de 1.5x el callback
                     const effectiveCallbackTrigger = isBullishMomentumAlive ? (dropFromPeak >= callback * 1.55) : (dropFromPeak >= callback);
                     const hitCallback = (effectiveCallbackTrigger && gainPct >= minGain) || (hitLockedFloor && gainPct >= 0.58);
+                    // 🎯 VENTA POR TECHO DE CANAL INSTITUCIONAL:
+                    // Si el precio alcanza el Techo del Canal o Zona Ideal de Venta y estamos en ganancia neta, cobrar antes del rechazo
+                    let hitChannelCeiling = false;
+                    if (gainPct >= 0.58) {
+                        const ceilingPrice = marketRangesManager.getEffectiveTecho(actualSymbol);
+                        if (ceilingPrice > 0 && curPrice >= ceilingPrice * 0.995) {
+                            hitChannelCeiling = true;
+                            console.log(`🎯 [TECHO DE CANAL ALCANZADO] ${symbol}: Precio $${curPrice} tocó la resistencia de techo ($${ceilingPrice}). Cobrando ganancia asegurada.`);
+                        }
+                    }
                     // CANDADO FÉRREO: Prohibido vender con menos de +0.58% bruto (garantizando mínimo ~+0.38% a +0.50% neto real tras comisiones)
                     const minAllowedExit = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.58) ? 0.58 : (pos.strategy === "micro_grid" ? 0.58 : 0.65);
-                    if ((hitCallback || hitHardCap || isRejectionWick || isOrderFlowExhaustion) && gainPct >= minAllowedExit) {
-                        const reasonOverride = isOrderFlowExhaustion ? "DESCARGA_ORDER_FLOW" : (isRejectionWick ? "RECHAZO_MECHA" : (hitLockedFloor ? "CANDADO_CERO_DEVOLUCION" : undefined));
+                    if ((hitCallback || hitHardCap || isRejectionWick || isOrderFlowExhaustion || hitChannelCeiling) && gainPct >= minAllowedExit) {
+                        const reasonOverride = hitChannelCeiling ? "TECHO_CANAL_ALCANZADO" : (isOrderFlowExhaustion ? "DESCARGA_ORDER_FLOW" : (isRejectionWick ? "RECHAZO_MECHA" : (hitLockedFloor ? "CANDADO_CERO_DEVOLUCION" : undefined)));
                         console.log(`🏆 ¡CERRANDO EN GANANCIA! Venta en ${symbol} a ${curPrice} (+${gainPct.toFixed(2)}% | Pico: ${pos.highestPrice}) [${reasonOverride || 'TRAILING'}]`);
                         const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap, false, reasonOverride);
                         // Solo se elimina la posición si Binance confirmó la venta
@@ -3440,20 +3605,31 @@ export class TrailingMasterBot {
                     continue; // No acumular en la misma moneda ni duplicar vigilancias
                 }
                 const symTf = this.getTimeframeForSymbol(sym);
-                // Asegurar verdaderas 24 horas de datos (96 velas en 15m, 24 en 1h) y suficiente historial para EMA50, MACD y StochRSI
+                // Asegurar Memoria Estructural Multidía (4 días = 384 velas en 15m) para no comprar en $62k cuando el piso recurrente de la semana es $59k
                 const candlesIn24h = symTf === "15m" ? 96 : (symTf === "4h" ? 6 : 24);
-                const klinesLimit = Math.max(55, candlesIn24h + 4);
+                const klinesLimit = symTf === "15m" ? 384 : Math.max(96, candlesIn24h * 4);
                 const klinesRes = await this.client.klines(sym, symTf, { limit: klinesLimit });
-                const data = klinesRes.data;
+                const allData = klinesRes.data;
+                const allHighs4d = allData.map((k) => parseFloat(k[2]));
+                const allLows4d = allData.map((k) => parseFloat(k[3]));
+                const sortedLows4dScan = [...allLows4d].sort((a, b) => a - b);
+                const structuralFloor4dScan = sortedLows4dScan[Math.floor(sortedLows4dScan.length * 0.10)] || Math.min(...allLows4d);
+                const high4dScan = Math.max(...allHighs4d);
+                const data = allData.slice(-Math.max(55, candlesIn24h + 4));
                 const opens = data.map((k) => parseFloat(k[1]));
                 const highs = data.map((k) => parseFloat(k[2]));
                 const lows = data.map((k) => parseFloat(k[3]));
                 const closes = data.map((k) => parseFloat(k[4]));
                 const volumes = data.map((k) => parseFloat(k[5]));
                 const curPrice = closes[closes.length - 1];
-                // Cooldown y Re-Entrada en Ola Post-Venta (Wave Surfing):
-                // Si acabamos de vender en ganancia y la moneda corrige enseguida >= 0.80% por debajo de nuestra venta,
-                // habilitamos la Re-Entrada en Ola para volver a comprar más barato y montarnos en la siguiente subida.
+                // 🛡️ CANDADO DE RANGO (PISOS Y TECHOS CONFIGURADOS O AUTO-DETECTADOS):
+                // Prohibido armar vigilancia de compra si el precio está fuera de la zona de compra permitida.
+                const rangeCheck = marketRangesManager.isBuyAllowed(sym, curPrice);
+                if (!rangeCheck.allowed) {
+                    continue;
+                }
+                // Cooldown y Re-Entrada en Ola Post-Venta:
+                // Exige una corrección real de al menos >= 2.5% por debajo de la venta para evitar recompras apresuradas en falso techo
                 const lastSold = this.recentlySoldSymbols.get(sym);
                 let droppedFromExit = 0;
                 let isPostSaleWaveCandidate = false;
@@ -3462,10 +3638,10 @@ export class TrailingMasterBot {
                     droppedFromExit = lastSold.sellPrice && lastSold.sellPrice > 0
                         ? ((lastSold.sellPrice - curPrice) / lastSold.sellPrice) * 100
                         : 0;
-                    if (elapsed < 20 * 60 * 1000 && droppedFromExit < 0.80) {
-                        continue; // Cooldown activo solo si no ha corregido al menos -0.80% desde nuestro precio de venta
+                    if (elapsed < 30 * 60 * 1000 && droppedFromExit < 2.50) {
+                        continue; // Cooldown activo si no ha corregido al menos -2.50% desde nuestro precio de venta
                     }
-                    if (elapsed < 45 * 60 * 1000 && droppedFromExit >= 0.85) {
+                    if (elapsed < 60 * 60 * 1000 && droppedFromExit >= 2.50) {
                         isPostSaleWaveCandidate = true;
                         console.log(`🌊 [RE-ENTRADA EN OLA DETECTADA] ${sym} corrigió -${droppedFromExit.toFixed(2)}% debajo de nuestra venta ($${lastSold.sellPrice} -> $${curPrice}). Evaluando piso de recompra.`);
                     }
@@ -3606,6 +3782,31 @@ export class TrailingMasterBot {
                 const isMemeExtremeDip = (dropPct >= 3.8 && bb.percentB <= 0.10 && rsi <= 33 && stochRsi.k <= 20 && maxRecentRvol >= 1.35) ||
                     (dropPct >= 4.5 && fibPosition24h <= 0.12 && rsi <= 34 && hasPinbarRejection && rvol >= 1.25) ||
                     (rsi <= 27 && dropPct >= 3.2 && hasPinbarRejection && bb.percentB <= 0.10);
+                // 🧠 ESCUDO 4 (ESTUDIO DINÁMICO DEL AGENTE IA ANTI-ENGAÑO POR MONEDA):
+                const aiCalDip = this.aiCoinCalibrations.get(sym);
+                const downsideToFloorScanPct = curPrice > 0 ? ((curPrice - low24) / curPrice) * 100 : 0;
+                if (aiCalDip?.trapDetected || aiCalDip?.strategyMode === "AVOID_BULL_TRAP") {
+                    continue;
+                }
+                if (aiCalDip?.maxEntryRsi && rsi > aiCalDip.maxEntryRsi) {
+                    continue;
+                }
+                if (aiCalDip?.maxEntryFib && fibPosition24h > aiCalDip.maxEntryFib) {
+                    continue;
+                }
+                if (aiCalDip?.targetFloorPrice && aiCalDip.targetFloorPrice > 0 && curPrice > aiCalDip.targetFloorPrice * 1.008) {
+                    continue;
+                }
+                // Prohibido armar compra si queda más de 1.25% de vacío hacia el piso de 24h (salvo sobreventa extrema RSI <= 28)
+                if (downsideToFloorScanPct > 1.25 && rsi > 28) {
+                    continue;
+                }
+                // 🛡️ ESCUDO DE MEMORIA MULTIDÍA (4 DÍAS): Prohibido comprar arriba del piso recurrente de los últimos 4 días (ej. comprar BTC en $62k cuando toda la semana bajó a $59k)
+                const fibPosition4dScan = (high4dScan - structuralFloor4dScan) > 0 ? Math.max(0, (curPrice - structuralFloor4dScan) / (high4dScan - structuralFloor4dScan)) : 0.5;
+                const downsideTo4dFloorScanPct = curPrice > 0 ? Math.max(0, ((curPrice - structuralFloor4dScan) / curPrice) * 100) : 0;
+                if ((fibPosition4dScan > 0.30 || downsideTo4dFloorScanPct > 2.1) && rsi > 27) {
+                    continue;
+                }
                 const isDip = isMeme
                     ? isMemeExtremeDip
                     : (isStandardDip || isWickRebound || isWaveReentryDip || isBullishPullbackDip || isCompressedRangeDip);
@@ -3684,6 +3885,12 @@ export class TrailingMasterBot {
                     console.log(`🌪️ [VETO TORMENTA MACRO: ${sym}] BTC Stress=${(macro.btcStressIndex * 100).toFixed(0)}% (${macro.btcDrop3hPct.toFixed(2)}% en 3h). Reteniendo disparo y acompañando suelo.`);
                     continue;
                 }
+                // 🛡️ CANDADO DE RANGO (VERIFICACIÓN EN TIEMPO DE DISPARO DE COMPRA):
+                const rangeCheckBuy = marketRangesManager.isBuyAllowed(sym, cur);
+                if (!rangeCheckBuy.allowed) {
+                    console.log(`🛡️ [CANDADO DE RANGO: ${sym}] Compra bloqueada en $${cur}. ${rangeCheckBuy.reason}`);
+                    continue;
+                }
                 const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
                 this.loadWalletSplit();
                 const botAvailableUsdt = Math.max(0, usdt - this.walletSplit.manualUsdt);
@@ -3723,8 +3930,17 @@ export class TrailingMasterBot {
                 if (pauseState.paused && isAtypicalCrashCandidate) {
                     console.log(`⚡ [LLAVE MAESTRA DE EXCEPCIÓN ATÍPICA ACTIVADA: ${sym}] Flash Crash detectado (-${effectiveDropSoFar.toFixed(2)}% | RSI ${(w.rsi || 25).toFixed(1)}) durante hora pausada. Desbloqueando Presupuesto Abierto.`);
                 }
-                // Rebote exigido calibrado por IA o según régimen
+                // Rebote exigido y filtro anti-engaño calibrado por el Estudio del Agente IA:
                 const aiCalBuy = this.aiCoinCalibrations.get(sym);
+                if (aiCalBuy?.trapDetected || aiCalBuy?.strategyMode === "AVOID_BULL_TRAP") {
+                    if (bounce >= 0.25) {
+                        console.log(`🧠🛑 [AGENTE IA ANTI-ENGAÑO: ${sym}] Compra vetada por detección de Bull-Trap / Mechazo falso. Siguiendo hacia el suelo real.`);
+                    }
+                    continue;
+                }
+                if (aiCalBuy?.targetFloorPrice && aiCalBuy.targetFloorPrice > 0 && cur > aiCalBuy.targetFloorPrice * 1.008) {
+                    continue;
+                }
                 const reqBounce = (aiCalBuy && typeof aiCalBuy.bounceBuyPct === "number")
                     ? aiCalBuy.bounceBuyPct
                     : (isWeekendNow
@@ -5262,14 +5478,15 @@ export class TrailingMasterBot {
             if (ackList.includes(cmd)) {
                 return "👍";
             }
-            // 2. Si el mensaje empieza con barra / y no fue reconocido, NUNCA enviar a la IA
-            if (rawCmd.trim().startsWith("/")) {
-                return "Comando no reconocido. Escribe /menu para ver la lista de comandos disponibles.";
-            }
-            // 3. Solo llamar a Gemini AI si está explícitamente activada Y se usa /ai o una pregunta directa
+            // 2. Si el mensaje empieza con barra / y no fue reconocido (y no es /ai|/ia|/chat), NUNCA enviar a la IA
             const isExplicitAi = cmd === "/ai" || cmd === "/ia" || cmd === "/chat" || cmd === "ai" || cmd === "ia";
             const isDirectQuestion = rawCmd.trim().startsWith("¿") || rawCmd.trim().startsWith("?");
-            if (this.controls.aiEnabled && (isExplicitAi || isDirectQuestion) && this.aiCopilot.isAvailable()) {
+            if (rawCmd.trim().startsWith("/") && !isExplicitAi) {
+                return "Comando no reconocido. Escribe /menu para ver la lista de comandos disponibles.";
+            }
+            // 3. Permitir consulta explícita por comando (/ai|/ia|/chat) aunque la IA automática esté pausada por saldo,
+            // y responder preguntas directas cuando aiEnabled esté activo
+            if ((isExplicitAi || (this.controls.aiEnabled && isDirectQuestion)) && this.aiCopilot.isAvailable()) {
                 const queryText = isExplicitAi ? rawCmd.replace(/^\/(ai|ia|chat)\s*/i, "").trim() : rawCmd;
                 if (!queryText)
                     return "❓ Escribe tu pregunta después de /ai. Ejemplo: <code>/ai ¿cómo ves el mercado hoy?</code>";
@@ -6091,31 +6308,61 @@ export class TrailingMasterBot {
             return 0;
         }
         const isSniper100Queen = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "SUIUSDT", "AVAXUSDT", "NEARUSDT"].includes(symbol);
-        const isStrong100Opportunity = !isMeme &&
+        // 🌟 OPORTUNIDAD DE ORO (PISO PROFUNDO DE ALTA CONVICCIÓN PARA BALA DE $100 USDT):
+        // Solo se autoriza la bala máxima de $100 cuando el suelo es inequívoco y garantiza un rebote potente:
+        // • Caída profunda >= 4.8% (o >= 4.2% con RSI extremo <= 30 en sobreventa real).
+        // • En esta condición de oro, se dispara la bala de $100 USDT para cobrar ganancias grandes (+$2.5 a +$6.0 USDT).
+        const isGoldenSniperFloor = !isMeme &&
             isSniper100Queen &&
-            ((dropPct >= 3.8 && rsi <= 36) ||
-                (dropPct >= 4.5 && rsi <= 38) ||
-                (coinRange24hPct >= 5.0 && dropPct >= 3.5 && rsi <= 37));
-        if (tier === 1 && (strategy === "trailing_rebound" || strategy === "cazador_weekend") && isStrong100Opportunity && spendableUsdt >= 70) {
-            const sniperShot = Math.min(100.00, Math.floor(spendableUsdt * 100) / 100);
-            console.log(`🎯 [PRIORIDAD BALA $100 USDT] Desplegando $${sniperShot.toFixed(2)} USDT en ${symbol} (Caída -${dropPct.toFixed(2)}% | Rango ${coinRange24hPct.toFixed(2)}% | RSI ${rsi.toFixed(1)})`);
-            return sniperShot;
+            ((dropPct >= 4.8 && rsi <= 34) ||
+                (dropPct >= 4.2 && rsi <= 30) ||
+                (coinRange24hPct >= 5.5 && dropPct >= 4.5 && rsi <= 32));
+        const isStrongOpportunity = !isMeme &&
+            isSniper100Queen &&
+            ((dropPct >= 3.0 && rsi <= 38) ||
+                (coinRange24hPct >= 4.0 && dropPct >= 2.5 && rsi <= 40));
+        if (tier === 1 && (strategy === "trailing_rebound" || strategy === "cazador_weekend") && spendableUsdt >= 70) {
+            if (isGoldenSniperFloor) {
+                // 🎯 BALA DE ORO DE $100 USDT: Suelo profundo confirmado que garantiza rebote explosivo
+                const goldenShot = Math.min(100.00, Math.floor(spendableUsdt * 100) / 100);
+                console.log(`🏆 [BALA DE ORO $100 USDT DISPARADA] ${symbol} en suelo profundo de alta convicción (Caída -${dropPct.toFixed(2)}% | RSI ${rsi.toFixed(1)}). Asignando $${goldenShot.toFixed(2)} USDT.`);
+                return goldenShot;
+            }
+            else if (isStrongOpportunity) {
+                // ⚖️ ENTRADA ESTÁNDAR EQUILIBRADA: $35 a $50 USDT (máx 35% de cartera) para no atrapar el capital si cae más
+                const balancedCap = Math.max(35.0, Math.min(50.0, spendableUsdt * 0.35));
+                const balancedShot = Math.floor(balancedCap * 100) / 100;
+                console.log(`⚖️ [ENTRADA ESTÁNDAR EQUILIBRADA] ${symbol} en soporte intradía (Caída -${dropPct.toFixed(2)}% | RSI ${rsi.toFixed(1)}). Asignando $${balancedShot.toFixed(2)} USDT.`);
+                return balancedShot;
+            }
         }
-        // 💎 ESCALONES DE BLOQUE CONTUNDENTE (Mínimo $35 - $65 USDT cuando aún no hay $100 completos pero hay caída fuerte):
-        const configuredWideGapAmount = Math.max(60, this.controls.wideGapLotSize || 60);
-        if (tier === 1 && (isMaxGapOpportunity || isStrong100Opportunity) && !isMeme) {
-            // Escalón Fuerte (Máxima Brecha / Reina en Piso): usa bloque de $45 a $70 USDT (o hasta $100 si está configurado)
-            const targetGapLot = Math.min(Math.max(configuredWideGapAmount, 65), spendableUsdt);
+        // 🛡️ ESCUDO DE RESERVA INVIOLABLE ANTI-ATRAPAMIENTO (SMART DCA AMMO):
+        // Si ya tenemos posiciones abiertas (activeInvested > 0) y es una compra normal de Lote 1 (tier === 1, no Bala de Oro en capitulación extrema),
+        // es OBLIGATORIO conservar al menos el 28% del portafolio (~$45 USDT) en efectivo libre para poder promediar en el fondo (Smart DCA Lote 2) si el mercado cae más.
+        // Prohibido vaciar la billetera a $0.27 USDT en entradas de Lote 1 normales.
+        if (tier === 1 && !isGoldenSniperFloor && activeInvested > 0) {
+            const actualTotalEquity = activeInvested + spendableUsdt;
+            const requiredDcaReserve = Math.max(38.0, actualTotalEquity * 0.28);
+            const maxAllowedForNewLot1 = Math.floor(Math.max(0, spendableUsdt - requiredDcaReserve) * 100) / 100;
+            if (maxAllowedForNewLot1 < this.minUsdtToTrade) {
+                console.log(`🛡️ [RESERVA ANTI-ATRAPAMIENTO PROTEGIDA] Reteniendo $${spendableUsdt.toFixed(2)} USDT en caja como munición Smart DCA / Capitulación Extrema (Invertido activo: $${activeInvested.toFixed(2)} USDT).`);
+                return 0;
+            }
+            spendableUsdt = maxAllowedForNewLot1;
+        }
+        // 💎 ESCALONES DE BLOQUE EQUILIBRADO:
+        if (tier === 1 && isGoldenSniperFloor && !isMeme) {
+            const targetGapLot = Math.min(100.0, spendableUsdt);
             if (targetGapLot >= 35) {
                 lot = targetGapLot;
             }
             else {
-                return 0; // Retener y acumular hasta tener al menos $35-$100 USDT
+                return 0;
             }
         }
-        else if (tier === 1 && isHighVolOpportunity && !isMeme && spendableUsdt >= 35) {
-            // Escalón Alta Volatilidad: $35 - $50 USDT
-            lot = Math.min(spendableUsdt, Math.max(lot, rsi <= 34 || dropPct >= 3.2 ? 45 : 35));
+        else if (tier === 1 && (isMaxGapOpportunity || isStrongOpportunity || isHighVolOpportunity) && !isMeme && spendableUsdt >= 35) {
+            // Escalón Estándar / Alta Volatilidad: máx 35% del saldo o $35-$50 USDT
+            lot = Math.min(spendableUsdt, Math.max(35, Math.min(50, Math.floor(spendableUsdt * 0.45 * 100) / 100)));
         }
         else if (tier === 1 && isMediumImpulse && !isMeme && spendableUsdt >= 35) {
             // Escalón Impulso Medio: mínimo $35 USDT
@@ -6519,6 +6766,12 @@ export class TrailingMasterBot {
                     this.client.depth(sym, { limit: 50 }).catch(() => ({ data: { bids: [], asks: [] } }))
                 ]);
                 const cur = parseFloat(tickerRes.data.price);
+                // 🛡️ CANDADO DE RANGO (VERIFICACIÓN EN TIEMPO DE DISPARO DE COMPRA):
+                const rangeCheckBuy = marketRangesManager.isBuyAllowed(sym, cur);
+                if (!rangeCheckBuy.allowed) {
+                    console.log(`🛡️ [CANDADO DE RANGO: ${sym}] Compra bloqueada en $${cur}. ${rangeCheckBuy.reason}`);
+                    continue;
+                }
                 const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
                 const isMemeCoin = this.memeWatchlist.includes(sym) || sym.includes("PEPE") || sym.includes("DOGE");
                 const reqBounce = isMemeCoin ? 0.45 : 0.35;

@@ -3192,10 +3192,21 @@ export class TrailingMasterBot {
           const effectiveCallbackTrigger = isBullishMomentumAlive ? (dropFromPeak >= callback * 1.55) : (dropFromPeak >= callback);
           const hitCallback = (effectiveCallbackTrigger && gainPct >= minGain) || (hitLockedFloor && gainPct >= 0.58);
 
+          // 🎯 VENTA POR TECHO DE CANAL INSTITUCIONAL:
+          // Si el precio alcanza el Techo del Canal o Zona Ideal de Venta y estamos en ganancia neta, cobrar antes del rechazo
+          let hitChannelCeiling = false;
+          if (gainPct >= 0.58) {
+            const ceilingPrice = marketRangesManager.getEffectiveTecho(actualSymbol);
+            if (ceilingPrice > 0 && curPrice >= ceilingPrice * 0.995) {
+              hitChannelCeiling = true;
+              console.log(`🎯 [TECHO DE CANAL ALCANZADO] ${symbol}: Precio $${curPrice} tocó la resistencia de techo ($${ceilingPrice}). Cobrando ganancia asegurada.`);
+            }
+          }
+
           // CANDADO FÉRREO: Prohibido vender con menos de +0.58% bruto (garantizando mínimo ~+0.38% a +0.50% neto real tras comisiones)
           const minAllowedExit = (pos.lockedFloorGainPct && pos.lockedFloorGainPct >= 0.58) ? 0.58 : (pos.strategy === "micro_grid" ? 0.58 : 0.65);
-          if ((hitCallback || hitHardCap || isRejectionWick || isOrderFlowExhaustion) && gainPct >= minAllowedExit) {
-            const reasonOverride = isOrderFlowExhaustion ? "DESCARGA_ORDER_FLOW" : (isRejectionWick ? "RECHAZO_MECHA" : (hitLockedFloor ? "CANDADO_CERO_DEVOLUCION" : undefined));
+          if ((hitCallback || hitHardCap || isRejectionWick || isOrderFlowExhaustion || hitChannelCeiling) && gainPct >= minAllowedExit) {
+            const reasonOverride = hitChannelCeiling ? "TECHO_CANAL_ALCANZADO" : (isOrderFlowExhaustion ? "DESCARGA_ORDER_FLOW" : (isRejectionWick ? "RECHAZO_MECHA" : (hitLockedFloor ? "CANDADO_CERO_DEVOLUCION" : undefined)));
             console.log(`🏆 ¡CERRANDO EN GANANCIA! Venta en ${symbol} a ${curPrice} (+${gainPct.toFixed(2)}% | Pico: ${pos.highestPrice}) [${reasonOverride || 'TRAILING'}]`);
             const sold = await this.executeTrailingSell(pos, curPrice, hitHardCap, false, reasonOverride);
             // Solo se elimina la posición si Binance confirmó la venta
