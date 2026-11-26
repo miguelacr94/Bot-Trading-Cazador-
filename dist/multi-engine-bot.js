@@ -524,23 +524,30 @@ export class TrailingMasterBot {
         }
     }
     /**
-     * VEDA DE COMPRAS DE VIERNES (Viernes 14:00 COT a Sábado 00:30 AM COT):
-     * Estadísticamente (82% en SOL/NEAR y 73% en BTC/ETH/SUI en las últimas 18 semanas),
-     * el viernes por la tarde y noche el mercado drena tras el cierre de Wall Street y marca
-     * su piso real en la madrugada/mañana del sábado (00:30 AM - 12:00 PM COT).
+     * VEDA DE COMPRAS DE VIERNES (Viernes 00:00 COT a Sábado 02:00 AM COT):
+     * Bloquea compras preventivamente todo el viernes hasta la madrugada del sábado.
+     * EXCEPCIÓN: Si la moneda sufre una caída extrema / capitulación profunda (>= -4.5% o RSI <= 26).
      */
-    isFridayEveningBleedWindow() {
+    isFridayBuyVeda(sym, curPrice, rsi, drop24hPct) {
         try {
             const { dayStr, timeDec } = this.getCotTimeInfo();
-            if (dayStr === "Fri" && timeDec >= 14.0)
-                return true;
-            if (dayStr === "Sat" && timeDec < 0.5)
-                return true;
-            return false;
+            const isFriday = dayStr === "Fri";
+            const isEarlySaturday = dayStr === "Sat" && timeDec < 2.0;
+            if (!isFriday && !isEarlySaturday)
+                return false;
+            // EXCEPCIÓN AUTORIZADA POR EL USUARIO: "a menos que la moneda caiga mucho"
+            if ((drop24hPct && drop24hPct >= 4.5) || (rsi && rsi <= 26)) {
+                console.log(`⚡ [EXCEPCIÓN VEDA VIERNES AUTORIZADA] ${sym || 'Moneda'}: Caída extrema (-${drop24hPct?.toFixed(1) || 0}% | RSI: ${rsi?.toFixed(0) || 0}). Aprovechando piso atípico antes del sábado.`);
+                return false;
+            }
+            return true;
         }
         catch {
             return false;
         }
+    }
+    isFridayEveningBleedWindow() {
+        return this.isFridayBuyVeda();
     }
     isNightMode() {
         try {
@@ -2765,7 +2772,14 @@ export class TrailingMasterBot {
                             this.saveTrailingPositions();
                         }
                     }
+                    else if (pos.strategy === "cazador_weekend") {
+                        // 🏖️ COMPRAS DE FIN DE SEMANA (Sábado madrugada en piso):
+                        // Límite amplio de +1.50% o más para cosechar domingo noche (CME), lunes o martes según mercado alcista
+                        callback = Math.max(0.24, pos.customCallbackPct || 0.28);
+                        minGain = Math.max(1.50, pos.customMinGainPct || 1.50);
+                    }
                     else {
+                        // ⚡ DÍAS DE SEMANA: Rotación ágil de capital (+0.62% a +0.68%) sin protocolos que estanquen el saldo
                         callback = Math.min(callback, 0.18);
                         minGain = Math.min(minGain, 0.68);
                     }
@@ -3324,7 +3338,7 @@ export class TrailingMasterBot {
                 coinRange24hPct: meta?.coinRange24hPct,
                 upsideGapPct: meta?.upsideGapPct,
                 convictionTier: meta?.convictionTier,
-                customMinGainPct: meta?.customMinGainPct
+                customMinGainPct: meta?.customMinGainPct || (strategy === "cazador_weekend" ? 1.50 : undefined)
             });
             this.saveTrailingPositions();
             const targetPriceStr = fmtPrice(buyPrice * (1 + activationPct / 100));
@@ -3622,6 +3636,11 @@ export class TrailingMasterBot {
                 if (!rangeCheck.allowed) {
                     continue;
                 }
+                // 🛑 VEDA DE VIERNES: Bloqueo preventivo de compras los viernes hasta el sábado 02:00 AM COT
+                // a menos que la moneda sufra un desplome atípico extraordinario (>= -4.5% o RSI <= 26).
+                if (this.isFridayBuyVeda(sym, curPrice)) {
+                    continue;
+                }
                 // Cooldown y Re-Entrada en Ola Post-Venta:
                 // Exige una corrección real de al menos >= 2.5% por debajo de la venta para evitar recompras apresuradas en falso techo
                 const lastSold = this.recentlySoldSymbols.get(sym);
@@ -3883,6 +3902,11 @@ export class TrailingMasterBot {
                 const rangeCheckBuy = marketRangesManager.isBuyAllowed(sym, cur);
                 if (!rangeCheckBuy.allowed) {
                     console.log(`🛡️ [CANDADO DE RANGO: ${sym}] Compra bloqueada en $${cur}. ${rangeCheckBuy.reason}`);
+                    continue;
+                }
+                // 🛑 VEDA DE VIERNES: Bloqueo preventivo de compras los viernes hasta el sábado 02:00 AM COT
+                if (this.isFridayBuyVeda(sym, cur, undefined, w.dropPct)) {
+                    console.log(`🛑 [VEDA DE VIERNES] ${sym}: Compra retenida hasta el sábado 02:00 AM COT (esperando piso real).`);
                     continue;
                 }
                 const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
@@ -6764,6 +6788,11 @@ export class TrailingMasterBot {
                 const rangeCheckBuy = marketRangesManager.isBuyAllowed(sym, cur);
                 if (!rangeCheckBuy.allowed) {
                     console.log(`🛡️ [CANDADO DE RANGO: ${sym}] Compra bloqueada en $${cur}. ${rangeCheckBuy.reason}`);
+                    continue;
+                }
+                // 🛑 VEDA DE VIERNES: Bloqueo preventivo de compras los viernes hasta el sábado 02:00 AM COT
+                if (this.isFridayBuyVeda(sym, cur, undefined, w.dropPct)) {
+                    console.log(`🛑 [VEDA DE VIERNES] ${sym}: Compra retenida hasta el sábado 02:00 AM COT (esperando piso real).`);
                     continue;
                 }
                 const bounce = ((cur - w.lowestPrice) / w.lowestPrice) * 100;
