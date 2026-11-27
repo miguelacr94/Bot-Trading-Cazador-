@@ -5305,7 +5305,33 @@ export class TrailingMasterBot {
                 txt += `• 💡 <b>Recomendación:</b> <i>${plan.recommendation}</i>\n`;
                 txt += `• 🏹 <b>Trailing Activo:</b> ${this.activeTrailingPositions.size} posiciones rastreando el pico\n`;
                 txt += `• 🔻 <b>Trailing Buy:</b> ${this.buyWatches.size} moneda(s) cazando el piso\n`;
-                txt += `• 🤖 <b>Modo:</b> ${this.autoPilot ? "🟢 Autónomo con Trailing (+0.8% a +3.5%)" : "🟡 Manual Asistido"}`;
+                txt += `• 🤖 <b>Modo:</b> ${this.autoPilot ? "🟢 Autónomo con Trailing (+0.8% a +3.5%)" : "🟡 Manual Asistido"}\n`;
+                // 📉 Benchmark de Caída desde el Cierre del Viernes
+                try {
+                    const cachedRanges = await marketRangesManager.getMarketRanges(this.watchlist);
+                    const { dayStr, timeDec } = this.getCotTimeInfo();
+                    const isVeda = dayStr === "Fri" || (dayStr === "Sat" && timeDec < 2.0);
+                    txt += `\n📉 <b>CAÍDA DESDE EL CIERRE DEL VIERNES (BENCHMARK):</b>\n`;
+                    txt += `<i>${isVeda ? "🛑 Veda de Compras: Bloqueadas hasta Sábado 02:00 AM COT (Salvo caída profunda)" : "🟢 Cacería de Suelo Fin de Semana: Activa"}</i>\n`;
+                    for (const sym of this.watchlist) {
+                        const r = cachedRanges[sym];
+                        let curPrice = r?.curPrice || 0;
+                        if (curPrice <= 0) {
+                            try {
+                                const t = await this.client.tickerPrice(sym);
+                                curPrice = parseFloat(t.data.price);
+                            }
+                            catch { }
+                        }
+                        const wkDyn = marketRangesManager.getWeekendDynamicBounce(sym, curPrice);
+                        const clean = sym.replace("USDT", "");
+                        const dec = sym.includes("PEPE") ? 8 : (curPrice < 10 ? 3 : 2);
+                        const statusEmoji = wkDyn.qualifiesDrop ? "🟢" : "🔴";
+                        const qualText = wkDyn.qualifiesDrop ? "CALIFICA" : "INSUFICIENTE";
+                        txt += `• <b>${clean}:</b> $${curPrice.toFixed(dec)} | 📉 <b>-${wkDyn.fridayDropPct.toFixed(2)}%</b> vs Ancla $${wkDyn.fridayAnchorPrice.toFixed(dec)} (Mín: -${wkDyn.minRequiredDropPct}%) ➜ ${statusEmoji} <b>${qualText}</b> (Rebote: +${wkDyn.dynamicBouncePct}%)\n`;
+                    }
+                }
+                catch (e) { }
                 return txt;
             }
             if (cmd === "/radar" || cmd === "radar") {

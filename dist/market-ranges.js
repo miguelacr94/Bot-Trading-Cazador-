@@ -123,6 +123,9 @@ export class MarketRangesManager {
             dynamicBouncePct
         };
     }
+    getCalculatedRanges() {
+        return this.calculatedCache;
+    }
     /**
      * Verifica si el bot tiene permitido comprar según el rango configurado.
      */
@@ -340,6 +343,8 @@ export class MarketRangesManager {
                     weekendAdvice,
                     fridayAnchorPrice: Number(fridayAnchorPrice.toFixed(sym.includes("PEPE") ? 8 : 2)),
                     fridayDropPct,
+                    minRequiredDropPct: minRequiredDrop,
+                    qualifiesDrop: fridayDropPct >= minRequiredDrop,
                     dynamicBounceTriggerPct,
                     updatedAt: Date.now()
                 };

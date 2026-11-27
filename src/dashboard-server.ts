@@ -1208,6 +1208,44 @@ export class DashboardServer {
           tradesCount: totalWins
         };
       })(),
+      fridayBenchmark: (() => {
+        try {
+          const cachedRanges = marketRangesManager.getCalculatedRanges();
+          const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "DOGEUSDT", "PEPEUSDT"];
+          const items = symbols.map(sym => {
+            const curP = this.prices[sym] || cachedRanges[sym]?.curPrice || 0;
+            const dyn = marketRangesManager.getWeekendDynamicBounce(sym, curP);
+            const r = cachedRanges[sym];
+            return {
+              symbol: sym,
+              curPrice: curP,
+              fridayAnchorPrice: dyn.fridayAnchorPrice,
+              fridayDropPct: dyn.fridayDropPct,
+              minRequiredDropPct: dyn.minRequiredDropPct,
+              qualifiesDrop: dyn.qualifiesDrop,
+              dynamicBouncePct: dyn.dynamicBouncePct,
+              piso: r?.effectivePiso || 0,
+              techo: r?.effectiveTecho || dyn.fridayAnchorPrice,
+              weekendRegime: r?.weekendRegime || "HIBERNACION_LATERAL"
+            };
+          });
+          const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
+          const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          const dayStr = days[d.getDay()];
+          const timeDec = d.getHours() + d.getMinutes() / 60;
+          const isVeda = dayStr === "Fri" || (dayStr === "Sat" && timeDec < 2.0);
+          return {
+            isVeda,
+            dayStr,
+            timeDec,
+            vedaLabel: isVeda ? "🛑 Veda de Compras Activa (Esperando Sábado 02:00 AM COT)" : "🟢 Cacería de Suelo Habilitada",
+            items,
+            updatedAt: Date.now()
+          };
+        } catch {
+          return null;
+        }
+      })(),
     };
   }
 
@@ -1342,6 +1380,18 @@ export class DashboardServer {
     every("cloudData", 5000, () => this.refreshCloudData());
     every("prices", 2000, () => this.refreshPrices());
     every("hunting", 3000, () => this.refreshHuntingTelemetry());
+    every("ranges", 30000, async () => {
+      try {
+        await marketRangesManager.getMarketRanges([
+          "BTCUSDT",
+          "ETHUSDT",
+          "SOLUSDT",
+          "BNBUSDT",
+          "DOGEUSDT",
+          "PEPEUSDT",
+        ]);
+      } catch {}
+    });
     every("account", 15000, () => this.refreshAccount());
     every("radar", 60000, () => this.refreshRadar());
     every("fng", 300000, () => this.refreshFng());

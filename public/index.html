@@ -2947,6 +2947,33 @@
     <!-- TAB 1: OPERACIONES SPOT -->
     <div class="tab-content active" id="tab-spot">
 
+      <!-- 📉 MONITOR DE CAÍDA VS. CIERRE DEL VIERNES (BENCHMARK FIN DE SEMANA) -->
+      <div id="friday-benchmark-box" style="margin-bottom:20px; background:linear-gradient(135deg, rgba(15,23,42,0.96), rgba(30,41,59,0.88)); border:1px solid rgba(239,68,68,0.35); border-radius:12px; padding:16px; box-shadow:0 6px 22px rgba(0,0,0,0.45);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:22px;">📉</span>
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <strong style="color:#f8fafc; font-size:14px; letter-spacing:0.02em;">Monitor de Caída vs. Cierre del Viernes (Benchmark Fin de Semana)</strong>
+                <span id="friday-benchmark-veda-pill" class="semaforo-pill red" style="font-size:10px;">🛑 Veda Activa (Compras Bloqueadas)</span>
+              </div>
+              <span style="font-size:11px; color:#94a3b8; display:block; margin-top:2px;">
+                Mide el retroceso real desde el pico/cierre del viernes (11:30 AM COT). Solo califica a cacería si supera la caída mínima requerida por volatilidad.
+              </span>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span id="friday-benchmark-badge" style="font-size:11px; font-weight:700; color:#f87171; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); padding:4px 10px; border-radius:6px;">
+              ⏱️ Desbloquea: Sábado 02:00 AM COT
+            </span>
+          </div>
+        </div>
+
+        <div id="friday-benchmark-cards" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap:14px;">
+          <!-- Se inyectan las tarjetas de caída del viernes -->
+        </div>
+      </div>
+
       <!-- 🎯 SEMÁFORO DE CACERÍA INSTITUCIONAL EN VIVO (TRAILING BUY) -->
       <div id="caceria-live-box" style="margin-bottom:20px; background:linear-gradient(135deg, rgba(15,23,42,0.96), rgba(30,41,59,0.85)); border:1px solid rgba(59,130,246,0.35); border-radius:12px; padding:16px; box-shadow:0 6px 22px rgba(0,0,0,0.45);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; flex-wrap:wrap; gap:8px;">

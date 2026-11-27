@@ -708,6 +708,124 @@
     setStyle(empty, "display", "none");
   }
 
+  // ---------- MONITOR DE CAÍDA VS. CIERRE DEL VIERNES (BENCHMARK FIN DE SEMANA) ----------
+  function renderFridayBenchmark(bench) {
+    const box = $("friday-benchmark-box");
+    const container = $("friday-benchmark-cards");
+    const vedaPill = $("friday-benchmark-veda-pill");
+    const badge = $("friday-benchmark-badge");
+    if (!box || !container) return;
+
+    if (!bench || !bench.items || bench.items.length === 0) {
+      // Fallback a currentRangesData si aún no cargó el bloque
+      if (currentRangesData && Object.keys(currentRangesData).length > 0) {
+        const fallbackItems = Object.keys(currentRangesData).map(sym => {
+          const r = currentRangesData[sym];
+          const curP = r.curPrice || 0;
+          const anchor = r.fridayAnchorPrice || r.effectiveTecho || curP;
+          const drop = anchor > 0 && curP > 0 ? Math.max(0, ((anchor - curP) / anchor) * 100) : 0;
+          const minDrop = r.minRequiredDropPct || 2.0;
+          return {
+            symbol: sym,
+            curPrice: curP,
+            fridayAnchorPrice: anchor,
+            fridayDropPct: Number(drop.toFixed(2)),
+            minRequiredDropPct: minDrop,
+            qualifiesDrop: drop >= minDrop,
+            dynamicBouncePct: r.dynamicBounceTriggerPct || 0.35,
+            piso: r.effectivePiso,
+            techo: r.effectiveTecho,
+            weekendRegime: r.weekendRegime
+          };
+        });
+        bench = { isVeda: true, vedaLabel: "🛑 Veda de Compras Activa (Fin de Semana)", items: fallbackItems };
+      } else {
+        container.innerHTML = `<div style="padding:20px; text-align:center; color:#94a3b8; font-size:12px; grid-column:1/-1;">⏳ Sincronizando benchmark del cierre del viernes...</div>`;
+        return;
+      }
+    }
+
+    if (vedaPill) {
+      if (bench.isVeda) {
+        vedaPill.className = "semaforo-pill red";
+        vedaPill.textContent = "🛑 Veda Activa (Compras Bloqueadas)";
+      } else {
+        vedaPill.className = "semaforo-pill green";
+        vedaPill.textContent = "🟢 Cacería de Suelo Abierta";
+      }
+    }
+
+    if (badge) {
+      if (bench.isVeda) {
+        badge.textContent = "⏱️ Desbloquea: Sábado 02:00 AM COT";
+        badge.style.color = "#f87171";
+        badge.style.borderColor = "rgba(239,68,68,0.3)";
+        badge.style.background = "rgba(239,68,68,0.15)";
+      } else {
+        badge.textContent = "⚡ Ventana de Entrada Activa";
+        badge.style.color = "#34d399";
+        badge.style.borderColor = "rgba(16,185,129,0.3)";
+        badge.style.background = "rgba(16,185,129,0.15)";
+      }
+    }
+
+    container.innerHTML = bench.items.map(item => {
+      const cleanSym = item.symbol.replace("USDT", "");
+      const dropPct = item.fridayDropPct || 0;
+      const minDrop = item.minRequiredDropPct || 2.0;
+      const qualifies = dropPct >= minDrop;
+      const isDeep = dropPct >= (minDrop * 1.85);
+
+      const progress = Math.min(100, Math.max(0, (dropPct / minDrop) * 100));
+
+      const statusColor = isDeep ? "#38bdf8" : (qualifies ? "#34d399" : "#f87171");
+      const statusText = isDeep 
+        ? "⚡ CAÍDA PROFUNDA (EMBOSCADA)" 
+        : (qualifies ? "🟢 CALIFICA PARA CACERÍA" : "🔴 CAÍDA INSUFICIENTE (ESPERANDO PISO)");
+
+      return `
+        <div style="background:rgba(15,23,42,0.92); border:1px solid ${qualifies ? 'rgba(52,211,153,0.4)' : 'rgba(255,255,255,0.08)'}; border-radius:10px; padding:13px; display:flex; flex-direction:column; gap:8px; box-shadow:0 4px 14px rgba(0,0,0,0.35);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">📉</span>
+              <strong style="font-size:14px; color:#f8fafc;">${cleanSym} <span style="font-size:11px; color:#94a3b8; font-weight:normal;">/USDT</span></strong>
+            </div>
+            <span style="font-size:10px; font-weight:800; color:${statusColor}; background:rgba(0,0,0,0.4); padding:3px 8px; border-radius:6px; border:1px solid ${statusColor}55;">
+              ${statusText}
+            </span>
+          </div>
+
+          <!-- Barra de retroceso vs caída exigida -->
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:10px; color:#94a3b8; margin-bottom:3px;">
+              <span>Caída vs. Ancla Viernes</span>
+              <strong style="color:${dropPct > 0 ? '#f87171' : '#94a3b8'};">-${dropPct.toFixed(2)}% (Mín: -${minDrop.toFixed(2)}%)</strong>
+            </div>
+            <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
+              <div style="width:${progress}%; height:100%; background:${qualifies ? 'linear-gradient(90deg, #f59e0b, #10b981)' : '#ef4444'}; transition:width 0.4s ease;"></div>
+            </div>
+          </div>
+
+          <!-- Precios clave -->
+          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; font-size:11px; background:rgba(0,0,0,0.35); padding:6px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.05); text-align:center;">
+            <div>
+              <span style="color:#64748b; display:block; font-size:9px; text-transform:uppercase;">Ancla Viernes</span>
+              <b style="color:#cbd5e1;">$${fmt(item.fridayAnchorPrice)}</b>
+            </div>
+            <div>
+              <span style="color:#64748b; display:block; font-size:9px; text-transform:uppercase;">Actual</span>
+              <b style="color:#38bdf8;">$${fmt(item.curPrice)}</b>
+            </div>
+            <div>
+              <span style="color:#64748b; display:block; font-size:9px; text-transform:uppercase;">Gatillo Rebote</span>
+              <b style="color:#34d399;">+${(item.dynamicBouncePct || 0.35).toFixed(2)}%</b>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
   // ---------- radar (reconciliación por símbolo + semáforo en vivo) ----------
   function renderRadar(list) {
     const tbody = $("radar-tbody");
@@ -2844,6 +2962,7 @@
       }
 
       renderPositions(d.positions);
+      renderFridayBenchmark(d.fridayBenchmark);
       renderRadar(d.radar);
       renderHistory(d.recentCycles);
       if (d.futuresTelemetry) {

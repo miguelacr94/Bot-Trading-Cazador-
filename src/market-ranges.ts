@@ -37,6 +37,8 @@ export interface MarketRangeItem {
   weekendAdvice?: string;
   fridayAnchorPrice?: number;
   fridayDropPct?: number;
+  minRequiredDropPct?: number;
+  qualifiesDrop?: boolean;
   dynamicBounceTriggerPct?: number;
   updatedAt: number;
 }
@@ -181,6 +183,10 @@ export class MarketRangesManager {
       qualifiesDrop,
       dynamicBouncePct
     };
+  }
+
+  public getCalculatedRanges(): Record<string, MarketRangeItem> {
+    return this.calculatedCache;
   }
 
   /**
@@ -409,6 +415,8 @@ export class MarketRangesManager {
             weekendAdvice,
             fridayAnchorPrice: Number(fridayAnchorPrice.toFixed(sym.includes("PEPE") ? 8 : 2)),
             fridayDropPct,
+            minRequiredDropPct: minRequiredDrop,
+            qualifiesDrop: fridayDropPct >= minRequiredDrop,
             dynamicBounceTriggerPct,
             updatedAt: Date.now()
           };
