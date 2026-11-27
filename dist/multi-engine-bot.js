@@ -534,9 +534,9 @@ export class TrailingMasterBot {
     isFridayBuyVeda(sym, curPrice, rsi, drop24hPct) {
         try {
             const { dayStr, timeDec } = this.getCotTimeInfo();
-            const isFridayAfterPeak = dayStr === "Fri" && timeDec >= 11.5;
+            const isFriday = dayStr === "Fri";
             const isEarlySaturday = dayStr === "Sat" && timeDec < 2.0;
-            if (!isFridayAfterPeak && !isEarlySaturday)
+            if (!isFriday && !isEarlySaturday)
                 return false;
             if (sym && curPrice && curPrice > 0) {
                 const wkInfo = marketRangesManager.getWeekendDynamicBounce(sym, curPrice, drop24hPct || 0);
@@ -2334,6 +2334,11 @@ export class TrailingMasterBot {
                 const curPrice = parseFloat((await this.client.tickerPrice(cleanSym)).data.price);
                 const dropFromLot1 = ((curPrice - lot1.buyPrice) / lot1.buyPrice) * 100;
                 const dropFromLatest = ((curPrice - latestLot.buyPrice) / latestLot.buyPrice) * 100;
+                // 🛑 VEDA DE VIERNES EN SMART DCA: Bloqueado todo el viernes hasta sábado 02:00 AM COT
+                if (this.isFridayBuyVeda(cleanSym, curPrice, undefined, Math.abs(dropFromLot1))) {
+                    console.log(`🛑 [VEDA DE VIERNES EN SMART DCA] ${cleanSym}: Promediado retenido hasta el sábado 02:00 AM COT (esperando piso real).`);
+                    continue;
+                }
                 const lastIgnored = this.ignoredDca.get(cleanSym);
                 if (lastIgnored) {
                     const hoursSince = (Date.now() - lastIgnored.timestamp) / (3600 * 1000);

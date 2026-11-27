@@ -1,13 +1,13 @@
 {
   "sessionKey": "NOCTURNO_DRENAJE",
   "sessionTitle": "⏸️ PAUSA DRENAJE MATUTINO NY (09:00 - 11:30 AM COT): Esperando piso de mediodía (11:30 AM).",
-  "totalFreeUsdt": 61.51707789,
-  "reservedUsdt": 36.91,
-  "spendableUsdt": 24.61,
+  "totalFreeUsdt": 61.8188689,
+  "reservedUsdt": 37.09,
+  "spendableUsdt": 24.73,
   "lotFractionPct": 0.4,
   "trailingBounceTrigger": 0.55,
   "harvestCallbackPct": 0.15,
   "reason": "⏸️ PAUSA DRENAJE MATUTINO NY (09:00 - 11:30 AM COT): Esperando piso de mediodía (11:30 AM). Compras estándar detenidas; solo se autoriza la Llave Maestra de Excepción por Evento Atípico (Flash Crash >= -5.8%, RSI <= 26, Mecha >= 35% y CVD >= 55%).",
   "recommendation": "⏸️ Pausa Horaria Estadística: Cosechando ventas en la cima con Trailing ceñido (0.15%) y guardando munición para la próxima Hora Piso.",
-  "updatedAt": 1795790384386
+  "updatedAt": 1795796069779
 }
