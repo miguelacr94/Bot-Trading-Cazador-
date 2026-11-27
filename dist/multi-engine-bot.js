@@ -913,6 +913,7 @@ export class TrailingMasterBot {
     aiLowBalancePaused = false;
     lastFridaySnapshotDayKey = "";
     notifiedBenchmarkMilestones = new Map();
+    notifiedAtypicalDrops = new Map();
     activeAtypicalOverride = "NONE";
     aiCoinCalibrations = new Map();
     getFridayBenchmarks() {
@@ -1116,11 +1117,18 @@ export class TrailingMasterBot {
                 this.aiLowBalancePaused = false;
                 console.log(`🟢 [AGENTE IA REACTIVADO] Liquidez recuperada ($${botSpendableUsdt.toFixed(2)} USDT). Reanudando análisis autónomo.`);
             }
-            // Ejecutar chequeo dinámico del Agente IA cada 3 minutos (o inmediato si forceTelegram === true)
-            if (!forceTelegram && (now - this.lastAiBenchmarkCheckTime) < 3 * 60 * 1000) {
+            // Cadencia de evaluación: Durante la veda de compras de viernes / fin de semana,
+            // NO saturamos el agente evaluando a cada rato: evaluamos únicamente CADA 30 MINUTOS.
+            // Fuera de veda: cada 3 minutos.
+            const isVedaActive = this.isFridayBuyVeda();
+            const checkIntervalMs = isVedaActive ? (30 * 60 * 1000) : (3 * 60 * 1000);
+            if (!forceTelegram && (now - this.lastAiBenchmarkCheckTime) < checkIntervalMs) {
                 return "";
             }
             this.lastAiBenchmarkCheckTime = now;
+            if (isVedaActive) {
+                console.log(`🛡️ [AGENTE EN VEDA - CADENCIA 30M] Evaluación espaciada a cada 30 minutos. Vigilando únicamente eventos y oportunidades atípicas.`);
+            }
             const benchData = this.getFridayBenchmarks();
             if (!benchData || !benchData.benchmarks) {
                 return "⚠️ No hay precios de referencia del viernes registrados aún.";
@@ -1474,6 +1482,49 @@ export class TrailingMasterBot {
                             break;
                         }
                     }
+                }
+            }
+            // 🚨 DETECCIÓN DE OPORTUNIDAD MUY ATÍPICA EN PLENA VEDA (Flash Crash / Capitulación Extrema):
+            // Si una moneda sufre una caída severa (>= -5.0% en Core o >= -6.5% en Meme) con sobreventa extrema (RSI <= 28),
+            // se notifica de inmediato al usuario por Telegram (con cooldown de 2h para no saturar).
+            let hasAtypicalOpportunity = false;
+            let atypicalAlertMsg = "";
+            if (isVedaActive && !forceTelegram) {
+                const severeDrops = coinEvaluations.filter(c => {
+                    const isMeme = this.memeWatchlist.includes(c.symbol) || c.symbol.includes("PEPE") || c.symbol.includes("DOGE");
+                    const threshold = isMeme ? -6.5 : -5.0;
+                    const drop = c.benchDropPct <= threshold || c.drop24hPct >= Math.abs(threshold);
+                    return drop && c.rsi15m <= 28;
+                });
+                if (severeDrops.length > 0) {
+                    const newDrops = severeDrops.filter(c => {
+                        const lastNotif = this.notifiedAtypicalDrops.get(c.symbol) || 0;
+                        return (now - lastNotif) >= (2 * 3600 * 1000);
+                    });
+                    if (newDrops.length > 0) {
+                        hasAtypicalOpportunity = true;
+                        atypicalAlertMsg = `🚨 <b>[OPORTUNIDAD MUY ATÍPICA DETECTADA EN VEDA]</b> ⚡\n\n` +
+                            `<i>Aunque las compras rutinarias están en veda hasta el sábado 02:00 AM COT, se detectó una capitulación extrema / cisne negro:</i>\n\n`;
+                        for (const opp of newDrops) {
+                            this.notifiedAtypicalDrops.set(opp.symbol, now);
+                            const clean = opp.symbol.replace("USDT", "");
+                            const dec = opp.symbol.includes("PEPE") ? 8 : (opp.curPrice < 10 ? 4 : 2);
+                            const wkDyn = marketRangesManager.getWeekendDynamicBounce(opp.symbol, opp.curPrice);
+                            atypicalAlertMsg += `• 💎 <b>${clean}:</b> $${opp.curPrice.toFixed(dec)} (Cierre: $${(opp.exitPrice || 0).toFixed(dec)})\n` +
+                                `   📉 Caída: <b>${opp.benchDropPct.toFixed(2)}%</b> | RSI: <b>${opp.rsi15m.toFixed(0)}</b> | Suelo 4d: $${opp.structuralFloor4d.toFixed(dec)}\n` +
+                                `   ⚡ Rebote dinámico exigido: <b>+${wkDyn.dynamicBouncePct}%</b>\n\n`;
+                        }
+                        atypicalAlertMsg += `💼 <b>Saldo Disponible:</b> $${botSpendableUsdt.toFixed(2)} USDT\n` +
+                            `👉 <i>El motor evalúa compra de emboscada si confirma absorción y volumen comprador.</i>`;
+                    }
+                }
+            }
+            if (hasAtypicalOpportunity && atypicalAlertMsg) {
+                try {
+                    await this.notifier.send(atypicalAlertMsg);
+                }
+                catch (e) {
+                    console.error("Error enviando alerta atípica:", e.message);
                 }
             }
             // 🔇 CERO SPAM Y SILENCIO TOTAL TRAS EL CIERRE DEL VIERNES:
