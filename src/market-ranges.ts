@@ -248,17 +248,18 @@ export class MarketRangesManager {
           const opens = klines.map((k: any) => parseFloat(k[1]));
 
           const curPrice = closes[closes.length - 1];
+          const dec = (sym.includes("PEPE") || sym.includes("BONK") || sym.includes("SHIB")) ? 8 : (curPrice < 0.1 ? 5 : (curPrice < 1 ? 4 : (curPrice < 10 ? 3 : 2)));
 
           // 1. Detección Automática de Piso Estructural
           // Usamos el soporte más respetado: el percentil 8 de los mínimos de las últimas 72 horas para descartar mechas fantasma aisladas
           const recentLows = lows.slice(-72);
           const sortedLows = [...recentLows].sort((a, b) => a - b);
           const p8Idx = Math.max(0, Math.floor(sortedLows.length * 0.08));
-          const autoPiso = Number((sortedLows[p8Idx] || Math.min(...recentLows)).toFixed(sym.includes("PEPE") ? 8 : 2));
+          const autoPiso = Number((sortedLows[p8Idx] || Math.min(...recentLows)).toFixed(dec));
 
           // 2. Detección Automática de Techo Estructural
           const recentHighs = highs.slice(-72);
-          const autoTecho = Number(Math.max(...recentHighs).toFixed(sym.includes("PEPE") ? 8 : 2));
+          const autoTecho = Number(Math.max(...recentHighs).toFixed(dec));
 
           // Ajustes guardados por el usuario
           const s = this.settingsCache[sym] || {};
@@ -274,10 +275,10 @@ export class MarketRangesManager {
           const rangeSpan = effectiveTecho - effectivePiso;
           const rangeWidthPct = effectivePiso > 0 ? (rangeSpan / effectivePiso) * 100 : 0;
           const posInBandPct = rangeSpan > 0 ? Math.max(0, Math.min(100, ((curPrice - effectivePiso) / rangeSpan) * 100)) : 50;
-          const maxAllowedBuyPrice = Number((effectivePiso + rangeSpan * (maxBuyPct / 100)).toFixed(sym.includes("PEPE") ? 8 : 2));
-          const idealBuyPrice = Number((effectivePiso + rangeSpan * 0.10).toFixed(sym.includes("PEPE") ? 8 : 2));
-          const idealSellPrice = Number((effectiveTecho - rangeSpan * 0.04).toFixed(sym.includes("PEPE") ? 8 : 2));
-          const dcaTargetPrice = Number((effectivePiso + rangeSpan * 0.05).toFixed(sym.includes("PEPE") ? 8 : 2));
+          const maxAllowedBuyPrice = Number((effectivePiso + rangeSpan * (maxBuyPct / 100)).toFixed(dec));
+          const idealBuyPrice = Number((effectivePiso + rangeSpan * 0.10).toFixed(dec));
+          const idealSellPrice = Number((effectiveTecho - rangeSpan * 0.04).toFixed(dec));
+          const dcaTargetPrice = Number((effectivePiso + rangeSpan * 0.05).toFixed(dec));
 
           // Lectura de velas recientes para análisis de patrones
           const lastIdx = closes.length - 1;
@@ -413,7 +414,7 @@ export class MarketRangesManager {
             actionAdvice,
             weekendRegime,
             weekendAdvice,
-            fridayAnchorPrice: Number(fridayAnchorPrice.toFixed(sym.includes("PEPE") ? 8 : 2)),
+            fridayAnchorPrice: Number(fridayAnchorPrice.toFixed(dec)),
             fridayDropPct,
             minRequiredDropPct: minRequiredDrop,
             qualifiesDrop: fridayDropPct >= minRequiredDrop,
