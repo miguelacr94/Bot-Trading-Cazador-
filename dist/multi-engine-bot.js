@@ -1457,13 +1457,10 @@ export class TrailingMasterBot {
                     }
                 }
             }
-            // 3. REPORTE PERIÓDICO DEL AGENTE IA A TELEGRAM (Cada hora, o al armar vigilancia, o al comprar, o por comando):
-            const shouldSendTelegram = forceTelegram ||
-                Boolean(executedSymbol) ||
-                Boolean(aiActionNote) ||
-                armedNewWatch ||
-                crossedNewMilestone ||
-                (now - this.lastAiBenchmarkTelegramTime) >= 1 * 3600 * 1000;
+            // 🔇 CERO SPAM DE TELEGRAM:
+            // Prohibido enviar reportes rutinarios a Telegram a menos que el usuario lo solicite explícitamente (/benchmark)
+            // o que se haya ejecutado una compra real autorizada por desplome.
+            const shouldSendTelegram = forceTelegram || Boolean(executedSymbol);
             if (!shouldSendTelegram)
                 return "";
             this.lastAiBenchmarkTelegramTime = now;

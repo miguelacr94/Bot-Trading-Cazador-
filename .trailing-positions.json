@@ -17,24 +17,5 @@
       "lockedFloorGainPct": 0.6,
       "partialProfitTaken": false
     }
-  ],
-  [
-    "ETHUSDT",
-    {
-      "symbol": "ETHUSDT",
-      "lotId": "ETHUSDT",
-      "lotIndex": 1,
-      "buyPrice": 1736.33633634,
-      "qty": 0.0351648,
-      "investedUsdt": 61.0579,
-      "highestPrice": 1736.33633634,
-      "activated": true,
-      "buyTime": 1795455995308,
-      "strategy": "trailing_rebound",
-      "customCallbackPct": 0.12,
-      "customMinGainPct": 0.62,
-      "lockedFloorGainPct": 0.6,
-      "partialProfitTaken": false
-    }
   ]
 ]
