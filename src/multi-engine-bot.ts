@@ -1295,39 +1295,57 @@ export class TrailingMasterBot {
         await this.runFridayMorningWeekendStudy(false);
       }
 
-      // 1. AUTO-SNAPSHOT DE TECHO/CIERRE DEL VIERNES (Viernes 11:30 AM a 02:30 PM COT):
-      // Estadística histórica Binance (83% de las semanas): El techo del viernes ocurre entre las 10:00 AM y 12:00 PM COT.
-      if (dayStr === "Fri" && timeDec >= 11.5 && timeDec <= 14.5 && this.lastFridaySnapshotDayKey !== dayKey) {
-        const currentBench = this.getFridayBenchmarks();
-        const ageHours = currentBench?.liquidatedAt ? (now - currentBench.liquidatedAt) / 3600000 : 999;
-        if (ageHours >= 12) {
-          const snapMap: Record<string, number> = {};
-          for (const sym of this.watchlist) {
-            try {
+      // 1. AUTO-SNAPSHOT DE TECHO/CIERRE DEL VIERNES (Viernes 11:30 AM en adelante y Fin de Semana):
+      // Si el snapshot es de una semana anterior (ageHours >= 96) o hoy es viernes tarde y no se ha tomado hoy:
+      const currentBench = this.getFridayBenchmarks();
+      const ageHours = currentBench?.liquidatedAt ? (now - currentBench.liquidatedAt) / 3600000 : 999;
+      const isFridayAfternoonOrWeekend = (dayStr === "Fri" && timeDec >= 11.5) || dayStr === "Sat" || dayStr === "Sun";
+
+      if (isFridayAfternoonOrWeekend && (ageHours >= 96 || (dayStr === "Fri" && this.lastFridaySnapshotDayKey !== dayKey))) {
+        const snapMap: Record<string, number> = {};
+        for (const sym of this.watchlist) {
+          try {
+            // Buscar la vela de cierre institucional del viernes (10:00-12:00 COT)
+            const kUrl = `https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1h&limit=72`;
+            const kRes = await fetch(kUrl);
+            if (kRes.ok) {
+              const klines = await kRes.json();
+              let foundHigh = 0;
+              for (let i = klines.length - 1; i >= 0; i--) {
+                const kTimeCot = new Date(klines[i][0] - 5 * 3600 * 1000);
+                if (kTimeCot.getUTCDay() === 5 && kTimeCot.getUTCHours() >= 10 && kTimeCot.getUTCHours() <= 12) {
+                  const h = parseFloat(klines[i][2]);
+                  if (h > foundHigh) foundHigh = h;
+                }
+              }
+              if (foundHigh > 0) snapMap[sym] = foundHigh;
+            }
+            if (!snapMap[sym]) {
               const tRes = await this.client.tickerPrice(sym);
               const p = parseFloat(tRes.data.price);
               if (p > 0) snapMap[sym] = p;
-            } catch {}
-          }
-          if (Object.keys(snapMap).length > 0) {
-            this.lastFridaySnapshotDayKey = dayKey;
-            const dateStr = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" });
-            const newBenchObj = {
-              liquidatedAt: now,
-              dateStr: `Viernes ${dateStr} COT (Auto-Snapshot)`,
-              benchmarks: snapMap,
-              minDropRequiredPct: 5,
-              primeDropRequiredPct: 8
-            };
-            try {
-              fs.writeFileSync(path.resolve(process.cwd(), ".liquidation-benchmarks.json"), JSON.stringify(newBenchObj, null, 2), "utf-8");
-            } catch {}
-            if (!this.controls.strategySettings) this.controls.strategySettings = {};
-            (this.controls.strategySettings as any).fridayBenchmarks = newBenchObj;
-            this.saveStrategyControls();
-            this.notifiedBenchmarkMilestones.clear();
-            console.log(`📸 [AGENTE IA AUTÓNOMO] Snapshot oficial de precios de cierre del viernes guardado (${Object.keys(snapMap).length} monedas).`);
-          }
+            }
+          } catch {}
+        }
+        if (Object.keys(snapMap).length > 0) {
+          this.lastFridaySnapshotDayKey = dayKey;
+          const snapDate = new Date();
+          const dateStr = `Viernes ${snapDate.toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}, 12:00:00 p. m. COT (Cierre Semanal)`;
+          const newBenchObj = {
+            liquidatedAt: now,
+            dateStr,
+            benchmarks: snapMap,
+            minDropRequiredPct: 3.5,
+            primeDropRequiredPct: 6.0
+          };
+          try {
+            fs.writeFileSync(path.resolve(process.cwd(), ".liquidation-benchmarks.json"), JSON.stringify(newBenchObj, null, 2), "utf-8");
+          } catch {}
+          if (!this.controls.strategySettings) this.controls.strategySettings = {};
+          (this.controls.strategySettings as any).fridayBenchmarks = newBenchObj;
+          this.saveStrategyControls();
+          this.notifiedBenchmarkMilestones.clear();
+          console.log(`📸 [AGENTE IA AUTÓNOMO] Snapshot oficial de cierre del viernes actualizado (${Object.keys(snapMap).length} monedas): ${dateStr}`);
         }
       }
 
@@ -1771,31 +1789,69 @@ export class TrailingMasterBot {
         }
       }
 
-      // 🔇 CERO SPAM DE TELEGRAM:
-      // Prohibido enviar reportes rutinarios a Telegram a menos que el usuario lo solicite explícitamente (/benchmark)
-      // o que se haya ejecutado una compra real autorizada por desplome.
-      const shouldSendTelegram = forceTelegram || Boolean(executedSymbol);
+      // 🔇 FRECUENCIA DE TELEGRAM Y CERO SPAM TRAS EL CIERRE DEL VIERNES:
+      // Durante el cierre de viernes y fin de semana, no enviar mensajes rutinarios cada 1 o 2 horas.
+      // Solo enviar automáticamente a Telegram si:
+      // 1. forceTelegram === true (solicitud explícita del usuario: /benchmark o /comparar_viernes)
+      // 2. Se ejecutó una compra real autorizada por desplome (executedSymbol)
+      // 3. Una moneda cruzó un nuevo hito relevante de caída profunda (crossedNewMilestone)
+      // 4. O han transcurrido al menos 6 HORAS desde el último boletín de guardia
+      const routineIntervalMs = isFridayAfternoonOrWeekend ? (6 * 3600 * 1000) : (4 * 3600 * 1000);
+      const isRoutineTimeElapsed = (now - this.lastAiBenchmarkTelegramTime) >= routineIntervalMs;
+
+      const shouldSendTelegram = forceTelegram || Boolean(executedSymbol) || (isFridayAfternoonOrWeekend ? (crossedNewMilestone || isRoutineTimeElapsed) : false);
 
       if (!shouldSendTelegram) return "";
       this.lastAiBenchmarkTelegramTime = now;
 
       const primaryBenchSyms = new Set(Object.keys(benchData.benchmarks));
-      const displayCoins = coinEvaluations.filter((c) => primaryBenchSyms.has(c.symbol) || c.benchDropPct <= -3.0 || c.drop24hPct >= 3.0);
+      const displayCoins = coinEvaluations.filter((c) => primaryBenchSyms.has(c.symbol) || c.benchDropPct <= -2.0 || c.drop24hPct >= 2.5);
 
-      let report = `🤖📊 <b>[TRADER IA AUTÓNOMO 24/7 — AUDITORÍA DE MERCADO Y BENCHMARK]</b>\n\n`;
-      report += `🗓️ <b>Ref. Cierre Viernes:</b> <i>${benchData.dateStr}</i>\n`;
-      report += `📅 <b>Calendario 5.5 Años:</b> ${calRegime.label}\n`;
-      report += `⏰ <b>Ventana Actual:</b> ${sessionPlan.sessionTitle}\n\n`;
+      let report = "";
+      if (isFridayAfternoonOrWeekend) {
+        // 📊 FORMATO QUIRÚRGICO DE CIERRE DE VIERNES (COMPARATIVA DIRECTA Y LIMPIA)
+        report += `🤖📉 <b>[COMPARATIVA DE CAÍDA POST-CIERRE DE VIERNES]</b>\n\n`;
+        report += `🗓️ <b>Fecha/Hora de Cierre:</b> <i>${benchData.dateStr}</i>\n`;
+        report += `🛑 <b>Veda de Compras:</b> <i>${this.isFridayBuyVeda() ? "Bloqueadas hasta Sábado 02:00 AM COT (salvo caída profunda)" : "🟢 Cacería de Suelo Abierta"}</i>\n\n`;
+        report += `📊 <b>RETROCESO DESDE EL CIERRE DE VIERNES:</b>\n`;
 
-      for (const c of displayCoins) {
-        const emoji = (c.benchDropPct <= -8.0 || c.drop24hPct >= 6.0) ? "🔥" : ((c.benchDropPct <= -4.8 || c.drop24hPct >= 3.5) ? "🎯" : ((c.benchDropPct <= -1.5 || c.drop24hPct >= 2.0) ? "📉" : "⚖️"));
-        const symClean = c.symbol.replace("USDT", "");
-        const dec = c.symbol.includes("PEPE") ? 8 : (c.curPrice < 10 ? 4 : 2);
-        report += `${emoji} <b>${symClean}:</b> $${c.curPrice.toFixed(dec)} (<b>${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}%</b> vs Vie | <b>-${c.drop24hPct.toFixed(2)}%</b> vs 24h | RSI: ${c.rsi15m.toFixed(0)})\n`;
+        for (const c of displayCoins) {
+          const symClean = c.symbol.replace("USDT", "");
+          const dec = c.symbol.includes("PEPE") ? 8 : (c.curPrice < 10 ? 4 : 2);
+          const exitP = c.exitPrice || 0;
+          const dropPct = c.benchDropPct;
+          const wkDyn = marketRangesManager.getWeekendDynamicBounce(c.symbol, c.curPrice);
+          const statusEmoji = wkDyn.qualifiesDrop ? "🟢" : "🔴";
+          const statusText = wkDyn.qualifiesDrop ? "CALIFICA PARA CACERÍA" : "CAÍDA INSUFICIENTE";
+
+          report += `• <b>${symClean}:</b> $${c.curPrice.toFixed(dec)} | Cierre: $${exitP.toFixed(dec)}\n` +
+                    `   📉 <b>${dropPct >= 0 ? "+" : ""}${dropPct.toFixed(2)}%</b> (Mín: -${wkDyn.minRequiredDropPct}%) ➜ ${statusEmoji} <b>${statusText}</b> | Rebote: +${wkDyn.dynamicBouncePct}%\n`;
+        }
+
+        const qualifyingCount = displayCoins.filter(c => {
+          const wkDyn = marketRangesManager.getWeekendDynamicBounce(c.symbol, c.curPrice);
+          return wkDyn.qualifiesDrop;
+        }).length;
+
+        report += `\n💡 <b>Diagnóstico Táctico:</b>\n<i>${qualifyingCount > 0 ? `Hay ${qualifyingCount} moneda(s) en zona de cacería. Monitoreando confirmación Wyckoff y rebote.` : "Mercado aún sin purga suficiente tras el cierre del viernes. No se compra en zonas altas; esperando pacientemente el fondo del sábado."}</i>\n\n`;
+        report += `💼 <b>Saldo Spot Disponible:</b> <b>$${botSpendableUsdt.toFixed(2)} USDT</b> (100% listos para cazar el suelo).`;
+      } else {
+        // Formato estándar entre semana
+        report += `🤖📊 <b>[TRADER IA AUTÓNOMO 24/7 — AUDITORÍA DE MERCADO Y BENCHMARK]</b>\n\n`;
+        report += `🗓️ <b>Ref. Cierre Viernes:</b> <i>${benchData.dateStr}</i>\n`;
+        report += `📅 <b>Calendario 5.5 Años:</b> ${calRegime.label}\n`;
+        report += `⏰ <b>Ventana Actual:</b> ${sessionPlan.sessionTitle}\n\n`;
+
+        for (const c of displayCoins) {
+          const emoji = (c.benchDropPct <= -8.0 || c.drop24hPct >= 6.0) ? "🔥" : ((c.benchDropPct <= -4.8 || c.drop24hPct >= 3.5) ? "🎯" : ((c.benchDropPct <= -1.5 || c.drop24hPct >= 2.0) ? "📉" : "⚖️"));
+          const symClean = c.symbol.replace("USDT", "");
+          const dec = c.symbol.includes("PEPE") ? 8 : (c.curPrice < 10 ? 4 : 2);
+          report += `${emoji} <b>${symClean}:</b> $${c.curPrice.toFixed(dec)} (<b>${c.benchDropPct >= 0 ? "+" : ""}${c.benchDropPct.toFixed(2)}%</b> vs Vie | <b>-${c.drop24hPct.toFixed(2)}%</b> vs 24h | RSI: ${c.rsi15m.toFixed(0)})\n`;
+        }
+
+        report += `\n${aiEval.verdictHtml}${aiActionNote}\n\n`;
+        report += `💼 <b>Saldo Bot Disponible:</b> <b>$${botSpendableUsdt.toFixed(2)} USDT</b> (Operando 24/7 Lunes a Domingo).`;
       }
-
-      report += `\n${aiEval.verdictHtml}${aiActionNote}\n\n`;
-      report += `💼 <b>Saldo Bot Disponible:</b> <b>$${botSpendableUsdt.toFixed(2)} USDT</b> (Operando 24/7 Lunes a Domingo).`;
 
       if (!forceTelegram) {
         try {

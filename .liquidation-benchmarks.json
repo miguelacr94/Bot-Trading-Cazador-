@@ -1,47 +1,17 @@
 {
-  "liquidatedAt": 1795194184414,
-  "dateStr": "20/11/2026, 12:03:04 p. m.",
+  "liquidatedAt": 1795810090371,
+  "dateStr": "Viernes 27/11/2026, 12:00:00 p. m. COT (Cierre Semanal)",
   "benchmarks": {
-    "BTCUSDT": 59328.92,
-    "ETHUSDT": 1635.24,
-    "SOLUSDT": 69.14,
-    "SUIUSDT": 0.6515,
-    "PEPEUSDT": 0.00000338
+    "ETHUSDT": 1687.6,
+    "SOLUSDT": 72.65,
+    "AVAXUSDT": 6.673,
+    "BTCUSDT": 60559.62,
+    "BNBUSDT": 557.53,
+    "XRPUSDT": 0.9542,
+    "NEARUSDT": 3.051,
+    "SUIUSDT": 0.6756,
+    "PEPEUSDT": 0.00000353
   },
-  "minDropRequiredPct": 5,
-  "primeDropRequiredPct": 8,
-  "actualExecutions": [
-    {
-      "symbol": "BTCUSDT",
-      "qty": 0.00088,
-      "usdt": 52.2094496,
-      "avgPrice": 59328.92
-    },
-    {
-      "symbol": "ETHUSDT",
-      "qty": 0.0075,
-      "usdt": 12.2643,
-      "avgPrice": 1635.24
-    },
-    {
-      "symbol": "SOLUSDT",
-      "qty": 0.228,
-      "usdt": 15.76392,
-      "avgPrice": 69.14
-    },
-    {
-      "symbol": "SUIUSDT",
-      "qty": 63.9,
-      "usdt": 41.63085,
-      "avgPrice": 0.6515000000000001
-    },
-    {
-      "symbol": "PEPEUSDT",
-      "qty": 8027470,
-      "usdt": 27.1328486,
-      "avgPrice": 0.00000338
-    }
-  ],
-  "totalUsdtObtained": 149.0013682,
-  "walletUsdtAfter": 160.35
+  "minDropRequiredPct": 3.5,
+  "primeDropRequiredPct": 6
 }
