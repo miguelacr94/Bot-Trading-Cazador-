@@ -1789,17 +1789,12 @@ export class TrailingMasterBot {
         }
       }
 
-      // 🔇 FRECUENCIA DE TELEGRAM Y CERO SPAM TRAS EL CIERRE DEL VIERNES:
-      // Durante el cierre de viernes y fin de semana, no enviar mensajes rutinarios cada 1 o 2 horas.
-      // Solo enviar automáticamente a Telegram si:
-      // 1. forceTelegram === true (solicitud explícita del usuario: /benchmark o /comparar_viernes)
-      // 2. Se ejecutó una compra real autorizada por desplome (executedSymbol)
-      // 3. Una moneda cruzó un nuevo hito relevante de caída profunda (crossedNewMilestone)
-      // 4. O han transcurrido al menos 6 HORAS desde el último boletín de guardia
-      const routineIntervalMs = isFridayAfternoonOrWeekend ? (6 * 3600 * 1000) : (4 * 3600 * 1000);
-      const isRoutineTimeElapsed = (now - this.lastAiBenchmarkTelegramTime) >= routineIntervalMs;
-
-      const shouldSendTelegram = forceTelegram || Boolean(executedSymbol) || (isFridayAfternoonOrWeekend ? (crossedNewMilestone || isRoutineTimeElapsed) : false);
+      // 🔇 CERO SPAM Y SILENCIO TOTAL TRAS EL CIERRE DEL VIERNES:
+      // El usuario NO quiere notificaciones periódicas automáticas en Telegram durante el fin de semana ("no necesito saber cada minuto eso").
+      // Por tanto, este reporte a Telegram queda EXCLUSIVAMENTE para:
+      // 1. Cuando el usuario lo solicite expresamente en Telegram (/benchmark o /comparar_viernes) -> forceTelegram === true
+      // 2. O cuando se ejecute una orden de compra real autorizada en Binance -> executedSymbol
+      const shouldSendTelegram = forceTelegram || Boolean(executedSymbol);
 
       if (!shouldSendTelegram) return "";
       this.lastAiBenchmarkTelegramTime = now;
